@@ -29,4 +29,4 @@ sh scripts/smoke.sh
 
 The static checks validate shell scripts, image profile and overlay contents. The smoke test must run **inside an Alpine system where components have already been installed**. GitHub CI also runs ShellCheck and verifies the Alpine Nix package is installable.
 
-Full QEMU boot tests, graphical installation and long-running application compatibility tests are not yet automated.
+GitHub Actions boots each built image under QEMU and looks for a serial-console login banner. This verifies a basic boot path, not a full installation. Graphical installation and long-running application tests are not yet automated.

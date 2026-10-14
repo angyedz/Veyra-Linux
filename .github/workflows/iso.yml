@@ -5,6 +5,7 @@ on:
     paths:
       - 'images/**'
       - 'scripts/build-iso.sh'
+      - 'scripts/test-iso.sh'
       - 'scripts/bootstrap.sh'
       - 'scripts/compat.sh'
       - 'scripts/smoke.sh'
@@ -36,3 +37,32 @@ jobs:
             dist/*.sha512
           retention-days: 7
           if-no-files-found: error
+  boot:
+    name: Boot image in QEMU
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: veyra-linux-iso
+          path: dist
+      - name: Install QEMU
+        run: |
+          if ! command -v qemu-system-x86_64 >/dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq qemu-system-x86
+          fi
+      - name: Boot live ISO and wait for login banner
+        run: |
+          iso=$(find dist -maxdepth 1 -name 'veyra-linux-*.iso' -print -quit)
+          test -n "$iso"
+          sh scripts/test-iso.sh "$iso" veyra-boot.log
+      - name: Save serial console log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: veyra-qemu-boot-log
+          path: veyra-boot.log
+          if-no-files-found: ignore

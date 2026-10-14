@@ -10,6 +10,7 @@ done
 [ -f README.md ]
 [ -f .github/workflows/ci.yml ]
 [ -f .github/workflows/iso.yml ]
+[ -f scripts/test-iso.sh ]
 grep -q 'GLENV_REF' scripts/bootstrap.sh
 grep -q 'apk add nix nix-openrc' scripts/bootstrap.sh
 if grep -Eiq 'VPN|WireGuard|OpenVPN|OpenConnect' README.md; then
