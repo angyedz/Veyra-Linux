@@ -1,10 +1,22 @@
-# Veyra Linux (early prototype)
+# Veyra Linux
 
-Alpine Linux + OpenRC + [glenv](https://github.com/angyedz/glenv) + Nix package manager, with desktop/VPN compatibility services.
+**Lightweight by design. Compatible by nature.**
 
-**Status:** integration prototype, not yet a bootable ISO or complete systemd replacement.
+Veyra Linux is an experimental Linux distribution built on Alpine Linux. It combines a minimal base with flexible software management and an expanded application environment.
 
-## Quick start (disposable Alpine x86_64 VM)
+## Highlights
+
+- **Lean foundation** — Alpine Linux and OpenRC.
+- **Broad application support** — the [glenv](https://github.com/angyedz/glenv) glibc environment alongside native musl.
+- **Flexible software management** — Alpine's `apk` and the Nix package manager.
+- **Modular setup** — install only the components you want.
+- **Open development** — transparent scripts and automated checks.
+
+## Get started
+
+Veyra is in **early development**. The current source tree provides installation scripts and tooling; it is **not yet a verified ready-to-install operating system**.
+
+To try the integration in a disposable Alpine Linux x86_64 VM:
 
 ```sh
 git clone https://github.com/angyedz/Veyra-Linux.git
@@ -13,24 +25,16 @@ sudo sh scripts/bootstrap.sh
 sh scripts/smoke.sh
 ```
 
-Bootstrap installs Alpine dependencies, NetworkManager/D-Bus/elogind/polkit, glenv, and multi-user Nix. It makes privileged changes. Review scripts before running. Set `GLENV_REF` to an audited glenv commit to pin the source. `ENABLE_GLENV=0`, `ENABLE_NIX=0`, or `ENABLE_COMPAT=0` skips an integration.
+The setup modifies the running system and downloads third-party software. Review the scripts before running them.
 
-## Compatibility scope
+## Building
 
-OpenRC is PID 1. NetworkManager, elogind, polkit and D-Bus cover many desktop/VPN requirements, but do **not** implement systemd PID 1 or its full APIs. NetworkManager's dnsmasq integration does **not** provide `org.freedesktop.resolve1`. VPN clients that require systemd units or systemd-resolved need individual compatibility work.
+An experimental ISO build profile is being developed in `images/`. Build instructions will evolve as the image is validated.
 
-## Development
+## Contributing
 
-```sh
-sh tests/static.sh
-```
+Bug reports, ideas and pull requests are welcome. Follow the progress in [GitHub Actions](https://github.com/angyedz/Veyra-Linux/actions).
 
-GitHub Actions runs syntax and ShellCheck checks. Real glenv/Nix installation and VPN runtime testing are still TODO.
+---
 
-## Roadmap
-
-- Bootable Alpine ISO using an mkimage profile
-- QEMU boot and installation smoke tests in CI
-- Pin and audit glenv installation
-- Test WireGuard, OpenVPN, OpenConnect and Amnezia clients
-- Targeted systemd compatibility bridges where necessary
+*Veyra Linux is an independent community project. Alpine Linux, glenv and Nix retain their respective licenses and upstream identities.*
