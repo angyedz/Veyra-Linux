@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Shell syntax and static checks
+      - name: Check scripts and image overlay
         run: sh tests/static.sh
   alpine-smoke:
     runs-on: ubuntu-latest
@@ -17,7 +17,9 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install test dependencies
         run: apk add --no-cache shellcheck
-      - name: Shellcheck
-        run: shellcheck -s sh scripts/bootstrap.sh scripts/compat.sh scripts/smoke.sh tests/static.sh
-      - name: Validate scripts
+      - name: ShellCheck
+        run: shellcheck -s sh scripts/*.sh images/*.sh tests/*.sh
+      - name: Validate shell and image overlay
         run: sh tests/static.sh
+      - name: Verify native Nix package availability
+        run: apk add --no-cache nix nix-openrc && nix --version

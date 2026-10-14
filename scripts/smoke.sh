@@ -1,9 +1,17 @@
 #!/bin/sh
 set -eu
-[ -f /etc/alpine-release ]
-command -v apk
-command -v rc-service
-if command -v glenv >/dev/null 2>&1; then glenv doctor; else echo 'glenv not installed' >&2; exit 1; fi
-if command -v nix >/dev/null 2>&1; then nix --version; elif [ -x /nix/var/nix/profiles/default/bin/nix ]; then /nix/var/nix/profiles/default/bin/nix --version; else echo 'Nix not installed' >&2; exit 1; fi
-rc-service dbus status
-rc-service networkmanager status
+[ -f /etc/alpine-release ] || exit 1
+command -v apk >/dev/null
+command -v rc-service >/dev/null
+if [ "${ENABLE_GLENV:-1}" = 1 ]; then
+    command -v glenv >/dev/null || { echo 'glenv not installed' >&2; exit 1; }
+    glenv doctor
+fi
+if [ "${ENABLE_NIX:-1}" = 1 ]; then
+    command -v nix >/dev/null || { echo 'Nix not installed' >&2; exit 1; }
+    nix --version
+fi
+if [ "${ENABLE_COMPAT:-1}" = 1 ]; then
+    rc-service dbus status
+    rc-service networkmanager status
+fi

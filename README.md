@@ -2,21 +2,21 @@
 
 **Lightweight by design. Compatible by nature.**
 
-Veyra Linux is an experimental Linux distribution built on Alpine Linux. It combines a minimal base with flexible software management and an expanded application environment.
+Veyra Linux is an experimental Linux distribution built on Alpine Linux. It combines a minimal foundation with flexible software management and an expanded application environment.
 
 ## Highlights
 
 - **Lean foundation** — Alpine Linux and OpenRC.
 - **Broad application support** — the [glenv](https://github.com/angyedz/glenv) glibc environment alongside native musl.
-- **Flexible software management** — Alpine's `apk` and the Nix package manager.
-- **Modular setup** — install only the components you want.
-- **Open development** — transparent scripts and automated checks.
+- **Flexible packages** — `apk` and the Nix package manager.
+- **Modular setup** — add only the components you need.
+- **Open development** — transparent scripts and automated builds.
 
 ## Get started
 
-Veyra is in **early development**. The current source tree provides installation scripts and tooling; it is **not yet a verified ready-to-install operating system**.
+Veyra is in **early development**. Automated ISO builds are experimental and have not yet completed end-to-end installation testing.
 
-To try the integration in a disposable Alpine Linux x86_64 VM:
+Try the integration in an Alpine Linux x86_64 virtual machine:
 
 ```sh
 git clone https://github.com/angyedz/Veyra-Linux.git
@@ -25,16 +25,16 @@ sudo sh scripts/bootstrap.sh
 sh scripts/smoke.sh
 ```
 
-The setup modifies the running system and downloads third-party software. Review the scripts before running them.
+The setup modifies the running system and downloads third-party software. Review it before running.
 
-## Building
+## Build an image
 
-An experimental ISO build profile is being developed in `images/`. Build instructions will evolve as the image is validated.
+See [Building Veyra](docs/BUILDING.md) for the ISO workflow and development instructions. CI status and build artifacts are available in [GitHub Actions](https://github.com/angyedz/Veyra-Linux/actions).
 
 ## Contributing
 
-Bug reports, ideas and pull requests are welcome. Follow the progress in [GitHub Actions](https://github.com/angyedz/Veyra-Linux/actions).
+Bug reports, feature proposals and pull requests are welcome.
 
 ---
 
-*Veyra Linux is an independent community project. Alpine Linux, glenv and Nix retain their respective licenses and upstream identities.*
+*Veyra Linux is an independent community project; upstream projects retain their own trademarks and licenses.*
