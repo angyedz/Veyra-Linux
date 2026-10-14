@@ -1,0 +1,23 @@
+name: Veyra integration CI
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+jobs:
+  static:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Shell syntax and static checks
+        run: sh tests/static.sh
+  alpine-smoke:
+    runs-on: ubuntu-latest
+    container: alpine:3.22
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install test dependencies
+        run: apk add --no-cache shellcheck
+      - name: Shellcheck
+        run: shellcheck -s sh scripts/bootstrap.sh scripts/compat.sh scripts/smoke.sh tests/static.sh
+      - name: Validate scripts
+        run: sh tests/static.sh
