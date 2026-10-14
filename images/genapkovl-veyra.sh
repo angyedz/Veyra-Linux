@@ -2,7 +2,7 @@
 # Run from mkimage's DESTDIR; output <hostname>.apkovl.tar.gz in the CWD.
 set -eu
 host="${1:-veyra}"
-root=$(CDPATH= cd "$(dirname "$0")/.." && pwd)
+root=$(CDPATH='' cd "$(dirname "$0")/.." && pwd)
 
 mkdir -p etc/apk usr/local/bin usr/local/lib/veyra
 

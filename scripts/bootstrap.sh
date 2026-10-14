@@ -6,7 +6,7 @@ set -eu
 [ -f /etc/alpine-release ] || { echo 'Requires Alpine Linux' >&2; exit 1; }
 [ "$(uname -m)" = x86_64 ] || { echo 'Only x86_64 currently supported' >&2; exit 1; }
 
-scriptdir=$(CDPATH= cd "$(dirname "$0")" && pwd)
+scriptdir=$(CDPATH='' cd "$(dirname "$0")" && pwd)
 apk update
 apk add ca-certificates curl git bash xz tar shadow sudo openrc dbus dbus-openrc
 

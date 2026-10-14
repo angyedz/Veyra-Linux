@@ -1,6 +1,6 @@
 #!/bin/sh
 set -eu
-root=$(CDPATH= cd "$(dirname "$0")/.." && pwd)
+root=$(CDPATH='' cd "$(dirname "$0")/.." && pwd)
 cd "$root"
 
 for f in scripts/*.sh images/*.sh tests/*.sh scripts/*.initd; do

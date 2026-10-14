@@ -15,7 +15,7 @@ set -eu
     exit 1
 }
 
-root=$(CDPATH= cd "$(dirname "$0")/.." && pwd)
+root=$(CDPATH='' cd "$(dirname "$0")/.." && pwd)
 version="${VEYRA_ALPINE_VERSION:-3.22}"
 case "$version" in
     3.[0-9]* ) ;;
@@ -35,7 +35,7 @@ apk add --no-cache abuild alpine-conf git fakeroot syslinux xorriso \
 if [ ! -f "$HOME/.abuild/abuild.conf" ]; then
     abuild-keygen -a -n
 fi
-# shellcheck disable=SC1090
+# shellcheck disable=SC1090,SC1091
 . "$HOME/.abuild/abuild.conf"
 : "${PACKAGER_PRIVKEY:?abuild-keygen must configure PACKAGER_PRIVKEY}"
 export PACKAGER_PRIVKEY

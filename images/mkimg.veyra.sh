@@ -1,5 +1,5 @@
 # Veyra Linux mkimage profile. Sourced by Alpine aports/scripts/mkimage.sh.
-# shellcheck disable=SC2154
+# shellcheck disable=SC2154,SC2034
 profile_veyra() {
     profile_standard
     title="Veyra Linux"
