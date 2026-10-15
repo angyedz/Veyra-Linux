@@ -18,6 +18,8 @@ done
 rm -f "$target/etc/sddm.conf.d/10-veyra-live.conf"
 rm -f "$target/etc/sudoers.d/veyra-live"
 rm -f "$target/etc/runlevels/boot/veyra-live"
+rm -f "$target/etc/firefox/policies/policies.json"
+rm -f "$target/etc/polkit-1/rules.d/49-veyra-live.rules"
 # Disk installations must not depend on the live CD's squashfs modloop.
 rm -f "$target/etc/runlevels/sysinit/modloop" "$target/etc/runlevels/boot/modloop"
 rm -f "$target/usr/share/applications/veyra-install.desktop"

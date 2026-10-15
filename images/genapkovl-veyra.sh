@@ -5,6 +5,7 @@ host="${1:-veyra}"
 root=$(CDPATH='' cd "$(dirname "$0")/.." && pwd)
 
 mkdir -p etc/apk etc/sddm.conf.d etc/skel/Desktop etc/sudoers.d \
+    etc/conf.d etc/firefox/policies etc/polkit-1/rules.d \
     etc/nix \
     etc/init.d etc/runlevels/sysinit etc/runlevels/boot etc/runlevels/default \
     etc/calamares/modules etc/calamares/branding/veyra \
@@ -28,6 +29,23 @@ printf '%s\n' 'Veyra Linux development live image' > etc/veyra-release
 cat > etc/nix/nix.conf <<'NIX'
 extra-experimental-features = nix-command flakes
 NIX
+cat > etc/conf.d/zram-init <<'ZRAM'
+load_on_start=yes
+unload_on_stop=no
+num_devices=1
+type0=swap
+size0=2048
+ZRAM
+cat > etc/firefox/policies/policies.json <<'FIREFOX'
+{"policies":{"HardwareAcceleration":false}}
+FIREFOX
+cat > etc/polkit-1/rules.d/49-veyra-live.rules <<'POLKIT'
+polkit.addRule(function(action, subject) {
+    if (subject.user === "veyra") {
+        return polkit.Result.YES;
+    }
+});
+POLKIT
 
 # Alpine initramfs installs this package set from the ISO's offline repository
 # to tmpfs; no conventional root= disk is used.
@@ -46,6 +64,7 @@ cp "$root/scripts/compat.sh" usr/local/lib/veyra/compat.sh
 cp "$root/scripts/smoke.sh" usr/local/lib/veyra/smoke.sh
 cp "$root/images/veyra-live.initd" etc/init.d/veyra-live
 cp "$root/images/veyra-live-user.sh" usr/local/lib/veyra/live-user.sh
+cp "$root/images/veyra-plasma-watchdog.sh" usr/local/lib/veyra/plasma-watchdog.sh
 cp "$root/images/veyra-install.sh" usr/local/bin/veyra-install
 cp "$root/scripts/installer-copy.sh" usr/local/lib/veyra/installer-copy.sh
 cp "$root/scripts/installer-prepare.sh" usr/local/lib/veyra/installer-prepare.sh
@@ -57,6 +76,7 @@ cp "$root/calamares/settings.conf" etc/calamares/settings.conf
 cp "$root/calamares/modules/"*.conf etc/calamares/modules/
 cp "$root/calamares/branding/veyra/branding.desc" etc/calamares/branding/veyra/branding.desc
 chmod 755 etc/init.d/veyra-live usr/local/lib/veyra/live-user.sh \
+    usr/local/lib/veyra/plasma-watchdog.sh \
     usr/local/bin/veyra-install \
     usr/local/lib/veyra/installer-copy.sh usr/local/lib/veyra/installer-prepare.sh \
     usr/local/lib/veyra/installer-desktop.sh usr/local/lib/veyra/installer-hardware.sh \
@@ -78,11 +98,12 @@ Session=plasma.desktop
 Relogin=true
 SDDM
 
-# Root privileges only for the explicitly selected graphical installer.
-# Live environment account has no permanent password.
+# The live image is an ephemeral, reset-on-reboot environment. The live user
+# needs full passwordless administration for package tools and setup tasks.
+# installer-prepare.sh removes this rule before the disk system is finalized.
 cat > etc/sudoers.d/veyra-live <<'SUDO'
 Defaults:veyra env_keep += "DISPLAY WAYLAND_DISPLAY XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS QT_QPA_PLATFORM"
-veyra ALL=(root) NOPASSWD: /usr/bin/calamares
+veyra ALL=(ALL:ALL) NOPASSWD: ALL
 SUDO
 chmod 0440 etc/sudoers.d/veyra-live
 
@@ -104,6 +125,7 @@ for svc in udev udev-trigger udev-settle; do
     ln -s "/etc/init.d/$svc" "etc/runlevels/sysinit/$svc"
 done
 ln -s /etc/init.d/udev-postmount etc/runlevels/default/udev-postmount
+ln -s /etc/init.d/zram-init etc/runlevels/boot/zram-init
 
 # Live-specific services never get enabled on an installed target.
 ln -s /etc/init.d/veyra-live etc/runlevels/boot/veyra-live

@@ -11,7 +11,21 @@ for group in video audio input render wheel plugdev; do
         addgroup veyra "$group" 2>/dev/null || true
     fi
 done
-mkdir -p /home/veyra/Desktop /home/veyra/.config
+mkdir -p /home/veyra/Desktop /home/veyra/.config/autostart
+if [ ! -f /home/veyra/.config/kwinrc ]; then
+    cat > /home/veyra/.config/kwinrc <<'KWIN'
+[Compositing]
+Enabled=false
+KWIN
+fi
+cat > /home/veyra/.config/autostart/veyra-plasma-watchdog.desktop <<'AUTOSTART'
+[Desktop Entry]
+Type=Application
+Name=Veyra Plasma recovery
+Comment=Restart the desktop shell if it exits
+Exec=/usr/local/lib/veyra/plasma-watchdog.sh
+Terminal=false
+AUTOSTART
 chown -R veyra:veyra /home/veyra
 # SDDM autologin works through PAM without prompting for a password.
 echo 'Veyra live user prepared.'

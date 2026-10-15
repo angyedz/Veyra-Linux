@@ -20,4 +20,4 @@ The hardware detector inspects CPU vendor and PCI display-class devices, includi
 
 ## Verification
 
-CI validates chooser configuration, hardware selection against simulated PCI/CPU fixtures, and package availability. It also installs Plasma and the console-only profile on blank QEMU disks and verifies their first boot. GNOME, Xfce, and LXQt do not yet have full disk-install/reboot coverage; physical GPU driver loading and the Calamares GUI flow remain untested. Only test experimental disk installation on a blank disposable virtual disk.
+CI validates chooser configuration, hardware selection against simulated PCI/CPU fixtures, and package availability. Its QEMU matrix installs all five choices on blank BIOS disks and also tests Plasma and the console-only profile with UEFI, then checks first boot. These tests drive the installer scripts directly; physical GPU driver loading and the Calamares GUI flow remain untested. Only test experimental disk installation on a blank disposable virtual disk.

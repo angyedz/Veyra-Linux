@@ -2,6 +2,7 @@
 # Names must exist in Alpine's main/community repositories for the pinned release.
 plasma-desktop
 linux-lts
+zram-init
 veyra-calamares
 rsync
 util-linux

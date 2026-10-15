@@ -28,4 +28,4 @@ sh tests/static.sh
 sh scripts/test-iso.sh dist/veyra-linux-*.iso
 ```
 
-The ISO is still a **development build**. The glenv upstream installer is available through `veyra-setup` but is not baked into this live ISO. The ISO build requires a successfully compiled native Calamares package in `dist/calamares/`; Calamares is bundled from the local signed APK repository. Complete end-to-end installation on a blank QEMU disk remains unverified.
+The ISO is still a **development build**. The glenv upstream installer is available through `veyra-setup` but is not baked into this live ISO. The ISO build requires a successfully compiled native Calamares package in `dist/calamares/`; Calamares is bundled from the local signed APK repository. CI exercises script-driven installs and first boot on blank QEMU disks. It does not exercise Calamares' graphical workflow or physical hardware.

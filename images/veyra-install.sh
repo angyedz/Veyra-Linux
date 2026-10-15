@@ -1,11 +1,29 @@
 #!/bin/sh
 set -eu
-if ! command -v calamares >/dev/null 2>&1; then
-    echo 'Calamares is not available in this development image yet.' >&2
+show_error() {
     if command -v kdialog >/dev/null 2>&1; then
-        kdialog --error 'Calamares is not available in this development image yet.' \
-            --title 'Veyra Linux installer'
+        kdialog --title 'Veyra Linux installer' --error "$1"
+    else
+        printf '%s\n' "$1" >&2
     fi
+}
+
+if [ ! -x /usr/bin/calamares ]; then
+    show_error 'Calamares is missing from this live image.'
     exit 1
 fi
-exec sudo --preserve-env=DISPLAY,WAYLAND_DISPLAY,XDG_RUNTIME_DIR,DBUS_SESSION_BUS_ADDRESS,QT_QPA_PLATFORM /usr/bin/calamares
+
+log="${XDG_CACHE_HOME:-$HOME/.cache}/veyra-calamares.log"
+mkdir -p "$(dirname "$log")"
+if sudo -n --preserve-env=DISPLAY,WAYLAND_DISPLAY,XDG_RUNTIME_DIR,DBUS_SESSION_BUS_ADDRESS,QT_QPA_PLATFORM \
+    /usr/bin/calamares >"$log" 2>&1; then
+    exit 0
+fi
+
+show_error "The installer could not start (or exited with an error). Its log is at $log."
+if command -v kdialog >/dev/null 2>&1 && [ -s "$log" ]; then
+    kdialog --title 'Veyra Linux installer log' --textbox "$log" 760 500 || true
+else
+    cat "$log" >&2
+fi
+exit 1
