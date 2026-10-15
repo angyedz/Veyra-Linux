@@ -5,7 +5,7 @@ target="${1:?target root not given}"
 case "$target" in
     /|''|/tmp|/mnt|/run) echo 'Refusing dangerous target' >&2; exit 1 ;;
 esac
-if [ ! -d "$target" ] || [ ! -d "$target/etc" ]; then
+if [ ! -d "$target" ]; then
     echo "Calamares has not prepared a usable destination: $target" >&2
     exit 1
 fi
