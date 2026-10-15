@@ -23,4 +23,4 @@ Use `-display vnc=:1` in headless environments and connect a VNC viewer on the h
 
 ## Installing
 
-The graphical installer launcher is included but does not yet ship a functioning Calamares binary. Install-to-disk support is an in-progress feature; **do not use this development image to partition valuable disks**.
+The live image build pipeline compiles and bundles a native Qt6 Calamares package with Veyra's installation configuration. The **disk installation workflow is experimental and has not passed a complete installed-system reboot test yet**. Only test it using disposable blank virtual disks.
