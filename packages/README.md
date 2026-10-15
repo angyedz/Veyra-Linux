@@ -8,10 +8,9 @@ of packages stay in upstream Alpine repositories.
 Initial packages:
 
 - `vpkg` — Go CLI frontend for Alpine APK and user-scoped Nix.
-- `veyra-glenv` — APK containing a pinned glenv setup script. It does
-  **not** yet bundle a precompiled Debian/glibc runtime; setup downloads
-  components on explicit invocation. Bundling the full runtime reproducibly
-  remains future work.
+- `veyra-glenv` — APK containing the pinned glenv installer, the **precompiled glenv Go CLI**
+  and the Wayland filter shared library. It does **not** embed the full
+  Debian/glibc sysroot; setup downloads that on explicit invocation.
 
 Build on Alpine 3.22 with `alpine-sdk go git` and an abuild signing key:
 
