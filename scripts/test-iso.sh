@@ -16,7 +16,7 @@ command -v timeout >/dev/null || {
 
 set +e
 timeout "${VEYRA_BOOT_TIMEOUT:-120}" qemu-system-x86_64 \
-    -machine accel=tcg -m 4096 -smp 4 \
+    -machine accel=tcg -m 6144 -smp 2 \
     -vga virtio -display none -monitor none -serial stdio \
     -no-reboot -nic none -boot d -cdrom "$iso" > "$log" 2>&1
 code=$?
