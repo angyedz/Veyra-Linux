@@ -13,6 +13,7 @@ Use a disposable Alpine 3.22 x86_64 environment with network access, sufficient 
 ```sh
 git clone https://github.com/angyedz/Veyra-Linux.git
 cd Veyra-Linux
+sh scripts/build-calamares.sh
 sh scripts/build-iso.sh
 ```
 
@@ -27,4 +28,4 @@ sh tests/static.sh
 sh scripts/test-iso.sh dist/veyra-linux-*.iso
 ```
 
-The ISO is still a **development build**. The glenv upstream installer is available through `veyra-setup` but is not baked into this live ISO. The Calamares desktop launcher is a placeholder until a compatible Calamares build and validated installer configuration are bundled.
+The ISO is still a **development build**. The glenv upstream installer is available through `veyra-setup` but is not baked into this live ISO. The ISO build requires a successfully compiled native Calamares package in `dist/calamares/`; Calamares is bundled from the local signed APK repository. Complete end-to-end installation on a blank QEMU disk remains unverified.
