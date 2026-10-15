@@ -60,9 +60,6 @@ git
 nano
 sudo
 ca-certificates
-grub
-grub-efi
-grub-bios
 kpmcore
 efibootmgr
 parted

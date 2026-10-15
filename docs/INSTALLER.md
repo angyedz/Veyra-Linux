@@ -17,3 +17,5 @@ After copying the Alpine live root, Veyra configures that desktop and reads the 
 See [Desktop selection and hardware](DESKTOPS.md) for development details. Automated config, package resolution and detection checks do **not** replace an end-to-end installation to a blank VM.
 
 The installer re-extracts the on-disk kernel/modules from Alpine (the live ISO uses a separate modloop image) and regenerates the installed initramfs after firmware selection. This path is still awaiting a full installation-and-reboot check in QEMU.
+
+The ISO intentionally omits GRUB from the RAM-backed live package set: its configuration trigger needs a real disk root, and attempting it in diskless mode left a persistent APK transaction error. The installer installs signed Alpine GRUB packages only after mounting the destination root.

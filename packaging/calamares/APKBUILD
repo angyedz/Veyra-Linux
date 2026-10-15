@@ -8,7 +8,7 @@ url="https://github.com/calamares/calamares"
 arch="x86_64"
 license="GPL-3.0-or-later AND LGPL-2.1-only"
 options="!check"
-depends="python3 py3-yaml parted rsync grub efibootmgr util-linux"
+depends="python3 py3-yaml parted rsync efibootmgr util-linux"
 makedepends="
     build-base cmake ninja extra-cmake-modules
     qt6-qtbase-dev qt6-qtdeclarative-dev qt6-qtsvg-dev qt6-qttools-dev
