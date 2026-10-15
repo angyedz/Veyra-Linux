@@ -23,6 +23,12 @@ su veyra-builder -s /bin/sh -c '
     set -eu
     cd /home/veyra-builder/aports/veyra-calamares
     abuild-keygen -a -n
+'
+# abuild must trust the signing key while updating its APK repository index.
+cp /home/veyra-builder/.abuild/*.pub /etc/apk/keys/
+su veyra-builder -s /bin/sh -c '
+    set -eu
+    cd /home/veyra-builder/aports/veyra-calamares
     abuild checksum
     abuild -r
 '
