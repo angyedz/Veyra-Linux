@@ -8,7 +8,7 @@ root=$(CDPATH='' cd "$(dirname "$0")/.." && pwd)
 apk add --no-cache abuild build-base cmake ninja git \
     extra-cmake-modules qt6-qtbase-dev qt6-qtdeclarative-dev \
     qt6-qtsvg-dev qt6-qttools-dev yaml-cpp-dev kcoreaddons-dev \
-    kcrash-dev kpmcore-dev python3-dev py3-pybind11 \
+    kcrash-dev kpmcore-dev polkit-qt6-dev python3-dev py3-pybind11 \
     py3-yaml parted rsync grub efibootmgr util-linux
 
 if ! id -u veyra-builder >/dev/null 2>&1; then
