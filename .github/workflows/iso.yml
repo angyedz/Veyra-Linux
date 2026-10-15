@@ -141,11 +141,11 @@ jobs:
     name: Install on blank QEMU disk and boot it
     needs: boot
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 50
     strategy:
       fail-fast: false
       matrix:
-        desktop: [plasma, minimal]
+        desktop: [plasma, gnome, xfce, lxqt, minimal]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
