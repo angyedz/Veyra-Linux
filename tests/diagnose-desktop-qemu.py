@@ -31,7 +31,9 @@ with tempfile.TemporaryDirectory(prefix="veyra-desktop-diagnostics-") as tmp:
         try:
             helpers.login(child, 360)
             for cmd in (
-                "rc-service sddm status",
+                # Capture the failed service's logs below before asserting the
+                # desktop process set; a failed SDDM start must not hide the cause.
+                "rc-service sddm status || true",
                 "rc-service elogind status || true",
                 "rc-service zram-init status; grep -q '^/dev/zram' /proc/swaps",
                 "visudo -c -f /etc/sudoers.d/veyra-live",
