@@ -8,7 +8,7 @@ The built image includes KDE Plasma 6 with a Wayland session, SDDM, PipeWire, co
 
 The live root filesystem is a RAM-backed tmpfs. **The ISO is not fully ejectable while the system is running**: the kernel module loop image (modloop) and the offline APK repository remain on the original media. Full copy-to-RAM boot is a separate feature and is not implemented yet.
 
-KDE live images need substantially more memory than the earlier console image. Allow **at least 4 GiB RAM** for testing and preferably more on real hardware.
+KDE live images need substantially more memory than the earlier console image. Allow **at least 8 GiB RAM** for the current RAM-backed KDE installer, since the entire system is expanded into memory. Current CI boots it with 6 GiB and checks for space exhaustion.
 
 ## Virtual machine
 
