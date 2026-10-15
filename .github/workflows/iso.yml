@@ -1,4 +1,7 @@
 name: Veyra ISO
+concurrency:
+  group: veyra-iso-${{ github.ref }}
+  cancel-in-progress: true
 on:
   push:
     branches: [main]
@@ -20,6 +23,10 @@ jobs:
       image: alpine:3.22
     steps:
       - uses: actions/checkout@v4
+      - name: Preflight desktop dependencies
+        run: |
+          apk update
+          grep -vE '^[[:space:]]*(#|$)' images/packages-desktop.txt | xargs apk add --simulate
       - name: Build ISO with Alpine mkimage
         run: sh scripts/build-iso.sh
       - name: Check image structure
