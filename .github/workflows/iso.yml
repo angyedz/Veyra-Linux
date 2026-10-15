@@ -7,6 +7,10 @@ on:
     branches: [main]
     paths:
       - 'images/**'
+      - 'calamares/**'
+      - 'packaging/calamares/**'
+      - 'scripts/build-calamares.sh'
+      - 'scripts/installer-*.sh'
       - 'scripts/build-iso.sh'
       - 'scripts/test-iso.sh'
       - 'scripts/bootstrap.sh'
@@ -15,7 +19,23 @@ on:
       - '.github/workflows/iso.yml'
   workflow_dispatch:
 jobs:
+  calamares:
+    name: Compile Calamares Qt6 package
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    container: alpine:3.22
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build signed Alpine Calamares APK
+        run: sh scripts/build-calamares.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: veyra-calamares-package
+          path: dist/calamares/*
+          if-no-files-found: error
+          retention-days: 7
   build:
+    needs: calamares
     name: Build experimental ISO
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -23,10 +43,14 @@ jobs:
       image: alpine:3.22
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: veyra-calamares-package
+          path: dist/calamares
       - name: Preflight desktop dependencies
         run: |
           apk update
-          grep -vE '^[[:space:]]*(#|$)' images/packages-desktop.txt | xargs apk add --simulate
+          grep -vE '^[[:space:]]*(#|$)' images/packages-desktop.txt | grep -vx veyra-calamares | xargs apk add --simulate
       - name: Build ISO with Alpine mkimage
         run: sh scripts/build-iso.sh
       - name: Check image structure
