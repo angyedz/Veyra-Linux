@@ -5,7 +5,7 @@ host="${1:-veyra}"
 root=$(CDPATH='' cd "$(dirname "$0")/.." && pwd)
 
 mkdir -p etc/apk etc/sddm.conf.d etc/skel/Desktop etc/sudoers.d \
-    etc/init.d etc/runlevels/boot etc/runlevels/default \
+    etc/init.d etc/runlevels/sysinit etc/runlevels/boot etc/runlevels/default \
     etc/calamares/modules etc/calamares/branding/veyra \
     usr/local/bin usr/local/lib/veyra usr/share/applications
 printf '%s\n' veyra > etc/hostname
@@ -71,6 +71,12 @@ Categories=System;
 DESKTOP
 cp usr/share/applications/veyra-install.desktop etc/skel/Desktop/Install\ Veyra\ Linux.desktop
 chmod 755 etc/skel/Desktop/Install\ Veyra\ Linux.desktop
+
+# KDE/Wayland needs eudev for input devices, DRM and seat management.
+for svc in udev udev-trigger udev-settle; do
+    ln -s "/etc/init.d/$svc" "etc/runlevels/sysinit/$svc"
+done
+ln -s /etc/init.d/udev-postmount etc/runlevels/default/udev-postmount
 
 # Live-specific services never get enabled on an installed target.
 ln -s /etc/init.d/veyra-live etc/runlevels/boot/veyra-live
