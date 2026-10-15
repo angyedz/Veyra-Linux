@@ -45,10 +45,12 @@ mkdir -p "$target"
 mount /dev/vda2 "$target"
 mkdir -p "$target/boot/efi"
 mount /dev/vda1 "$target/boot/efi\""""
-        fstab_setup = r"""root_uuid=$(blkid -s UUID -o value /dev/vda2)
-efi_uuid=$(blkid -s UUID -o value /dev/vda1)
-printf 'UUID=%s / ext4 defaults 0 1\n' "$root_uuid" > "$target/etc/fstab"
-printf 'UUID=%s /boot/efi vfat defaults 0 2\n' "$efi_uuid" >> "$target/etc/fstab"""
+        fstab_setup = (
+            "root_uuid=$(blkid -s UUID -o value /dev/vda2)\n"
+            "efi_uuid=$(blkid -s UUID -o value /dev/vda1)\n"
+            "printf 'UUID=%s / ext4 defaults 0 1\\n' \"$root_uuid\" > \"$target/etc/fstab\"\n"
+            "printf 'UUID=%s /boot/efi vfat defaults 0 2\\n' \"$efi_uuid\" >> \"$target/etc/fstab\""
+        )
         grub_install = "chroot \"$target\" grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=Veyra --removable --no-nvram"
         efi_check = 'test -s "$target/boot/efi/EFI/BOOT/BOOTX64.EFI"'
     else:
@@ -61,8 +63,10 @@ test -b /dev/vda1
 mkfs.ext4 -F /dev/vda1
 mkdir -p "$target"
 mount /dev/vda1 "$target\""""
-        fstab_setup = r"""root_uuid=$(blkid -s UUID -o value /dev/vda1)
-printf 'UUID=%s / ext4 defaults 0 1\n' "$root_uuid" > "$target/etc/fstab"""
+        fstab_setup = (
+            "root_uuid=$(blkid -s UUID -o value /dev/vda1)\n"
+            "printf 'UUID=%s / ext4 defaults 0 1\\n' \"$root_uuid\" > \"$target/etc/fstab\""
+        )
         grub_install = 'chroot "$target" grub-install --target=i386-pc --recheck /dev/vda'
         efi_check = ":"
     return """#!/bin/sh
@@ -130,10 +134,10 @@ echo VEYRA_E2E_INSTALL_SUCCESS
 
 
 def boot(qemu, disk, iso, logfile, timeout, installed=False, firmware="bios",
-         ovmf_code=None, ovmf_vars=None):
+         ovmf_code=None, ovmf_vars=None, memory_mb=6144):
     machine = "q35,accel=tcg" if firmware == "uefi" else "accel=tcg"
     cmd = [
-        qemu, "-machine", machine, "-m", "6144", "-smp", "2",
+        qemu, "-machine", machine, "-m", str(memory_mb), "-smp", "2",
         "-vga", "virtio", "-display", "none",
         "-monitor", "none", "-serial", "stdio", "-no-reboot",
         "-nic", "user,model=virtio-net-pci",
@@ -273,6 +277,8 @@ def main():
                 # It verifies actual installations/downloads rather than mocked calls.
                 run_command(child, "sh /tmp/e2e-install.sh", timeout=1500)
                 run_command(child, "test -s /mnt/veyra-e2e/boot/grub/grub.cfg", 30)
+                run_command(child, "test ! -e /mnt/veyra-e2e/etc/sudoers.d/veyra-live", 30)
+                run_command(child, "test ! -e /mnt/veyra-e2e/etc/polkit-1/rules.d/49-veyra-live.rules", 30)
                 print("Installation completed: target grub.cfg, kernel and services verified", flush=True)
             finally:
                 child.close(force=True)
