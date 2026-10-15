@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -18,10 +19,13 @@ func TestParseDefaultsToAutomaticSourceSelection(t *testing.T) {
 func TestAutomaticInstallPrefersAPKRepositories(t *testing.T) {
 	oldSearch, oldRunner := packageSearchRunner, commandRunner
 	oldNixConfirm, oldAPKConfirm := nixInstallConfirmer, apkInstallConfirmer
+	oldHistoryPath := vpkgAPKHistoryPath
+	vpkgAPKHistoryPath = filepath.Join(t.TempDir(), "alpine-history.jsonl")
 	t.Cleanup(func() {
 		packageSearchRunner = oldSearch
 		commandRunner = oldRunner
 		nixInstallConfirmer, apkInstallConfirmer = oldNixConfirm, oldAPKConfirm
+		vpkgAPKHistoryPath = oldHistoryPath
 	})
 	var commands [][]string
 	packageSearchRunner = func(source, query string, exact bool) ([]packageMatch, error) {

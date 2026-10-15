@@ -115,12 +115,12 @@ func dispatch(action, source string, packages []string) error {
 			if e := need(); e != nil {
 				return e
 			}
-			return commandRunner("apk", append([]string{"add"}, packages...)...)
+			return runAPKTransaction("install", append([]string{"add"}, packages...)...)
 		case "remove":
 			if e := need(); e != nil {
 				return e
 			}
-			return commandRunner("apk", append([]string{"del"}, packages...)...)
+			return runAPKTransaction("remove", append([]string{"del"}, packages...)...)
 		case "search":
 			if e := need(); e != nil {
 				return e
@@ -134,12 +134,12 @@ func dispatch(action, source string, packages []string) error {
 		case "list":
 			return commandRunner("apk", "info")
 		case "update":
-			return commandRunner("apk", "update")
+			return runAPKTransaction("update", "update")
 		case "upgrade":
 			if dryRun {
 				return commandRunner("apk", "upgrade", "--simulate")
 			}
-			return commandRunner("apk", "upgrade")
+			return runAPKTransaction("upgrade", "upgrade")
 		case "history":
 			if len(packages) != 0 {
 				return fmt.Errorf("history does not accept package names")

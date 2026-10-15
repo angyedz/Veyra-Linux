@@ -74,8 +74,12 @@ Nix commands act on the current user's profile. Do not use sudo for Nix
 unless you intend to modify root's profile. Alpine release upgrades are
 not automatic. `vpkg` does not silently switch package backends. APK history
 shows the read-only `/var/log/apk.log`; Alpine APK does not retain reversible
-transaction snapshots, so `vpkg` cannot safely roll back APK operations. Nix,
-AppImage, and glenv history and rollback are available.
+transaction snapshots, so `vpkg` cannot safely roll back APK operations. APK
+history combines the native `/var/log/apk.log` when the installed APK version
+provides it with a durable journal of operations started through `vpkg`. The
+journal keeps package operands that are plain names and redacts other values.
+It does not include APK commands run outside `vpkg`. Nix, AppImage, and glenv
+history and rollback are available.
 
 Without `--from`, `vpkg search` checks enabled APK repositories (including
 Veyra) and Nix. `vpkg install` prefers an APK candidate, previews the resolved

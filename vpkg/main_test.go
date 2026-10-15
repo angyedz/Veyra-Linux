@@ -1,7 +1,10 @@
 package main
 
 import (
+	"encoding/json"
+	"errors"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -35,7 +38,9 @@ func TestDispatch(t *testing.T) {
 	var got [][]string
 	oldRunner := commandRunner
 	oldGlenvPath := glenvFetchDepsPath
+	oldVpkgAPKHistoryPath := vpkgAPKHistoryPath
 	glenvFetchDepsPath = "/test/fetch-deps.py"
+	vpkgAPKHistoryPath = filepath.Join(t.TempDir(), "alpine-history.jsonl")
 	commandRunner = func(name string, args ...string) error {
 		got = append(got, append([]string{name}, args...))
 		return nil
@@ -43,6 +48,7 @@ func TestDispatch(t *testing.T) {
 	t.Cleanup(func() {
 		commandRunner = oldRunner
 		glenvFetchDepsPath = oldGlenvPath
+		vpkgAPKHistoryPath = oldVpkgAPKHistoryPath
 	})
 	for _, tc := range []struct {
 		cmd, source string
@@ -109,6 +115,131 @@ func TestPrintAPKHistory(t *testing.T) {
 	for _, want := range []string{"read-only", "add vpkg", "upgrade nix"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("history output %q does not contain %q", got, want)
+		}
+	}
+}
+
+func TestRunAPKTransactionWritesManagedHistory(t *testing.T) {
+	oldRunner := commandRunner
+	oldPath := vpkgAPKHistoryPath
+	commandRunner = func(name string, args ...string) error {
+		if name != "apk" || !reflect.DeepEqual(args, []string{"upgrade"}) {
+			t.Fatalf("command = %s %#v", name, args)
+		}
+		return nil
+	}
+	vpkgAPKHistoryPath = filepath.Join(t.TempDir(), "history", "alpine.jsonl")
+	t.Cleanup(func() {
+		commandRunner = oldRunner
+		vpkgAPKHistoryPath = oldPath
+	})
+	if err := runAPKTransaction("upgrade", "upgrade"); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(vpkgAPKHistoryPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var events []apkTransactionEvent
+	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		var event apkTransactionEvent
+		if err := json.Unmarshal([]byte(line), &event); err != nil {
+			t.Fatal(err)
+		}
+		events = append(events, event)
+	}
+	if len(events) != 2 || events[0].ID == "" || events[0].ID != events[1].ID ||
+		events[0].Phase != "started" || events[1].Phase != "succeeded" ||
+		events[0].Action != "upgrade" || events[1].Action != "upgrade" {
+		t.Fatalf("transaction events = %#v", events)
+	}
+}
+
+func TestRunAPKTransactionRedactsUnsafePackageOperands(t *testing.T) {
+	oldRunner := commandRunner
+	oldPath := vpkgAPKHistoryPath
+	commandRunner = func(string, ...string) error { return nil }
+	vpkgAPKHistoryPath = filepath.Join(t.TempDir(), "history.jsonl")
+	t.Cleanup(func() {
+		commandRunner = oldRunner
+		vpkgAPKHistoryPath = oldPath
+	})
+	if err := runAPKTransaction("install", "add", "firefox", "https://user:secret@example.invalid/pkg.apk"); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(vpkgAPKHistoryPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "secret") || !strings.Contains(string(data), "[redacted]") {
+		t.Fatalf("history did not safely redact package operand: %s", data)
+	}
+}
+
+func TestRunAPKTransactionDoesNotProceedWithoutHistoryStorage(t *testing.T) {
+	oldRunner := commandRunner
+	oldPath := vpkgAPKHistoryPath
+	blocker := filepath.Join(t.TempDir(), "not-a-directory")
+	if err := os.WriteFile(blocker, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	vpkgAPKHistoryPath = filepath.Join(blocker, "history.jsonl")
+	called := false
+	commandRunner = func(string, ...string) error {
+		called = true
+		return nil
+	}
+	t.Cleanup(func() {
+		commandRunner = oldRunner
+		vpkgAPKHistoryPath = oldPath
+	})
+	if err := runAPKTransaction("upgrade", "upgrade"); err == nil {
+		t.Fatal("ran APK operation without durable history storage")
+	}
+	if called {
+		t.Fatal("ran APK operation after history storage failed")
+	}
+}
+
+func TestRunAPKTransactionRecordsCommandFailure(t *testing.T) {
+	oldRunner := commandRunner
+	oldPath := vpkgAPKHistoryPath
+	vpkgAPKHistoryPath = filepath.Join(t.TempDir(), "history.jsonl")
+	wantErr := errors.New("upgrade failed")
+	commandRunner = func(string, ...string) error { return wantErr }
+	t.Cleanup(func() {
+		commandRunner = oldRunner
+		vpkgAPKHistoryPath = oldPath
+	})
+	if err := runAPKTransaction("upgrade", "upgrade"); !errors.Is(err, wantErr) {
+		t.Fatalf("upgrade error = %v, want original command error", err)
+	}
+	data, err := os.ReadFile(vpkgAPKHistoryPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(string(data), `"phase":"failed"`) != 1 {
+		t.Fatalf("failed operation not recorded: %s", data)
+	}
+}
+
+func TestPrintVpkgAPKHistory(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "alpine.jsonl")
+	for _, event := range []apkTransactionEvent{
+		{ID: "tx-1", At: "2026-10-15T12:00:00Z", Phase: "started", Action: "upgrade"},
+		{ID: "tx-1", At: "2026-10-15T12:01:00Z", Phase: "succeeded", Action: "upgrade"},
+	} {
+		if err := appendAPKHistoryEvent(path, event); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var output strings.Builder
+	if err := printVpkgAPKHistory(path, &output); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"vpkg-managed APK operations", "started", "succeeded", "upgrade"} {
+		if !strings.Contains(output.String(), want) {
+			t.Errorf("history output %q does not contain %q", output.String(), want)
 		}
 	}
 }
