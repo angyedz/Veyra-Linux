@@ -19,7 +19,7 @@ func TestDispatch(t *testing.T) {
  dir:=t.TempDir()
  log:=filepath.Join(dir,"commands")
  for _,name:=range []string{"apk","nix"} {
-  script:="#!/bin/sh\nprintf '%s\\n' '"+name+" '$*' >> \"$VPKG_TEST_LOG\"\n"
+  script:="#!/bin/sh\nprintf '%s\\n' \""+name+" $*\" >> \"$VPKG_TEST_LOG\"\n"
   if e:=os.WriteFile(filepath.Join(dir,name),[]byte(script),0755);e!=nil {t.Fatal(e)}
  }
  t.Setenv("PATH",dir+":"+os.Getenv("PATH"))
