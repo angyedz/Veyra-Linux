@@ -1,6 +1,6 @@
 # Simple graphical installation
 
-Veyra uses Calamares. Choose your language and keyboard, select a desktop environment (default: Plasma), choose a disk and create your user account. Installation downloads packages for the chosen desktop and automatically prepares graphics drivers and CPU microcode from Alpine's pinned repositories.
+Veyra uses Calamares. Choose your language and keyboard, select Plasma (default), GNOME, Xfce, LXQt, or a console-only system, choose a disk, and create your user account. Installation downloads packages for the chosen desktop and automatically prepares graphics drivers and CPU microcode from Alpine's pinned repositories.
 
 ## Available desktops
 
@@ -10,6 +10,7 @@ Veyra uses Calamares. Choose your language and keyboard, select a desktop enviro
 | GNOME | Wayland | GDM |
 | Xfce | X11 | LightDM |
 | LXQt | X11 | SDDM |
+| Minimal (console only) | Text console | None |
 
 Calamares' `packagechooser` uses one required choice stored in `packagechooser_desktop`. The install phase passes that value to an allowlisted desktop installer script. The graphical live session remains Plasma, regardless of the desktop installed on disk.
 
@@ -19,4 +20,4 @@ The hardware detector inspects CPU vendor and PCI display-class devices, includi
 
 ## Verification
 
-The build pipeline validates the chooser config and hardware selection against simulated PCI/CPU fixtures. Full hardware driver loading and disk-install/reboot testing are separate work and must be completed before Veyra is offered as a stable installer. Only test experimental disk installation on a blank disposable virtual disk.
+CI validates chooser configuration, hardware selection against simulated PCI/CPU fixtures, and package availability. It also installs Plasma and the console-only profile on blank QEMU disks and verifies their first boot. GNOME, Xfce, and LXQt do not yet have full disk-install/reboot coverage; physical GPU driver loading and the Calamares GUI flow remain untested. Only test experimental disk installation on a blank disposable virtual disk.

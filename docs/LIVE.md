@@ -19,8 +19,8 @@ qemu-system-x86_64 -m 4096 -smp 4 -vga virtio -display gtk \
   -cdrom dist/veyra-linux-*.iso -boot d
 ```
 
-Use `-display vnc=:1` in headless environments and connect a VNC viewer on the host. The existing CI checks reachability of a serial login prompt, and further graphical checks are in progress.
+Use `-display vnc=:1` in headless environments and connect a VNC viewer on the host. CI boots the live ISO to a serial login prompt, then installs Plasma and the console-only profile on separate blank QEMU disks and verifies that both installed systems boot. The automated install drives the same distribution scripts Calamares calls; it does not click through the Calamares GUI.
 
 ## Installing
 
-The live image build pipeline compiles and bundles a native Qt6 Calamares package with Veyra's installation configuration. The **disk installation workflow is experimental and has not passed a complete installed-system reboot test yet**. Only test it using disposable blank virtual disks.
+The live image build pipeline compiles and bundles a native Qt6 Calamares package with Veyra's installation configuration. Plasma and console-only disk installations have passed the automated QEMU install and reboot tests. The installer remains experimental: the Calamares GUI flow and physical hardware are not covered by those tests. Only test it using disposable blank virtual disks.
