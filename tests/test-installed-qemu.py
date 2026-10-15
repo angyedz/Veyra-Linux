@@ -67,6 +67,10 @@ chroot "$target" apk info -e veyra-glenv
 echo 'root:veyra-test' | chroot "$target" chpasswd
 chroot "$target" adduser -D -s /bin/ash e2euser
 echo 'e2euser:veyra-test' | chroot "$target" chpasswd
+# Mirror Calamares' services-openrc step for this script-driven install.
+for service in dbus elogind networkmanager nix-daemon; do
+    chroot "$target" rc-update add "$service" default
+done
 uuid=$(blkid -s UUID -o value /dev/vda1)
 printf 'UUID=%s / ext4 defaults 0 1\\n' "$uuid" > "$target/etc/fstab"
 # Keep the installed guest observable over serial; this affects only the
@@ -83,6 +87,9 @@ grep -q 'ext4 virtio nvme' "$target/etc/mkinitfs/mkinitfs.conf"
 test "$(cat "$target/etc/veyra/desktop")" = DESKTOP
 # Check the selected display manager, or verify a console-only setup.
 SERVICE_CHECK
+for service in dbus elogind networkmanager nix-daemon; do
+    test -e "$target/etc/runlevels/default/$service"
+done
 sync
 echo VEYRA_E2E_INSTALL_SUCCESS
 """.replace("DESKTOP", desktop).replace("SERVICE_CHECK", service_check).replace(
@@ -112,17 +119,17 @@ def boot(qemu, disk, iso, logfile, timeout, installed=False):
 def login(child, timeout):
     # Wait for a REAL getty, never mistake the APK download progress bar
     # (which prints lots of '#') for an interactive root shell.
-    prompt = r"(?:^|[\r\n])(?:[A-Za-z0-9_.-]+ )?login: *"
+    prompt = r"(?:^|[\r\n])(?:[A-Za-z0-9_.()-]+ )?login: *"
     child.expect(prompt, timeout=timeout)
     child.sendline("root")
     index = child.expect(
-        [r"Password:", r"(?:^|[\r\n])[A-Za-z0-9_.-]+:[^\r\n]{0,50}# ?", r"Login incorrect",
+        [r"Password:", r"(?:^|[\r\n])[A-Za-z0-9_.()-]+:[^\r\n]{0,50}# ?", r"Login incorrect",
          pexpect.EOF, pexpect.TIMEOUT],
         timeout=45,
     )
     if index == 0:
         child.sendline("veyra-test")
-        child.expect(r"(?:^|[\r\n])[A-Za-z0-9_.-]+:[^\r\n]{0,50}# ?", timeout=45)
+        child.expect(r"(?:^|[\r\n])[A-Za-z0-9_.()-]+:[^\r\n]{0,50}# ?", timeout=45)
     elif index != 1:
         raise RuntimeError("Guest root login failed")
 

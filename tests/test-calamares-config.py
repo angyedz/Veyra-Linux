@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Validate Veyra's Calamares integration before risking a real disk."""
 import ast
+import re
 from pathlib import Path
 import yaml
 
@@ -48,6 +49,17 @@ desktop_choices = next(
     if keyword.arg == "choices"
 )
 assert desktop_choices == [item["id"] for item in chooser["items"]]
+
+with (root / "calamares/modules/services-openrc.conf").open(encoding="utf-8") as stream:
+    openrc = yaml.safe_load(stream)
+service_entries = {entry["name"]: entry for entry in openrc["services"]}
+for name in ("dbus", "elogind", "networkmanager"):
+    assert service_entries[name]["mandatory"] is True
+assert "nix-daemon" in service_entries
+service_loop = re.search(r"for service in ([a-z0-9 -]+); do", qemu_source)
+assert service_loop is not None
+assert set(service_loop.group(1).split()) == set(service_entries)
+assert r"[A-Za-z0-9_.()-]+ )?login:" in qemu_source
 
 seq = settings["sequence"]
 assert any("show" in step for step in seq)
