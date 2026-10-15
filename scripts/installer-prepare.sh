@@ -21,6 +21,7 @@ done
 
 # Avoid live-user autologin and boot initialization on the installed system.
 rm -f "$target/etc/sddm.conf.d/10-veyra-live.conf"
+rm -f "$target/etc/sudoers.d/veyra-live"
 rm -f "$target/etc/runlevels/boot/veyra-live"
 rm -f "$target/usr/share/applications/veyra-install.desktop"
 rm -f "$target/etc/skel/Desktop/Install Veyra Linux.desktop"

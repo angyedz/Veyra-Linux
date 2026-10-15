@@ -23,5 +23,17 @@ jobs:
         run: sh tests/static.sh
       - name: Validate Calamares settings and modules
         run: python3 tests/test-calamares-config.py
+      - name: CPU and graphics detection fixtures
+        run: sh tests/test-hardware.sh
+      - name: Validate alternative desktops in Alpine repositories
+        run: |
+          apk add --simulate gnome gdm gdm-openrc
+          apk add --simulate xfce4 xfce4-terminal lightdm lightdm-openrc lightdm-gtk-greeter
+          apk add --simulate lxqt-desktop qterminal openbox sddm sddm-openrc
+      - name: Validate GPU and CPU packages in Alpine repositories
+        run: |
+          apk add --simulate intel-ucode linux-firmware-i915 linux-firmware-xe mesa-vulkan-intel intel-media-driver
+          apk add --simulate amd-ucode linux-firmware-amdgpu linux-firmware-radeon mesa-vulkan-ati
+          apk add --simulate linux-firmware-nvidia mesa-vulkan-nouveau
       - name: Verify native Nix package availability
         run: apk add --no-cache nix nix-openrc && nix --version
