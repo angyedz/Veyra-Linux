@@ -39,16 +39,16 @@ with tempfile.TemporaryDirectory(prefix="veyra-desktop-diagnostics-") as tmp:
                 "visudo -c -f /etc/sudoers.d/veyra-live",
                 "test -s /etc/polkit-1/rules.d/49-veyra-live.rules",
                 "id sddm; ls -ld /run/user/* /dev/dri/* || true",
-                "ps -ef | grep -E 'sddm|Xorg|kwin|plasmashell' || true",
+                "ps -ef | grep -E 'sddm|Xorg|kwin|plasmashell|startplasma' || true",
                 "ls -l /usr/share/wayland-sessions /usr/share/xsessions || true",
                 "cat /etc/sddm.conf.d/10-veyra-live.conf",
                 "tail -n 100 /var/log/sddm.log /var/log/Xorg.0.log 2>&1 || true",
                 "find /var/log -maxdepth 3 -iname '*sddm*' -o -iname '*xorg*' || true",
                 "ls -l /etc/conf.d/sddm /etc/init.d/sddm",
-                "su -s /bin/ash veyra -c 'sudo -n /usr/bin/true'",
+                "su -s /bin/ash veyra -c 'sudo -n /bin/true'",
                 "QT_QPA_PLATFORM=offscreen /usr/bin/calamares --help >/dev/null",
                 "firefox --version",
-                "found=0; for i in $(seq 1 30); do if ps | grep -q '[X]org' && ps | grep -q '[k]win_x11' && ps | grep -q '[p]lasmashell'; then found=1; break; fi; sleep 2; done; if test \"$found\" = 1; then echo 'Live Plasma session is running'; else echo 'Live Plasma session did not start'; dmesg | grep -Ei 'out of memory|oom-kill|killed process' || true; false; fi",
+                "found=0; for i in $(seq 1 30); do if ps -ef | grep -q '[k]win_wayland' && ps -ef | grep -q '[p]lasmashell'; then found=1; break; fi; sleep 2; done; if test \"$found\" = 1; then echo 'Live Plasma Wayland session is running'; else echo 'Live Plasma Wayland session did not start'; ps -ef | grep -E 'sddm|kwin|plasmashell|startplasma' || true; find /home/veyra/.local/share /var/lib/sddm/.local/share -type f -maxdepth 5 2>/dev/null | head -n 40; dmesg | grep -Ei 'out of memory|oom-kill|killed process' || true; false; fi",
             ):
                 print("Inspect:", cmd, flush=True)
                 helpers.run_command(child, cmd, timeout=70)
