@@ -75,7 +75,7 @@ echo VEYRA_E2E_INSTALL_SUCCESS
 
 def boot(qemu, disk, iso, logfile, timeout, installed=False):
     cmd = [
-        qemu, "-machine", "accel=tcg", "-m", "4096", "-smp", "2",
+        qemu, "-machine", "accel=tcg", "-m", "6144", "-smp", "2",
         "-vga", "virtio", "-display", "none",
         "-monitor", "none", "-serial", "stdio", "-no-reboot",
         "-nic", "user,model=virtio-net-pci",
