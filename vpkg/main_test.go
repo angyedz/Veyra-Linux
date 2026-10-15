@@ -23,16 +23,25 @@ func TestParse(t *testing.T) {
 	if e != nil || s != "appimage" || !reflect.DeepEqual(p, []string{"Demo.AppImage"}) {
 		t.Fatalf("parse AppImage: %s %v %v", s, p, e)
 	}
+	s, p, e = parse([]string{"./demo.deb", "--from", "glenv"})
+	if e != nil || s != "glenv" || !reflect.DeepEqual(p, []string{"./demo.deb"}) {
+		t.Fatalf("parse glenv: %s %v %v", s, p, e)
+	}
 }
 
 func TestDispatch(t *testing.T) {
 	var got [][]string
 	oldRunner := commandRunner
+	oldGlenvPath := glenvFetchDepsPath
+	glenvFetchDepsPath = "/test/fetch-deps.py"
 	commandRunner = func(name string, args ...string) error {
 		got = append(got, append([]string{name}, args...))
 		return nil
 	}
-	t.Cleanup(func() { commandRunner = oldRunner })
+	t.Cleanup(func() {
+		commandRunner = oldRunner
+		glenvFetchDepsPath = oldGlenvPath
+	})
 	for _, tc := range []struct {
 		cmd, source string
 		args        []string
@@ -47,6 +56,12 @@ func TestDispatch(t *testing.T) {
 		{"history", "nix", nil},
 		{"rollback", "nix", nil},
 		{"rollback", "nix", []string{"12"}},
+		{"install", "glenv", []string{"firefox"}},
+		{"install", "glenv", []string{"./pkg.deb"}},
+		{"update", "glenv", nil},
+		{"upgrade", "glenv", nil},
+		{"history", "glenv", nil},
+		{"rollback", "glenv", []string{"txid"}},
 	} {
 		if e := dispatch(tc.cmd, tc.source, tc.args); e != nil {
 			t.Fatal(e)
@@ -63,9 +78,24 @@ func TestDispatch(t *testing.T) {
 		{"nix", "--extra-experimental-features", "nix-command flakes", "profile", "history"},
 		{"nix", "--extra-experimental-features", "nix-command flakes", "profile", "rollback"},
 		{"nix", "--extra-experimental-features", "nix-command flakes", "profile", "rollback", "--to", "12"},
+		{"python3", "/test/fetch-deps.py", "--update", "firefox"},
+		{"python3", "/test/fetch-deps.py", "--deb-file", "./pkg.deb"},
+		{"python3", "/test/fetch-deps.py", "--update-index"},
+		{"python3", "/test/fetch-deps.py", "upgrade"},
+		{"python3", "/test/fetch-deps.py", "history"},
+		{"python3", "/test/fetch-deps.py", "rollback", "txid"},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("commands = %#v, want %#v", got, want)
+	}
+}
+
+func TestGlenvRejectsUnsupportedArguments(t *testing.T) {
+	if err := dispatch("install", "glenv", []string{"pkg.deb", "other.deb"}); err == nil {
+		t.Fatal("accepted multiple local .deb files")
+	}
+	if err := dispatch("upgrade", "glenv", []string{"--dry-run"}); err == nil {
+		t.Fatal("accepted dry-run for glenv upgrade")
 	}
 }
 

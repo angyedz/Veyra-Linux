@@ -23,6 +23,8 @@ Usage:
   vpkg update
   vpkg upgrade              [--from alpine|nix] [--check|--dry-run]
   vpkg install <file.AppImage> --from appimage
+  vpkg install <package|file.deb>... --from glenv
+  vpkg update|upgrade|history|rollback --from glenv
   vpkg inspect <binary>
   vpkg history --from appimage
   vpkg rollback --from appimage
@@ -42,7 +44,7 @@ func parse(args []string) (string, []string, error) {
 		switch {
 		case args[i] == "--from":
 			if i+1 >= len(args) {
-				return "", nil, fmt.Errorf("--from requires alpine or nix")
+				return "", nil, fmt.Errorf("--from requires alpine, nix, glenv, or appimage")
 			}
 			source = args[i+1]
 			i++
@@ -56,8 +58,8 @@ func parse(args []string) (string, []string, error) {
 			rest = append(rest, args[i])
 		}
 	}
-	if source != "alpine" && source != "nix" && source != "appimage" {
-		return "", nil, fmt.Errorf("unsupported source %q (supported: alpine, nix, appimage)", source)
+	if source != "alpine" && source != "nix" && source != "appimage" && source != "glenv" {
+		return "", nil, fmt.Errorf("unsupported source %q (supported: alpine, nix, glenv, appimage)", source)
 	}
 	return source, rest, nil
 }
@@ -161,6 +163,8 @@ func dispatch(action, source string, packages []string) error {
 			return rollbackLatestAppImage(home)
 		}
 		return fmt.Errorf("AppImage source supports install, history, and rollback")
+	} else if source == "glenv" {
+		return dispatchGlenv(action, packages, dryRun)
 	} else {
 		switch action {
 		case "install":

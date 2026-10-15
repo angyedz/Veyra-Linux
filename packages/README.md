@@ -8,9 +8,10 @@ of packages stay in upstream Alpine repositories.
 Initial packages:
 
 - `vpkg` — Go CLI frontend for Alpine APK and user-scoped Nix.
-- `veyra-glenv` — APK containing the pinned glenv installer, the **precompiled glenv Go CLI**
-  and the Wayland filter shared library. It does **not** embed the full
-  Debian/glibc sysroot; setup downloads that on explicit invocation.
+- `veyra-glenv` — APK containing the pinned glenv installer, the **precompiled glenv Go CLI**,
+  authenticated Debian package helper, and Wayland filter shared library. It
+  does **not** embed the full Debian/glibc sysroot; setup downloads that on
+  explicit invocation.
 
 Build on Alpine 3.22 with `alpine-sdk go git` and an abuild signing key:
 
@@ -55,13 +56,26 @@ vpkg install ./MyApp.AppImage --from appimage
 vpkg history --from appimage
 vpkg rollback --from appimage
 vpkg inspect ./application
+sudo vpkg install ./package.deb --from glenv
+sudo vpkg install package-name --from glenv
+sudo vpkg update --from glenv
+sudo vpkg upgrade --from glenv
+sudo vpkg history --from glenv
+sudo vpkg rollback --from glenv
 ```
 
 Nix commands act on the current user's profile. Do not use sudo for Nix
 unless you intend to modify root's profile. Alpine release upgrades are
-not automatic. `vpkg` does not silently switch package backends. History and
-rollback currently use Nix profile generations; APK history and rollback are
+not automatic. `vpkg` does not silently switch package backends. Nix, AppImage,
+and glenv history and rollback are available; APK history and rollback are
 not implemented yet.
+
+The glenv source installs packages into the glenv sysroot, not Alpine's host
+filesystem. A local `.deb` is accepted only when its package name, version,
+architecture, and SHA256 exactly match the current authenticated Debian index.
+The index is verified with `gpgv` and the installed Debian archive keyring.
+When glenv uses its default system prefix (`/opt/glibc-env`), run these
+commands with `sudo`; a user-owned `GLENV_PREFIX` can be used without root.
 
 AppImage installation checks that the file is a regular ELF for the current
 CPU, copies it to the user's `~/.local/opt/veyra-appimages/` directory, and
