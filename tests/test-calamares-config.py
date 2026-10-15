@@ -49,6 +49,28 @@ desktop_choices = next(
     if keyword.arg == "choices"
 )
 assert desktop_choices == [item["id"] for item in chooser["items"]]
+workflow = yaml.safe_load((root / ".github/workflows/iso.yml").read_text(encoding="utf-8"))
+install_matrix = workflow["jobs"]["install-e2e"]["strategy"]["matrix"]
+assert install_matrix["desktop"] == desktop_choices
+assert install_matrix["firmware"] == ["bios"]
+assert {(item["desktop"], item["firmware"]) for item in install_matrix["include"]} == {
+    ("plasma", "uefi"), ("minimal", "uefi")
+}
+firmware_argument = next(
+    node for node in ast.walk(qemu_tree)
+    if isinstance(node, ast.Call)
+    and isinstance(node.func, ast.Attribute)
+    and node.func.attr == "add_argument"
+    and node.args
+    and isinstance(node.args[0], ast.Constant)
+    and node.args[0].value == "--firmware"
+)
+firmware_choices = next(
+    ast.literal_eval(keyword.value)
+    for keyword in firmware_argument.keywords
+    if keyword.arg == "choices"
+)
+assert firmware_choices == ["bios", "uefi"]
 
 with (root / "calamares/modules/services-openrc.conf").open(encoding="utf-8") as stream:
     openrc = yaml.safe_load(stream)
