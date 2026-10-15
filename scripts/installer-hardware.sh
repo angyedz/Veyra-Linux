@@ -44,11 +44,13 @@ esac
 # filesystem as well as common disk controllers (NVMe and VirtIO).
 initfs_config="$target/etc/mkinitfs/mkinitfs.conf"
 mkdir -p "$target/etc/mkinitfs"
+# shellcheck disable=SC2016 # Placeholders expand when mkinitfs sources this configuration.
 printf '\n# Required by Veyra for disk-based boot.\nfeatures="${features:-ata base scsi usb} %s virtio nvme"\n' "$root_fs" >> "$initfs_config"
 
 # Alpine's initramfs loader only loads the root filesystem module early
 # when rootfstype= is passed. Keep any prior GRUB kernel options intact.
 mkdir -p "$target/etc/default"
+# shellcheck disable=SC2016 # This substitution is evaluated by grub-mkconfig later.
 printf '\n# Veyra: allow Alpine initramfs to mount the installed root.\nGRUB_CMDLINE_LINUX="${GRUB_CMDLINE_LINUX:+${GRUB_CMDLINE_LINUX} }rootfstype=%s"\n' "$root_fs" >> "$target/etc/default/grub"
 echo "Configured disk boot filesystem: $root_fs"
 
