@@ -5,10 +5,10 @@ target="${1:?target root not given}"
 case "$target" in
     /|''|/tmp|/mnt|/run) echo 'Refusing dangerous target' >&2; exit 1 ;;
 esac
-[ -d "$target" ] && [ -d "$target/etc" ] || {
+if [ ! -d "$target" ] || [ ! -d "$target/etc" ]; then
     echo "Calamares has not prepared a usable destination: $target" >&2
     exit 1
-}
+fi
 mountpoint -q "$target" || {
     echo "Target root is not mounted: $target" >&2
     exit 1
