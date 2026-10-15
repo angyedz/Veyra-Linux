@@ -32,12 +32,14 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install build tools
         run: apk add --no-cache alpine-sdk go git
-      - name: Prepare temporary build signing key
+      - name: Prepare unprivileged Alpine builder and temporary key
         run: |
-          mkdir -p /root/.abuild
-          abuild-keygen -a -i -n
+          adduser -D builder
+          addgroup builder abuild
+          chown -R builder:builder "$GITHUB_WORKSPACE"
+          su builder -c 'abuild-keygen -a -n'
       - name: Compile Veyra APKs
-        run: sh packages/build.sh
+        run: su builder -c "cd '$GITHUB_WORKSPACE' && sh packages/build.sh"
       - uses: actions/upload-artifact@v4
         with:
           name: veyra-native-apks
