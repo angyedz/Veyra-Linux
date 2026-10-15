@@ -149,7 +149,23 @@ def main():
             try:
                 login(child, 360)
                 payload = base64.b64encode(install_script(args.desktop).encode()).decode()
-                run_command(child, "printf '%s' '" + payload + "' | base64 -d > /tmp/e2e-install.sh", 30)
+                # Linux tty canonical input is limited to 4095 bytes per line.
+                # A one-line base64 payload silently truncates and leaves ash
+                # at its '>' continuation prompt. Send short, validated chunks.
+                run_command(child, ": > /tmp/veyra-e2e.b64", 30)
+                for pos in range(0, len(payload), 512):
+                    chunk = payload[pos:pos + 512]
+                    run_command(
+                        child,
+                        "printf '%s' '" + chunk + "' >> /tmp/veyra-e2e.b64",
+                        45,
+                    )
+                run_command(
+                    child,
+                    "base64 -d /tmp/veyra-e2e.b64 > /tmp/e2e-install.sh && "
+                    "sh -n /tmp/e2e-install.sh",
+                    45,
+                )
                 # A shell in QEMU runs everything on ONLY the blank /dev/vda disk.
                 # It verifies actual installations/downloads rather than mocked calls.
                 run_command(child, "sh /tmp/e2e-install.sh", timeout=1500)
