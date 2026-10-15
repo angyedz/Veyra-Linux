@@ -12,7 +12,7 @@ depends="python3 py3-yaml parted rsync grub efibootmgr util-linux"
 makedepends="
     build-base cmake ninja extra-cmake-modules
     qt6-qtbase-dev qt6-qtdeclarative-dev qt6-qtsvg-dev qt6-qttools-dev
-    yaml-cpp-dev kcoreaddons-dev kcrash-dev
+    yaml-cpp-dev kcoreaddons-dev kcrash-dev kconfig-dev ki18n-dev kwidgetsaddons-dev kservice-dev kpackage-dev kparts-dev
     kpmcore-dev polkit-qt-dev python3-dev py3-pybind11
     "
 _commit="95aa33fd2f0ea6f081fe604fb84eb829fc806d86"
