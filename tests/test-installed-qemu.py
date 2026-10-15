@@ -19,8 +19,13 @@ import pexpect
 
 
 def install_script(desktop):
-    if desktop not in {"plasma", "gnome", "xfce", "lxqt"}:
+    if desktop not in {"plasma", "gnome", "xfce", "lxqt", "minimal"}:
         raise ValueError("Invalid desktop")
+    service_check = (
+        'test ! -e "$target/etc/runlevels/default/sddm"'
+        if desktop == "minimal" else
+        'test -e "$target/etc/runlevels/default/SERVICE"'
+    )
     return """#!/bin/sh
 set -eux
 target=/mnt/veyra-e2e
@@ -74,11 +79,11 @@ test -s "$target/boot/initramfs-lts"
 grep -q 'rootfstype=ext4' "$target/etc/default/grub"
 grep -q 'ext4 virtio nvme' "$target/etc/mkinitfs/mkinitfs.conf"
 test "$(cat "$target/etc/veyra/desktop")" = DESKTOP
-# Check installed service is enabled for the chosen desktop.
-test -e "$target/etc/runlevels/default/SERVICE"
+# Check the selected display manager, or verify a console-only setup.
+SERVICE_CHECK
 sync
 echo VEYRA_E2E_INSTALL_SUCCESS
-""".replace("DESKTOP", desktop).replace(
+""".replace("DESKTOP", desktop).replace("SERVICE_CHECK", service_check).replace(
         "SERVICE", "lightdm" if desktop == "xfce"
         else "gdm" if desktop == "gnome" else "sddm"
     )

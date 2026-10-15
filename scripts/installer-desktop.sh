@@ -1,6 +1,6 @@
 #!/bin/sh
-# Install the selected desktop, with exactly one login manager enabled.
-# The desktop ID comes from Calamares but is strictly validated.
+# Install the selected desktop, or configure a console-only system.
+# The selection comes from Calamares and is strictly validated.
 set -eu
 target="${1:?missing target path}"
 choice="${2:-}"
@@ -8,7 +8,7 @@ case "$target" in /|''|/tmp|/mnt|/run) echo 'Invalid target path' >&2; exit 1 ;;
 [ -f "$target/etc/apk/world" ] || { echo 'Missing target Alpine installation' >&2; exit 1; }
 mountpoint -q "$target" || { echo 'Target not mounted' >&2; exit 1; }
 case "$choice" in
-    plasma|gnome|xfce|lxqt) ;;
+    plasma|gnome|xfce|lxqt|minimal) ;;
     *) echo "Invalid desktop choice: $choice" >&2; exit 2 ;;
 esac
 
@@ -32,6 +32,9 @@ case "$choice" in
         chroot "$target" apk add --no-cache \
             lxqt-desktop qterminal openbox sddm sddm-openrc
         ;;
+    minimal)
+        display_manager=
+        ;;
 esac
 
 if [ "$choice" != plasma ]; then
@@ -44,11 +47,23 @@ if [ "$choice" != plasma ]; then
         plasma-workspace-wallpapers konsole dolphin ark kate spectacle kcalc \
         xdg-desktop-portal-kde
 fi
+if [ "$choice" = minimal ]; then
+    # Keep the installed system console-first; hardware setup may add only
+    # the graphics libraries required by detected devices.
+    chroot "$target" apk del \
+        xorg-server xwayland qt6-qtwayland \
+        mesa-dri-gallium mesa-egl mesa-gbm mesa-vulkan-swrast \
+        font-noto font-noto-emoji polkit \
+        udisks2 upower pipewire pipewire-pulse wireplumber pipewire-alsa \
+        xdg-desktop-portal firefox
+fi
 if [ "$display_manager" != sddm ]; then
     chroot "$target" rc-update del sddm default || true
     chroot "$target" apk del sddm sddm-openrc
 fi
-chroot "$target" rc-update add "$display_manager" default
+if [ -n "$display_manager" ]; then
+    chroot "$target" rc-update add "$display_manager" default
+fi
 
 mkdir -p "$target/etc/veyra"
 printf '%s\n' "$choice" > "$target/etc/veyra/desktop"

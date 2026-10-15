@@ -24,7 +24,7 @@ with (root / "calamares/modules/packagechooser-desktop.conf").open(encoding="utf
 assert chooser["mode"] == "required"
 assert chooser["method"] == "legacy"
 assert chooser["default"] == "plasma"
-assert [item["id"] for item in chooser["items"]] == ["plasma", "gnome", "xfce", "lxqt"]
+assert [item["id"] for item in chooser["items"]] == ["plasma", "gnome", "xfce", "lxqt", "minimal"]
 for item in chooser["items"]:
     assert Path(item["screenshot"].removeprefix("/etc/")).name
     assert (root / f"calamares/branding/veyra/desktop-{item['id']}.svg").exists()

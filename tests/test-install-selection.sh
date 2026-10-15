@@ -25,7 +25,7 @@ chmod 755 "$tmp/bin/"*
 export PATH="$tmp/bin:$PATH"
 export VEYRA_TEST_LOG="$tmp/operations"
 
-for desktop in plasma gnome xfce lxqt; do
+for desktop in plasma gnome xfce lxqt minimal; do
     : > "$VEYRA_TEST_LOG"
     sh "$root/scripts/installer-desktop.sh" "$target" "$desktop"
     grep -qx "$desktop" "$target/etc/veyra/desktop"
@@ -33,8 +33,17 @@ for desktop in plasma gnome xfce lxqt; do
         plasma|lxqt) manager=sddm ;;
         gnome) manager=gdm ;;
         xfce) manager=lightdm ;;
+        minimal) manager= ;;
     esac
-    grep -q "rc-update add $manager default" "$VEYRA_TEST_LOG"
+    if [ -n "$manager" ]; then
+        grep -q "rc-update add $manager default" "$VEYRA_TEST_LOG"
+    else
+        if grep -q 'rc-update add .* default' "$VEYRA_TEST_LOG"; then
+            echo 'Minimal install must not enable a display manager' >&2
+            exit 1
+        fi
+        grep -q 'apk del xorg-server xwayland qt6-qtwayland' "$VEYRA_TEST_LOG"
+    fi
     case "$desktop" in
         gnome) grep -q 'apk add --no-cache gnome gdm gdm-openrc' "$VEYRA_TEST_LOG" ;;
         xfce) grep -q 'lightdm-gtk-greeter' "$VEYRA_TEST_LOG" ;;
