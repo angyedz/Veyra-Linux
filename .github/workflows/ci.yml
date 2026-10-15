@@ -25,6 +25,8 @@ jobs:
         run: python3 tests/test-calamares-config.py
       - name: CPU and graphics detection fixtures
         run: sh tests/test-hardware.sh
+      - name: Refresh repository indexes for dependency simulations
+        run: apk update
       - name: Validate alternative desktops in Alpine repositories
         run: |
           apk add --simulate gnome gdm gdm-openrc
