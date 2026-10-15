@@ -25,6 +25,8 @@ jobs:
         run: python3 tests/test-calamares-config.py
       - name: CPU and graphics detection fixtures
         run: sh tests/test-hardware.sh
+      - name: Desktop installation script routing (mocked commands)
+        run: sh tests/test-install-selection.sh
       - name: Refresh repository indexes for dependency simulations
         run: apk update
       - name: Validate alternative desktops in Alpine repositories
@@ -32,6 +34,9 @@ jobs:
           apk add --simulate gnome gdm gdm-openrc
           apk add --simulate xfce4 xfce4-terminal lightdm lightdm-openrc lightdm-gtk-greeter
           apk add --simulate lxqt-desktop qterminal openbox sddm sddm-openrc
+          apk add --simulate plasma-desktop gnome gdm gdm-openrc
+          apk add --simulate plasma-desktop xfce4 lightdm lightdm-openrc
+          apk add --simulate plasma-desktop lxqt-desktop sddm
       - name: Validate GPU and CPU packages in Alpine repositories
         run: |
           apk add --simulate intel-ucode linux-firmware-i915 linux-firmware-xe mesa-vulkan-intel intel-media-driver
