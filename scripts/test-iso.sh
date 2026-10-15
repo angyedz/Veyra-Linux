@@ -1,5 +1,5 @@
 #!/bin/sh
-# Boot an experimental Veyra ISO in QEMU and verify a login prompt appears.
+# Boot the Veyra graphical live ISO and verify the Alpine serial login prompt.
 set -eu
 iso="${1:?usage: sh scripts/test-iso.sh path/to/veyra.iso [log-file]}"
 log="${2:-veyra-boot.log}"
@@ -16,8 +16,8 @@ command -v timeout >/dev/null || {
 
 set +e
 timeout "${VEYRA_BOOT_TIMEOUT:-120}" qemu-system-x86_64 \
-    -machine accel=tcg -m 1024 -smp 2 \
-    -display none -monitor none -serial stdio \
+    -machine accel=tcg -m 4096 -smp 4 \
+    -vga virtio -display none -monitor none -serial stdio \
     -no-reboot -nic none -boot d -cdrom "$iso" > "$log" 2>&1
 code=$?
 set -e

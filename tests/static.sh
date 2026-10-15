@@ -11,6 +11,11 @@ done
 [ -f .github/workflows/ci.yml ]
 [ -f .github/workflows/iso.yml ]
 [ -f scripts/test-iso.sh ]
+[ -f images/packages-desktop.txt ]
+grep -qx plasma-desktop-meta images/packages-desktop.txt
+grep -qx qt6-qtwayland images/packages-desktop.txt
+grep -qx sddm-openrc images/packages-desktop.txt
+grep -q 'Session=plasma.desktop' images/genapkovl-veyra.sh
 grep -q 'GLENV_REF' scripts/bootstrap.sh
 grep -q 'apk add nix nix-openrc' scripts/bootstrap.sh
 if grep -Eiq 'VPN|WireGuard|OpenVPN|OpenConnect' README.md; then
@@ -36,5 +41,7 @@ trap 'rm -rf "$tmpdir"' EXIT HUP INT TERM
 tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/hostname'
 tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'usr/local/bin/veyra-setup'
 tar -xOf "$tmpdir/veyra.apkovl.tar.gz" etc/hostname | grep -qx veyra
+tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/sddm.conf.d/10-veyra-live.conf'
+tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/init.d/veyra-live'
 
 printf 'Veyra static and overlay tests passed\n'
