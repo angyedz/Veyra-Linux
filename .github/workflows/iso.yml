@@ -17,6 +17,24 @@ on:
       - 'scripts/bootstrap.sh'
       - 'scripts/compat.sh'
       - 'scripts/smoke.sh'
+      - 'packages/repo/**'
+      - 'packages/keys/**'
+      - '.github/workflows/iso.yml'
+  pull_request:
+    paths:
+      - 'images/**'
+      - 'calamares/**'
+      - 'packaging/calamares/**'
+      - 'scripts/build-calamares.sh'
+      - 'scripts/installer-*.sh'
+      - 'scripts/hardware-detect.sh'
+      - 'scripts/build-iso.sh'
+      - 'scripts/test-iso.sh'
+      - 'scripts/bootstrap.sh'
+      - 'scripts/compat.sh'
+      - 'scripts/smoke.sh'
+      - 'packages/repo/**'
+      - 'packages/keys/**'
       - '.github/workflows/iso.yml'
   workflow_dispatch:
 jobs:

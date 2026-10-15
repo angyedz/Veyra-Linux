@@ -51,10 +51,21 @@ if [ ! -d "$extra_dir" ] || [ -z "$(find "$extra_dir" -maxdepth 1 -name '*.apk' 
     exit 1
 fi
 cp "$extra_dir"/*.apk "$repo_arch/"
+native_repo="$root/packages/repo/x86_64"
+native_key="$root/packages/keys/veyra.rsa.pub"
+if [ -s "$native_key" ] && [ -d "$native_repo" ]; then
+    for package in "$native_repo"/*.apk; do
+        [ -f "$package" ] || continue
+        cp "$package" "$repo_arch/"
+    done
+fi
 for key in "$extra_dir"/*.pub; do
     [ -f "$key" ] || continue
     cp "$key" /etc/apk/keys/
 done
+if [ -s "$native_key" ]; then
+    cp "$native_key" /etc/apk/keys/
+fi
 apk index -o "$repo_arch/APKINDEX.tar.gz" "$repo_arch"/*.apk
 abuild-sign "$repo_arch/APKINDEX.tar.gz"
 
@@ -66,6 +77,8 @@ cp "$root/images/mkimg.veyra.sh" "$aports/scripts/mkimg.veyra.sh"
 
 # mkimage locates the apkovl generator relative to the current working dir.
 chmod +x "$root/images/genapkovl-veyra.sh"
+VEYRA_ISO_REPO_PUBLIC_KEY="${PACKAGER_PRIVKEY}.pub"
+export VEYRA_ISO_REPO_PUBLIC_KEY
 cd "$root"
 sh "$aports/scripts/mkimage.sh" \
     --tag "$version-dev" \

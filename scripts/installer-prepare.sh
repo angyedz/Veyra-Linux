@@ -33,6 +33,10 @@ cat > "$target/etc/apk/repositories" <<'REPOS'
 https://dl-cdn.alpinelinux.org/alpine/v3.22/main
 https://dl-cdn.alpinelinux.org/alpine/v3.22/community
 REPOS
+if [ -s "$target/etc/apk/keys/veyra.rsa.pub" ]; then
+    printf '%s\n' 'https://raw.githubusercontent.com/angyedz/Veyra-Linux/main/packages/repo/x86_64' \
+        >> "$target/etc/apk/repositories"
+fi
 
 # The new root needs DNS before desktop and firmware downloads begin.
 if [ -r /etc/resolv.conf ]; then

@@ -18,19 +18,22 @@ Build on Alpine 3.22 with `alpine-sdk go git` and an abuild signing key:
 sh packages/build.sh
 ```
 
-CI builds APKs and publishes them as workflow artifacts. With stable signing
-secrets configured, CI also commits the **compiled signed APK files** and
-signed `APKINDEX.tar.gz` into `packages/repo/x86_64/`, and the public
-signing key into `packages/keys/`. The private signing key must never
-be committed.
+CI builds APKs and publishes them as workflow artifacts. Pull requests use
+temporary signing keys and receive no stable signing secrets. A push to `main`
+uses the stable key, and a separate write-scoped job commits the **compiled
+signed APK files**, signed `APKINDEX.tar.gz`, and public key into
+`packages/repo/x86_64/` and `packages/keys/`. The private signing key must
+never be committed.
 
 Configure two GitHub Actions secrets: `VEYRA_ABUILD_PRIVATE_KEY_B64`
 and `VEYRA_ABUILD_PUBLIC_KEY_B64` containing base64-encoded matching
 `abuild-keygen` key files. Until these are configured, CI uses an
 ephemeral key and **does not publish packages to the git repository**;
-only CI artifacts are generated. Install the matching public key into
-`/etc/apk/keys/` before trusting this repository. Never use
-`--allow-untrusted` for routine updates.
+only CI artifacts are generated. The ISO embeds the public key and uses the
+signed repository when stable packages are present. Disk installations retain
+that key and add the Veyra repository URL, so `vpkg update` and `vpkg install`
+can use the signed Veyra APK repository. Never use `--allow-untrusted` for
+routine updates.
 
 `vpkg` commands:
 

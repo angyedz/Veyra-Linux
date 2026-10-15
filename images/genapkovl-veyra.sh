@@ -8,6 +8,17 @@ mkdir -p etc/apk etc/sddm.conf.d etc/skel/Desktop etc/sudoers.d \
     etc/init.d etc/runlevels/sysinit etc/runlevels/boot etc/runlevels/default \
     etc/calamares/modules etc/calamares/branding/veyra \
     usr/local/bin usr/local/lib/veyra usr/share/applications
+mkdir -p etc/apk/keys
+if [ -n "${VEYRA_ISO_REPO_PUBLIC_KEY:-}" ] && [ -s "$VEYRA_ISO_REPO_PUBLIC_KEY" ]; then
+    install -m 0644 "$VEYRA_ISO_REPO_PUBLIC_KEY" etc/apk/keys/veyra-iso.rsa.pub
+fi
+if [ -s "$root/packages/keys/veyra.rsa.pub" ]; then
+    install -m 0644 "$root/packages/keys/veyra.rsa.pub" etc/apk/keys/veyra.rsa.pub
+fi
+for key in "$root"/dist/calamares/*.pub; do
+    [ -s "$key" ] || continue
+    install -m 0644 "$key" "etc/apk/keys/$(basename "$key")"
+done
 printf '%s\n' veyra > etc/hostname
 printf '%s\n' 'Veyra Linux — Lightweight by design. Compatible by nature.' > etc/motd
 printf '%s\n' 'Veyra Linux' > etc/issue
@@ -18,6 +29,10 @@ printf '%s\n' 'Veyra Linux development live image' > etc/veyra-release
 {
     printf '%s\n' alpine-base
     grep -vE '^[[:space:]]*(#|$)' "$root/images/packages-desktop.txt"
+    if [ -s "$root/packages/keys/veyra.rsa.pub" ] && \
+       [ -n "$(find "$root/packages/repo/x86_64" -maxdepth 1 -name 'vpkg-*.apk' -print -quit 2>/dev/null)" ]; then
+        printf '%s\n' vpkg
+    fi
 } > etc/apk/world
 
 cp "$root/scripts/bootstrap.sh" usr/local/lib/veyra/bootstrap.sh
