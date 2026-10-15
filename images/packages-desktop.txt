@@ -1,6 +1,19 @@
 # Veyra Linux graphical live environment.
 # Names must exist in Alpine's main/community repositories for the pinned release.
-plasma-desktop-meta
+plasma-desktop
+plasma-workspace
+kwin
+plasma-nm
+plasma-pa
+breeze
+breeze-icons
+sddm-breeze
+polkit-kde-agent-1
+systemsettings
+kscreen
+kde-cli-tools
+plasma-systemmonitor
+plasma-workspace-wallpapers
 sddm
 sddm-openrc
 xorg-server
