@@ -14,5 +14,7 @@ profile_veyra() {
     syslinux_timeout="50"
     # Alpine boots diskless: its writable root lives in RAM (tmpfs).
     # Kernel modules and offline package cache still use the boot medium.
+    # Drop the legacy VLAN helper; NetworkManager handles networking.
+    apks="$(printf '%s\n' "$apks" | tr ' ' '\n' | grep -vx network-extras | tr '\n' ' ')"
     apks="$apks $(grep -vE '^[[:space:]]*(#|$)' images/packages-desktop.txt | tr '\n' ' ')"
 }
