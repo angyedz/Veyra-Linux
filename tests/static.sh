@@ -12,6 +12,8 @@ done
 [ -f .github/workflows/iso.yml ]
 [ -f scripts/test-iso.sh ]
 [ -f images/packages-desktop.txt ]
+[ -f calamares/settings.conf ]
+grep -qx linux-lts images/packages-desktop.txt
 grep -qx plasma-desktop images/packages-desktop.txt
 grep -qx qt6-qtwayland images/packages-desktop.txt
 grep -qx sddm-openrc images/packages-desktop.txt
@@ -43,5 +45,7 @@ tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'usr/local/bin/veyra-setup'
 tar -xOf "$tmpdir/veyra.apkovl.tar.gz" etc/hostname | grep -qx veyra
 tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/sddm.conf.d/10-veyra-live.conf'
 tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/init.d/veyra-live'
+tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/calamares/settings.conf'
+tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'usr/local/lib/veyra/installer-copy.sh'
 
 printf 'Veyra static and overlay tests passed\n'
