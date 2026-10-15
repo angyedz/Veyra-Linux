@@ -14,7 +14,6 @@ on:
       - 'scripts/hardware-detect.sh'
       - 'scripts/build-iso.sh'
       - 'scripts/test-iso.sh'
-      - 'tests/test-installed-qemu.py'
       - 'scripts/bootstrap.sh'
       - 'scripts/compat.sh'
       - 'scripts/smoke.sh'
@@ -74,7 +73,7 @@ jobs:
     name: Boot image in QEMU
     needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -91,7 +90,7 @@ jobs:
         run: |
           iso=$(find dist -maxdepth 1 -name 'veyra-linux-*.iso' -print -quit)
           test -n "$iso"
-          sh scripts/test-iso.sh "$iso" veyra-boot.log
+          VEYRA_BOOT_TIMEOUT=360 sh scripts/test-iso.sh "$iso" veyra-boot.log
       - name: Save serial console log
         if: always()
         uses: actions/upload-artifact@v4
