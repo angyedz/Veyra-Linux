@@ -41,6 +41,7 @@ jobs:
           addgroup builder abuild
           chown -R builder:builder "$GITHUB_WORKSPACE"
           mkdir -p /home/builder/.abuild
+          chown builder:builder /home/builder/.abuild
           if [ -n "$VEYRA_KEY_B64" ] && [ -n "$VEYRA_PUB_B64" ]; then
             printf '%s' "$VEYRA_KEY_B64" | base64 -d > /home/builder/.abuild/veyra.rsa
             printf '%s' "$VEYRA_PUB_B64" | base64 -d > /home/builder/.abuild/veyra.rsa.pub
