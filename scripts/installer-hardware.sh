@@ -28,6 +28,30 @@ else
     echo 'No additional vendor-specific packages required.'
 fi
 
+# Alpine's diskless live image does not require a disk root filesystem
+# driver. Once installed, the initramfs MUST include the actual filesystem
+# chosen by Calamares and load it before attempting to mount /sysroot.
+root_fs=$(findmnt -n -o FSTYPE -M "$target") || {
+    echo 'Cannot determine the installed root filesystem type.' >&2
+    exit 1
+}
+case "$root_fs" in
+    ext4|btrfs|xfs|f2fs) ;;
+    *) echo "Unsupported installed root filesystem: $root_fs" >&2; exit 1 ;;
+esac
+
+# Preserve Alpine's existing initramfs features; add the selected root
+# filesystem as well as common disk controllers (NVMe and VirtIO).
+initfs_config="$target/etc/mkinitfs/mkinitfs.conf"
+mkdir -p "$target/etc/mkinitfs"
+printf '\n# Required by Veyra for disk-based boot.\nfeatures="${features:-ata base scsi usb} %s virtio nvme"\n' "$root_fs" >> "$initfs_config"
+
+# Alpine's initramfs loader only loads the root filesystem module early
+# when rootfstype= is passed. Keep any prior GRUB kernel options intact.
+mkdir -p "$target/etc/default"
+printf '\n# Veyra: allow Alpine initramfs to mount the installed root.\nGRUB_CMDLINE_LINUX="${GRUB_CMDLINE_LINUX:+${GRUB_CMDLINE_LINUX} }rootfstype=%s"\n' "$root_fs" >> "$target/etc/default/grub"
+echo "Configured disk boot filesystem: $root_fs"
+
 # Regenerate an initramfs for the INSTALLED kernel, not the live ISO's
 # running uname -r. The kernel modules must have been unpacked to disk by
 # installer-prepare.sh, and this includes newly installed firmware.

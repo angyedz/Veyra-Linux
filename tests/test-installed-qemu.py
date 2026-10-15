@@ -58,13 +58,15 @@ uuid=$(blkid -s UUID -o value /dev/vda1)
 printf 'UUID=%s / ext4 defaults 0 1\\n' "$uuid" > "$target/etc/fstab"
 # Keep the installed guest observable over serial; this affects only the
 # throwaway QEMU disk, not the distributed installer or end-user defaults.
-printf '%s\\n' 'GRUB_CMDLINE_LINUX="console=tty0 console=ttyS0,115200"' >> "$target/etc/default/grub"
+printf '%s\\n' 'GRUB_CMDLINE_LINUX="${GRUB_CMDLINE_LINUX} console=tty0 console=ttyS0,115200"' >> "$target/etc/default/grub"
 chroot "$target" grub-install --target=i386-pc --recheck /dev/vda
 chroot "$target" grub-mkconfig -o /boot/grub/grub.cfg
 test -s "$target/boot/grub/grub.cfg"
 grep -q 'menuentry' "$target/boot/grub/grub.cfg"
 test -s "$target/boot/vmlinuz-lts"
 test -s "$target/boot/initramfs-lts"
+grep -q 'rootfstype=ext4' "$target/etc/default/grub"
+grep -q 'ext4 virtio nvme' "$target/etc/mkinitfs/mkinitfs.conf"
 test "$(cat "$target/etc/veyra/desktop")" = DESKTOP
 # Check installed service is enabled for the chosen desktop.
 test -e "$target/etc/runlevels/default/SERVICE"

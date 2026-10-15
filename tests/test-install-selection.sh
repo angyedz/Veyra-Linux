@@ -13,6 +13,10 @@ cat > "$tmp/bin/mountpoint" <<'STUB'
 [ "$1" = -q ] && exit 0
 exit 2
 STUB
+cat > "$tmp/bin/findmnt" <<'STUB'
+#!/bin/sh
+printf '%s\\n' "${VEYRA_TEST_FS:-ext4}"
+STUB
 cat > "$tmp/bin/chroot" <<'STUB'
 #!/bin/sh
 printf '%s\n' "$*" >> "$VEYRA_TEST_LOG"
@@ -55,5 +59,13 @@ grep -q 'mesa-vulkan-nouveau' "$VEYRA_TEST_LOG"
 grep -q 'linux-firmware-nvidia' "$VEYRA_TEST_LOG"
 grep -q 'mkinitfs 6.12.0-test' "$VEYRA_TEST_LOG"
 grep -q 'GenuineIntel' "$target/var/log/veyra/hardware-detected.txt"
+grep -q 'rootfstype=ext4' "$target/etc/default/grub"
+grep -q 'ext4 virtio nvme' "$target/etc/mkinitfs/mkinitfs.conf"
+
+# Unsupported filesystems must not generate an unbootable initramfs.
+if VEYRA_TEST_FS=tmpfs sh "$root/scripts/installer-hardware.sh" "$target" >/dev/null 2>&1; then
+    echo 'Unsupported root filesystem must be rejected' >&2
+    exit 1
+fi
 
 echo 'Safe mocked installer routes passed'
