@@ -9,5 +9,5 @@ for name in vpkg veyra-glenv; do
 done
 mkdir -p "$root/packages/repo/x86_64"
 out="${REPODEST:-$HOME/packages}"
-find "$out" -type f -name '*.apk' -exec cp -f {} "$root/packages/repo/x86_64/" \;
+find "$out" -type f \( -name '*.apk' -o -name 'APKINDEX.tar.gz' \) -exec cp -f {} "$root/packages/repo/x86_64/" \;
 echo "Built packages copied to packages/repo/x86_64/"

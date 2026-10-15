@@ -19,10 +19,19 @@ Build on Alpine 3.22 with `alpine-sdk go git` and an abuild signing key:
 sh packages/build.sh
 ```
 
-CI builds APKs and publishes them as workflow artifacts. A trusted
-repository must use a stable signing key, with its **private half stored
-only in GitHub Actions secrets**, and its public half distributed to users
-via `/etc/apk/keys`. Never use `--allow-untrusted` for routine updates.
+CI builds APKs and publishes them as workflow artifacts. With stable signing
+secrets configured, CI also commits the **compiled signed APK files** and
+signed `APKINDEX.tar.gz` into `packages/repo/x86_64/`, and the public
+signing key into `packages/keys/`. The private signing key must never
+be committed.
+
+Configure two GitHub Actions secrets: `VEYRA_ABUILD_PRIVATE_KEY_B64`
+and `VEYRA_ABUILD_PUBLIC_KEY_B64` containing base64-encoded matching
+`abuild-keygen` key files. Until these are configured, CI uses an
+ephemeral key and **does not publish packages to the git repository**;
+only CI artifacts are generated. Install the matching public key into
+`/etc/apk/keys/` before trusting this repository. Never use
+`--allow-untrusted` for routine updates.
 
 `vpkg` commands:
 
