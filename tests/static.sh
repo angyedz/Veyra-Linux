@@ -12,7 +12,7 @@ done
 [ -f .github/workflows/iso.yml ]
 [ -f scripts/test-iso.sh ]
 [ -f images/packages-desktop.txt ]
-grep -qx plasma-desktop-meta images/packages-desktop.txt
+grep -qx plasma-desktop images/packages-desktop.txt
 grep -qx qt6-qtwayland images/packages-desktop.txt
 grep -qx sddm-openrc images/packages-desktop.txt
 grep -q 'Session=plasma.desktop' images/genapkovl-veyra.sh
