@@ -15,3 +15,5 @@ The wizard now provides a single required desktop choice: **KDE Plasma** (defaul
 After copying the Alpine live root, Veyra configures that desktop and reads the live system's PCI hardware and CPU vendor. It installs the matching Mesa components, firmware and microcode from signed Alpine repositories, then Calamares completes user setup and bootloader configuration. NVIDIA currently uses Nouveau, not the unavailable proprietary Linux driver on musl.
 
 See [Desktop selection and hardware](DESKTOPS.md) for development details. Automated config, package resolution and detection checks do **not** replace an end-to-end installation to a blank VM.
+
+The installer re-extracts the on-disk kernel/modules from Alpine (the live ISO uses a separate modloop image) and regenerates the installed initramfs after firmware selection. This path is still awaiting a full installation-and-reboot check in QEMU.
