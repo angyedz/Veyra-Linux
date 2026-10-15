@@ -22,7 +22,10 @@ Usage:
   vpkg list                 [--from alpine|nix]
   vpkg update
   vpkg upgrade              [--from alpine|nix] [--check|--dry-run]
+  vpkg install <file.AppImage> --from appimage
   vpkg inspect <binary>
+  vpkg history --from appimage
+  vpkg rollback --from appimage
   vpkg history --from nix
   vpkg rollback --from nix [version]
   vpkg version
@@ -53,8 +56,8 @@ func parse(args []string) (string, []string, error) {
 			rest = append(rest, args[i])
 		}
 	}
-	if source != "alpine" && source != "nix" {
-		return "", nil, fmt.Errorf("unsupported source %q", source)
+	if source != "alpine" && source != "nix" && source != "appimage" {
+		return "", nil, fmt.Errorf("unsupported source %q (supported: alpine, nix, appimage)", source)
 	}
 	return source, rest, nil
 }
@@ -73,6 +76,7 @@ func run(name string, args ...string) error {
 // commandRunner is replaceable in tests so command routing can be verified on
 // hosts that do not provide apk or nix.
 var commandRunner = run
+var appImageInstaller = installAppImage
 
 func runNix(args ...string) error {
 	return commandRunner("nix", append([]string{"--extra-experimental-features", "nix-command flakes"}, args...)...)
@@ -134,6 +138,29 @@ func dispatch(action, source string, packages []string) error {
 		case "rollback":
 			return fmt.Errorf("Alpine APK rollback is not available through vpkg yet")
 		}
+	} else if source == "appimage" {
+		switch action {
+		case "install":
+			if len(packages) != 1 {
+				return fmt.Errorf("install --from appimage requires one local .AppImage file")
+			}
+			return appImageInstaller(packages[0])
+		case "history":
+			if len(packages) != 0 {
+				return fmt.Errorf("history does not accept package names")
+			}
+			return showAppImageHistory()
+		case "rollback":
+			if len(packages) != 0 {
+				return fmt.Errorf("AppImage rollback does not accept a transaction id")
+			}
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return err
+			}
+			return rollbackLatestAppImage(home)
+		}
+		return fmt.Errorf("AppImage source supports install, history, and rollback")
 	} else {
 		switch action {
 		case "install":

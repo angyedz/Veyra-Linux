@@ -19,6 +19,10 @@ func TestParse(t *testing.T) {
 	if e != nil || s != "nix" || !reflect.DeepEqual(p, []string{"--dry-run"}) {
 		t.Fatalf("parse dry-run: %s %v %v", s, p, e)
 	}
+	s, p, e = parse([]string{"Demo.AppImage", "--from=appimage"})
+	if e != nil || s != "appimage" || !reflect.DeepEqual(p, []string{"Demo.AppImage"}) {
+		t.Fatalf("parse AppImage: %s %v %v", s, p, e)
+	}
 }
 
 func TestDispatch(t *testing.T) {
@@ -79,5 +83,28 @@ func TestMissingArgs(t *testing.T) {
 	}
 	if dispatch("remove", "nix", nil) == nil {
 		t.Fatal("accepted empty remove")
+	}
+}
+
+func TestDispatchAppImageRequiresOneFile(t *testing.T) {
+	oldInstaller := appImageInstaller
+	var installed string
+	appImageInstaller = func(path string) error {
+		installed = path
+		return nil
+	}
+	t.Cleanup(func() { appImageInstaller = oldInstaller })
+
+	if err := dispatch("install", "appimage", []string{"./Demo.AppImage"}); err != nil {
+		t.Fatal(err)
+	}
+	if installed != "./Demo.AppImage" {
+		t.Fatalf("installer received %q", installed)
+	}
+	if err := dispatch("remove", "appimage", []string{"Demo.AppImage"}); err == nil {
+		t.Fatal("accepted an unsupported AppImage action")
+	}
+	if err := dispatch("install", "appimage", nil); err == nil {
+		t.Fatal("accepted an empty AppImage install")
 	}
 }

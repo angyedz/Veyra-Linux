@@ -51,6 +51,9 @@ vpkg upgrade --from nix --dry-run
 vpkg history --from nix
 vpkg rollback --from nix
 vpkg rollback --from nix 12
+vpkg install ./MyApp.AppImage --from appimage
+vpkg history --from appimage
+vpkg rollback --from appimage
 vpkg inspect ./application
 ```
 
@@ -59,6 +62,14 @@ unless you intend to modify root's profile. Alpine release upgrades are
 not automatic. `vpkg` does not silently switch package backends. History and
 rollback currently use Nix profile generations; APK history and rollback are
 not implemented yet.
+
+AppImage installation checks that the file is a regular ELF for the current
+CPU, copies it to the user's `~/.local/opt/veyra-appimages/` directory, and
+adds a quoted desktop launcher. The installer never runs the AppImage. It does
+not verify the publisher's signature, so only install files from a publisher
+you trust. Updates replace the existing copy transactionally; AppImage history
+keeps the previous files, and rollback checks that the installed files have
+not been changed since the update.
 
 `vpkg inspect` reports ELF architecture, interpreter, direct shared-library
 dependencies and GLIBC version strings. It checks direct library filenames
