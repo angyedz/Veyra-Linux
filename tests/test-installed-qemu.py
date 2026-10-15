@@ -101,7 +101,7 @@ def login(child, timeout):
     child.expect(prompt, timeout=timeout)
     child.sendline("root")
     index = child.expect(
-        [r"Password:", r"(?m)^[^\r\n]{0,80}# *$", r"Login incorrect",
+        [r"Password:", r"(?:^|[\r\n])[A-Za-z0-9_.-]+:[^\r\n]{0,50}# ?", r"Login incorrect",
          pexpect.EOF, pexpect.TIMEOUT],
         timeout=45,
     )
@@ -113,7 +113,7 @@ def login(child, timeout):
 
     # Prove we are talking to the shell, not an echoed command line.
     child.sendline("printf '\\nVEYRA_SHELL_READY\\n'")
-    child.expect(r"(?m)^VEYRA_SHELL_READY\r?$", timeout=35)
+    child.expect(r"(?:^|[\r\n])VEYRA_SHELL_READY(?:\r|\n)", timeout=35)
 
 def run_command(child, command, timeout=300):
     # Appends a unique marker with exit code, does not depend on prompt echoes.
