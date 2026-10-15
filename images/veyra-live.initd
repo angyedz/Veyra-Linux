@@ -1,0 +1,9 @@
+#!/sbin/openrc-run
+description="Prepare ephemeral Veyra live account"
+command="/usr/local/lib/veyra/live-user.sh"
+command_background="no"
+
+depend() {
+    need localmount
+    before sddm
+}
