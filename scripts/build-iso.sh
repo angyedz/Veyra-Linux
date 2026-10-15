@@ -52,8 +52,7 @@ if [ ! -d "$extra_dir" ] || [ -z "$(find "$extra_dir" -maxdepth 1 -name '*.apk' 
 fi
 cp "$extra_dir"/*.apk "$repo_arch/"
 native_repo="$root/packages/repo/x86_64"
-native_key="$root/packages/keys/veyra.rsa.pub"
-if [ -s "$native_key" ] && [ -d "$native_repo" ]; then
+if [ -d "$native_repo" ]; then
     for package in "$native_repo"/*.apk; do
         [ -f "$package" ] || continue
         cp "$package" "$repo_arch/"
@@ -63,9 +62,10 @@ for key in "$extra_dir"/*.pub; do
     [ -f "$key" ] || continue
     cp "$key" /etc/apk/keys/
 done
-if [ -s "$native_key" ]; then
-    cp "$native_key" /etc/apk/keys/
-fi
+for key in "$root"/packages/keys/*.pub; do
+    [ -s "$key" ] || continue
+    cp "$key" /etc/apk/keys/
+done
 apk index -o "$repo_arch/APKINDEX.tar.gz" "$repo_arch"/*.apk
 abuild-sign "$repo_arch/APKINDEX.tar.gz"
 

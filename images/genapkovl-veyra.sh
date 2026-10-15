@@ -13,9 +13,10 @@ mkdir -p etc/apk/keys
 if [ -n "${VEYRA_ISO_REPO_PUBLIC_KEY:-}" ] && [ -s "$VEYRA_ISO_REPO_PUBLIC_KEY" ]; then
     install -m 0644 "$VEYRA_ISO_REPO_PUBLIC_KEY" etc/apk/keys/veyra-iso.rsa.pub
 fi
-if [ -s "$root/packages/keys/veyra.rsa.pub" ]; then
-    install -m 0644 "$root/packages/keys/veyra.rsa.pub" etc/apk/keys/veyra.rsa.pub
-fi
+for key in "$root"/packages/keys/*.pub; do
+    [ -s "$key" ] || continue
+    install -m 0644 "$key" "etc/apk/keys/$(basename "$key")"
+done
 for key in "$root"/dist/calamares/*.pub; do
     [ -s "$key" ] || continue
     install -m 0644 "$key" "etc/apk/keys/$(basename "$key")"
@@ -33,10 +34,11 @@ NIX
 {
     printf '%s\n' alpine-base
     grep -vE '^[[:space:]]*(#|$)' "$root/images/packages-desktop.txt"
-    if [ -s "$root/packages/keys/veyra.rsa.pub" ] && \
-       [ -n "$(find "$root/packages/repo/x86_64" -maxdepth 1 -name 'vpkg-*.apk' -print -quit 2>/dev/null)" ]; then
-        printf '%s\n' vpkg
-    fi
+    for package in vpkg veyra-glenv; do
+        if [ -n "$(find "$root/packages/repo/x86_64" -maxdepth 1 -name "$package-*.apk" -print -quit 2>/dev/null)" ]; then
+            printf '%s\n' "$package"
+        fi
+    done
 } > etc/apk/world
 
 cp "$root/scripts/bootstrap.sh" usr/local/lib/veyra/bootstrap.sh

@@ -27,6 +27,10 @@ target=/mnt/veyra-e2e
 disk=/dev/vda
 # A guard against accidentally touching the live boot ISO or host disks.
 test -r /etc/veyra-release
+test -x /usr/bin/vpkg
+apk info -e vpkg
+test -x /usr/bin/veyra-glenv
+apk info -e veyra-glenv
 test -b "$disk"
 test "$(cat /sys/block/vda/removable)" = 0
 test -e /dev/sr0
@@ -49,6 +53,8 @@ mount --rbind /sys "$target/sys"
 mount --make-rslave "$target/sys"
 mount -t tmpfs tmpfs "$target/run"
 /usr/local/lib/veyra/installer-prepare.sh "$target"
+chroot "$target" apk info -e vpkg
+chroot "$target" apk info -e veyra-glenv
 /usr/local/lib/veyra/installer-desktop.sh "$target" DESKTOP
 /usr/local/lib/veyra/installer-hardware.sh "$target"
 echo 'root:veyra-test' | chroot "$target" chpasswd
@@ -203,6 +209,8 @@ def main():
             try:
                 login(child, 240)
                 run_command(child, "test -r /etc/veyra/desktop && cat /etc/veyra/desktop", 30)
+                run_command(child, "test -x /usr/bin/vpkg && vpkg --version", 30)
+                run_command(child, "test -x /usr/bin/veyra-glenv", 30)
                 run_command(child, "test -s /boot/grub/grub.cfg", 30)
                 print(f"VEYRA_E2E_SUCCESS: clean virtual disk boots installed {args.desktop}", flush=True)
             finally:

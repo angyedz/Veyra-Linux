@@ -17,8 +17,9 @@ profile_veyra() {
     # Drop the legacy VLAN helper; NetworkManager handles networking.
     apks="$(printf '%s\n' "$apks" | tr ' ' '\n' | grep -vx network-extras | tr '\n' ' ')"
     apks="$apks $(grep -vE '^[[:space:]]*(#|$)' images/packages-desktop.txt | tr '\n' ' ')"
-    if [ -s packages/keys/veyra.rsa.pub ] && \
-       [ -n "$(find packages/repo/x86_64 -maxdepth 1 -name 'vpkg-*.apk' -print -quit 2>/dev/null)" ]; then
-        apks="$apks vpkg"
-    fi
+    for package in vpkg veyra-glenv; do
+        if [ -n "$(find packages/repo/x86_64 -maxdepth 1 -name "$package-*.apk" -print -quit 2>/dev/null)" ]; then
+            apks="$apks $package"
+        fi
+    done
 }
