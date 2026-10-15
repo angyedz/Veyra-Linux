@@ -9,7 +9,7 @@ profile_veyra() {
     arch="x86_64"
     hostname="veyra"
     apkovl="images/genapkovl-veyra.sh"
-    kernel_cmdline="console=tty0 console=ttyS0,115200"
+    kernel_cmdline="console=tty0 console=ttyS0,115200 rootflags=size=90%"
     syslinux_serial="0 115200"
     syslinux_timeout="50"
     # Alpine boots diskless: its writable root lives in RAM (tmpfs).
