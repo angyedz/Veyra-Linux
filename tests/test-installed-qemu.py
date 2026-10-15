@@ -56,6 +56,9 @@ chroot "$target" adduser -D -s /bin/ash e2euser
 echo 'e2euser:veyra-test' | chroot "$target" chpasswd
 uuid=$(blkid -s UUID -o value /dev/vda1)
 printf 'UUID=%s / ext4 defaults 0 1\\n' "$uuid" > "$target/etc/fstab"
+# Keep the installed guest observable over serial; this affects only the
+# throwaway QEMU disk, not the distributed installer or end-user defaults.
+printf '%s\\n' 'GRUB_CMDLINE_LINUX="console=tty0 console=ttyS0,115200"' >> "$target/etc/default/grub"
 chroot "$target" grub-install --target=i386-pc --recheck /dev/vda
 chroot "$target" grub-mkconfig -o /boot/grub/grub.cfg
 test -s "$target/boot/grub/grub.cfg"
