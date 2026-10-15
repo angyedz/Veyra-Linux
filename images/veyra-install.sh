@@ -15,6 +15,8 @@ fi
 
 log="${XDG_CACHE_HOME:-$HOME/.cache}/veyra-calamares.log"
 mkdir -p "$(dirname "$log")"
+# The live user owns this log path; capture output from the root installer.
+# shellcheck disable=SC2024
 if sudo -n --preserve-env=DISPLAY,WAYLAND_DISPLAY,XDG_RUNTIME_DIR,DBUS_SESSION_BUS_ADDRESS,QT_QPA_PLATFORM \
     /usr/bin/calamares >"$log" 2>&1; then
     exit 0

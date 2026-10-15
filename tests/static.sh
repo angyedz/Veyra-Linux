@@ -29,10 +29,10 @@ grep -q 'NOPASSWD: ALL' images/genapkovl-veyra.sh
 grep -qx zram-init images/packages-desktop.txt
 grep -q 'HardwareAcceleration.*false' images/genapkovl-veyra.sh
 grep -q 'plasma-watchdog.sh' images/veyra-live-user.sh
-grep -q 'rm -f "$target/etc/sudoers.d/veyra-live"' scripts/installer-prepare.sh
-grep -q 'rm -f "$target/etc/firefox/policies/policies.json"' scripts/installer-prepare.sh
+grep -qF "rm -f \"\$target/etc/sudoers.d/veyra-live\"" scripts/installer-prepare.sh
+grep -qF "rm -f \"\$target/etc/firefox/policies/policies.json\"" scripts/installer-prepare.sh
 grep -q '49-veyra-live.rules' images/genapkovl-veyra.sh
-grep -q 'rm -f "$target/etc/polkit-1/rules.d/49-veyra-live.rules"' scripts/installer-prepare.sh
+grep -qF "rm -f \"\$target/etc/polkit-1/rules.d/49-veyra-live.rules\"" scripts/installer-prepare.sh
 grep -q 'GLENV_REF' scripts/bootstrap.sh
 grep -q 'apk add nix nix-openrc' scripts/bootstrap.sh
 grep -q 'extra-experimental-features = nix-command flakes' scripts/bootstrap.sh
