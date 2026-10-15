@@ -5,7 +5,7 @@ root=$(CDPATH='' cd "$(dirname "$0")/.." && pwd)
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT HUP INT TERM
 target="$tmp/target"
-mkdir -p "$tmp/bin" "$target/etc/apk" "$tmp/pci/0000:01:00.0"
+mkdir -p "$tmp/bin" "$target/etc/apk" "$target/lib/modules/6.12.0-test" "$tmp/pci/0000:01:00.0"
 printf '%s\n' alpine-base > "$target/etc/apk/world"
 
 cat > "$tmp/bin/mountpoint" <<'STUB'
@@ -53,6 +53,7 @@ sh "$root/scripts/installer-hardware.sh" "$target"
 grep -q 'intel-ucode' "$VEYRA_TEST_LOG"
 grep -q 'mesa-vulkan-nouveau' "$VEYRA_TEST_LOG"
 grep -q 'linux-firmware-nvidia' "$VEYRA_TEST_LOG"
+grep -q 'mkinitfs 6.12.0-test' "$VEYRA_TEST_LOG"
 grep -q 'GenuineIntel' "$target/var/log/veyra/hardware-detected.txt"
 
 echo 'Safe mocked installer routes passed'
