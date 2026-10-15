@@ -95,24 +95,25 @@ def boot(qemu, disk, iso, logfile, timeout, installed=False):
 
 
 def login(child, timeout):
-    # Alpine diskless images normally expose ttyS0 via a serial getty.
-    # Do not assume a console is immediately available.
-    idx = child.expect([r"login:\s*", r"[#] ?$", pexpect.EOF, pexpect.TIMEOUT],
-                       timeout=timeout)
-    if idx == 0:
-        child.sendline("root")
-        p = child.expect([r"Password:", r"[#] ?$", r"Login incorrect", pexpect.EOF, pexpect.TIMEOUT],
-                         timeout=35)
-        if p == 0:
-            child.sendline("veyra-test")
-            child.expect(r"[#] ?$", timeout=35)
-        elif p != 1:
-            raise RuntimeError("Live/installed root login was rejected")
-    elif idx != 1:
-        raise RuntimeError("No usable serial login prompt from QEMU")
-    child.sendline("export PS1='VEYRA# '")
-    child.expect("VEYRA# ", timeout=30)
+    # Wait for a REAL getty, never mistake the APK download progress bar
+    # (which prints lots of '#') for an interactive root shell.
+    prompt = r"(?:^|[\\r\\n])(?:[A-Za-z0-9_.-]+ )?login: *"
+    child.expect(prompt, timeout=timeout)
+    child.sendline("root")
+    index = child.expect(
+        [r"Password:", r"(?m)^.{0,80}# *$", r"Login incorrect",
+         pexpect.EOF, pexpect.TIMEOUT],
+        timeout=45,
+    )
+    if index == 0:
+        child.sendline("veyra-test")
+        child.expect(r"(?m)^.{0,80}# *$", timeout=45)
+    elif index != 1:
+        raise RuntimeError("Guest root login failed")
 
+    # Prove we are talking to the shell, not an echoed command line.
+    child.sendline("printf '\\nVEYRA_SHELL_READY\\n'")
+    child.expect(r"(?m)^VEYRA_SHELL_READY\\r?$", timeout=35)
 
 def run_command(child, command, timeout=300):
     # Appends a unique marker with exit code, does not depend on prompt echoes.
