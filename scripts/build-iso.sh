@@ -41,6 +41,23 @@ fi
 export PACKAGER_PRIVKEY
 cp "${PACKAGER_PRIVKEY}.pub" /etc/apk/keys/
 
+# Build a signed, local APK repository from the Calamares build artifact.
+extra_dir="${VEYRA_EXTRA_APK_DIR:-$root/dist/calamares}"
+repo_base="$buildroot/veyra-repository"
+repo_arch="$repo_base/x86_64"
+mkdir -p "$repo_arch"
+if [ ! -d "$extra_dir" ] || [ -z "$(find "$extra_dir" -maxdepth 1 -name '*.apk' -print -quit)" ]; then
+    echo 'Missing Calamares APK. Run scripts/build-calamares.sh first.' >&2
+    exit 1
+fi
+cp "$extra_dir"/*.apk "$repo_arch/"
+for key in "$extra_dir"/*.pub; do
+    [ -f "$key" ] || continue
+    cp "$key" /etc/apk/keys/
+done
+apk index -o "$repo_arch/APKINDEX.tar.gz" "$repo_arch"/*.apk
+abuild-sign "$repo_arch/APKINDEX.tar.gz"
+
 if [ ! -f "$aports/scripts/mkimage.sh" ]; then
     git clone --depth 1 --branch "$version-stable" \
         https://github.com/alpinelinux/aports.git "$aports"
@@ -57,6 +74,8 @@ sh "$aports/scripts/mkimage.sh" \
     --outdir "$outdir" \
     --workdir "$workdir" \
     --checksum \
+    --hostkeys \
+    --repository "file://$repo_base" \
     --repository "https://dl-cdn.alpinelinux.org/alpine/v$version/main" \
     --repository "https://dl-cdn.alpinelinux.org/alpine/v$version/community"
 
