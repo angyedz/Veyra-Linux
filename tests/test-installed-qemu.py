@@ -44,7 +44,7 @@ mkfs.ext4 -F /dev/vda2
 mkdir -p "$target"
 mount /dev/vda2 "$target"
 mkdir -p "$target/boot/efi"
-mount /dev/vda1 "$target/boot/efi"""
+mount /dev/vda1 "$target/boot/efi\""""
         fstab_setup = r"""root_uuid=$(blkid -s UUID -o value /dev/vda2)
 efi_uuid=$(blkid -s UUID -o value /dev/vda1)
 printf 'UUID=%s / ext4 defaults 0 1\n' "$root_uuid" > "$target/etc/fstab"
@@ -60,7 +60,7 @@ sleep 3
 test -b /dev/vda1
 mkfs.ext4 -F /dev/vda1
 mkdir -p "$target"
-mount /dev/vda1 "$target"""
+mount /dev/vda1 "$target\""""
         fstab_setup = r"""root_uuid=$(blkid -s UUID -o value /dev/vda1)
 printf 'UUID=%s / ext4 defaults 0 1\n' "$root_uuid" > "$target/etc/fstab"""
         grub_install = 'chroot "$target" grub-install --target=i386-pc --recheck /dev/vda'
