@@ -75,10 +75,12 @@ and glenv history and rollback are available; APK history and rollback are
 not implemented yet.
 
 Without `--from`, `vpkg search` checks enabled APK repositories (including
-Veyra) and Nix. `vpkg install` prefers an APK candidate. If it only finds a Nix
-candidate, it shows the package and asks before installing; non-interactive
-calls must pass `--from nix`. Local `.deb` and AppImage files are detected by
-their file extensions and routed to glenv or the AppImage installer.
+Veyra) and Nix. `vpkg install` prefers an APK candidate, previews the resolved
+APK dependency plan, and asks before installing. If it only finds Nix candidates, it shows
+the complete package list and asks before installing them in one profile
+operation. Automatic installs require a terminal; non-interactive calls must
+pass `--from alpine` or `--from nix`. Local `.deb` and AppImage files are
+detected by their file extensions and routed to glenv or the AppImage installer.
 
 The glenv source installs packages into the glenv sysroot, not Alpine's host
 filesystem. A local `.deb` is accepted only when its package name, version,

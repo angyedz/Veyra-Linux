@@ -33,7 +33,7 @@ Usage:
   vpkg version
   vpkg help
 
-Default install: enabled Alpine/Veyra APK repositories, then an explicit Nix prompt.
+Default install: show the matched source plan and ask before using APK or Nix.
 Local .deb and AppImage files are detected automatically. Nix changes the current user's profile.
 `)
 }
@@ -175,12 +175,11 @@ func dispatch(action, source string, packages []string) error {
 			if e := need(); e != nil {
 				return e
 			}
+			installables := []string{"profile", "install"}
 			for _, p := range packages {
-				if e := runNix("profile", "install", "nixpkgs#"+p); e != nil {
-					return e
-				}
+				installables = append(installables, "nixpkgs#"+p)
 			}
-			return nil
+			return runNix(installables...)
 		case "remove":
 			if e := need(); e != nil {
 				return e

@@ -34,6 +34,7 @@ type nixSearchEntry struct {
 
 var packageSearchRunner = searchPackageSource
 var nixInstallConfirmer = confirmNixInstall
+var apkInstallConfirmer = confirmAPKInstall
 var commandOutput = captureCommandOutput
 
 var plainPackageName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9+._-]*$`)
@@ -213,17 +214,18 @@ func dispatchAutoInstall(packages []string) error {
 	}
 
 	selectedSource := ""
+	var apkMatches []packageMatch
 	var nixMatches []packageMatch
 	for _, name := range packages {
 		if !plainPackageName.MatchString(name) {
 			return fmt.Errorf("automatic source selection needs plain package names; use --from alpine or --from nix for %q", name)
 		}
-		apkMatches, err := packageSearchRunner("apk", name, true)
+		apkFound, err := packageSearchRunner("apk", name, true)
 		if err != nil {
 			return fmt.Errorf("cannot search enabled Alpine/Veyra repositories: %w", err)
 		}
 		source := "alpine"
-		if len(apkMatches) == 0 {
+		if len(apkFound) == 0 {
 			nixMatchesForName, searchErr := packageSearchRunner("nix", name, true)
 			if searchErr != nil {
 				return fmt.Errorf("%q was not found in Alpine/Veyra repositories and Nix search failed: %w", name, searchErr)
@@ -233,6 +235,8 @@ func dispatchAutoInstall(packages []string) error {
 			}
 			source = "nix"
 			nixMatches = append(nixMatches, nixMatchesForName[0])
+		} else {
+			apkMatches = append(apkMatches, apkFound[0])
 		}
 		if selectedSource != "" && selectedSource != source {
 			return fmt.Errorf("requested packages span APK and Nix; install each source separately or pass --from explicitly")
@@ -244,26 +248,40 @@ func dispatchAutoInstall(packages []string) error {
 		if currentUserIsRoot() {
 			return fmt.Errorf("automatic Nix installation targets the current user's profile; rerun without sudo, or select --from nix explicitly for root's profile")
 		}
-		candidate := nixMatches[0]
-		fmt.Printf("Alpine/Veyra packages were not found. Nix candidate: %s %s (%s).\n",
-			candidate.Name, candidate.Version, candidate.Attribute)
+		fmt.Println("Alpine/Veyra packages were not found. Nix candidates:")
+		for _, candidate := range nixMatches {
+			printPackageMatch(candidate)
+		}
 		fmt.Println("Nix packages can have package-specific runtime requirements; this selection does not assume glenv is needed.")
-		ok, err := nixInstallConfirmer(candidate)
+		ok, err := nixInstallConfirmer(nixMatches)
 		if err != nil {
 			return err
 		}
 		if !ok {
 			return fmt.Errorf("Nix installation declined; use vpkg install --from nix %s to choose it explicitly", strings.Join(packages, " "))
 		}
+		installables := []string{"profile", "install"}
 		for _, match := range nixMatches {
-			if err := runNix("profile", "install", "nixpkgs#"+match.Attribute); err != nil {
-				return err
-			}
+			installables = append(installables, "nixpkgs#"+match.Attribute)
 		}
-		return nil
+		return runNix(installables...)
 	}
 
-	fmt.Println("Found the requested package(s) in enabled Alpine/Veyra APK repositories; using APK.")
+	fmt.Println("Found the requested package(s) in enabled Alpine/Veyra APK repositories:")
+	for _, candidate := range apkMatches {
+		printPackageMatch(candidate)
+	}
+	planArgs := append([]string{"add", "--simulate"}, packages...)
+	if err := commandRunner("apk", planArgs...); err != nil {
+		return fmt.Errorf("cannot prepare Alpine/Veyra installation plan: %w", err)
+	}
+	ok, err := apkInstallConfirmer(apkMatches)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("APK installation declined; use vpkg install --from alpine %s to select it explicitly", strings.Join(packages, " "))
+	}
 	return dispatch("install", "alpine", packages)
 }
 
@@ -272,18 +290,30 @@ func currentUserIsRoot() bool {
 	return err == nil && current.Uid == "0"
 }
 
-func confirmNixInstall(candidate packageMatch) (bool, error) {
+func confirmNixInstall(candidates []packageMatch) (bool, error) {
+	return confirmInstall("Nix", candidates)
+}
+
+func confirmAPKInstall(candidates []packageMatch) (bool, error) {
+	return confirmInstall("Alpine/Veyra APK", candidates)
+}
+
+func confirmInstall(source string, candidates []packageMatch) (bool, error) {
 	info, err := os.Stdin.Stat()
 	if err != nil {
-		return false, fmt.Errorf("check terminal before selecting Nix: %w", err)
+		return false, fmt.Errorf("check terminal before selecting a package source: %w", err)
 	}
 	if info.Mode()&os.ModeCharDevice == 0 {
-		return false, fmt.Errorf("Nix is an alternative source; pass --from nix to install it non-interactively")
+		sourceFlag := "alpine"
+		if source == "Nix" {
+			sourceFlag = "nix"
+		}
+		return false, fmt.Errorf("automatic package installation requires a terminal confirmation; pass --from %s to select the source explicitly", sourceFlag)
 	}
-	fmt.Printf("Install %s %s from Nix? [y/N] ", candidate.Name, candidate.Version)
+	fmt.Printf("Install %d package(s) from %s? [y/N] ", len(candidates), source)
 	answer, err := bufio.NewReader(os.Stdin).ReadString('\n')
 	if err != nil && len(answer) == 0 {
-		return false, fmt.Errorf("read Nix selection: %w", err)
+		return false, fmt.Errorf("read package source confirmation: %w", err)
 	}
 	answer = strings.ToLower(strings.TrimSpace(answer))
 	return answer == "y" || answer == "yes", nil

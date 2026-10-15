@@ -1,7 +1,10 @@
 package main
 
 import (
+	"errors"
+	"os"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -14,11 +17,11 @@ func TestParseDefaultsToAutomaticSourceSelection(t *testing.T) {
 
 func TestAutomaticInstallPrefersAPKRepositories(t *testing.T) {
 	oldSearch, oldRunner := packageSearchRunner, commandRunner
-	oldConfirm := nixInstallConfirmer
+	oldNixConfirm, oldAPKConfirm := nixInstallConfirmer, apkInstallConfirmer
 	t.Cleanup(func() {
 		packageSearchRunner = oldSearch
 		commandRunner = oldRunner
-		nixInstallConfirmer = oldConfirm
+		nixInstallConfirmer, apkInstallConfirmer = oldNixConfirm, oldAPKConfirm
 	})
 	var commands [][]string
 	packageSearchRunner = func(source, query string, exact bool) ([]packageMatch, error) {
@@ -30,9 +33,15 @@ func TestAutomaticInstallPrefersAPKRepositories(t *testing.T) {
 		}
 		return []packageMatch{{Source: "Nix", Name: "firefox", Attribute: "firefox"}}, nil
 	}
-	nixInstallConfirmer = func(packageMatch) (bool, error) {
+	nixInstallConfirmer = func([]packageMatch) (bool, error) {
 		t.Fatal("Nix confirmation should not run when APK contains the package")
 		return false, nil
+	}
+	apkInstallConfirmer = func(candidates []packageMatch) (bool, error) {
+		if !reflect.DeepEqual(candidates, []packageMatch{{Source: "Alpine/Veyra APK", Name: "firefox"}}) {
+			t.Fatalf("APK confirmation candidates = %#v", candidates)
+		}
+		return true, nil
 	}
 	commandRunner = func(name string, args ...string) error {
 		commands = append(commands, append([]string{name}, args...))
@@ -41,7 +50,7 @@ func TestAutomaticInstallPrefersAPKRepositories(t *testing.T) {
 	if err := dispatch("install", "auto", []string{"firefox"}); err != nil {
 		t.Fatal(err)
 	}
-	want := [][]string{{"apk", "add", "firefox"}}
+	want := [][]string{{"apk", "add", "--simulate", "firefox"}, {"apk", "add", "firefox"}}
 	if !reflect.DeepEqual(commands, want) {
 		t.Fatalf("commands = %#v, want %#v", commands, want)
 	}
@@ -68,9 +77,9 @@ func TestAutomaticNixInstallRequiresAndUsesConfirmation(t *testing.T) {
 		commands = append(commands, append([]string{name}, args...))
 		return nil
 	}
-	nixInstallConfirmer = func(candidate packageMatch) (bool, error) {
-		if candidate.Name != "firefox" || candidate.Attribute != "firefox-bin" {
-			t.Fatalf("confirmation candidate = %#v", candidate)
+	nixInstallConfirmer = func(candidates []packageMatch) (bool, error) {
+		if len(candidates) != 1 || candidates[0].Name != "firefox" || candidates[0].Attribute != "firefox-bin" {
+			t.Fatalf("confirmation candidates = %#v", candidates)
 		}
 		return false, nil
 	}
@@ -80,7 +89,7 @@ func TestAutomaticNixInstallRequiresAndUsesConfirmation(t *testing.T) {
 	if len(commands) != 0 {
 		t.Fatalf("ran commands after decline: %#v", commands)
 	}
-	nixInstallConfirmer = func(packageMatch) (bool, error) { return true, nil }
+	nixInstallConfirmer = func([]packageMatch) (bool, error) { return true, nil }
 	if err := dispatch("install", "auto", []string{"firefox"}); err != nil {
 		t.Fatal(err)
 	}
@@ -90,6 +99,110 @@ func TestAutomaticNixInstallRequiresAndUsesConfirmation(t *testing.T) {
 	}}
 	if !reflect.DeepEqual(commands, want) {
 		t.Fatalf("commands = %#v, want %#v", commands, want)
+	}
+}
+
+func TestAutomaticNixInstallShowsAndInstallsEveryCandidate(t *testing.T) {
+	oldSearch, oldRunner, oldConfirm := packageSearchRunner, commandRunner, nixInstallConfirmer
+	t.Cleanup(func() {
+		packageSearchRunner, commandRunner, nixInstallConfirmer = oldSearch, oldRunner, oldConfirm
+	})
+	packageSearchRunner = func(source, query string, exact bool) ([]packageMatch, error) {
+		if source == "apk" {
+			return nil, nil
+		}
+		return []packageMatch{{Source: "Nix", Name: query, Attribute: query}}, nil
+	}
+	var commands [][]string
+	commandRunner = func(name string, args ...string) error {
+		commands = append(commands, append([]string{name}, args...))
+		return nil
+	}
+	nixInstallConfirmer = func(candidates []packageMatch) (bool, error) {
+		if len(candidates) != 2 || candidates[0].Name != "ripgrep" || candidates[1].Name != "wezterm" {
+			t.Fatalf("confirmation candidates = %#v", candidates)
+		}
+		return true, nil
+	}
+	if err := dispatchAutoInstall([]string{"ripgrep", "wezterm"}); err != nil {
+		t.Fatal(err)
+	}
+	want := [][]string{{
+		"nix", "--extra-experimental-features", "nix-command flakes", "profile", "install",
+		"nixpkgs#ripgrep", "nixpkgs#wezterm",
+	}}
+	if !reflect.DeepEqual(commands, want) {
+		t.Fatalf("commands = %#v, want %#v", commands, want)
+	}
+}
+
+func TestAutomaticAPKInstallDeclineDoesNotRunPackageManager(t *testing.T) {
+	oldSearch, oldRunner, oldConfirm := packageSearchRunner, commandRunner, apkInstallConfirmer
+	t.Cleanup(func() {
+		packageSearchRunner, commandRunner, apkInstallConfirmer = oldSearch, oldRunner, oldConfirm
+	})
+	packageSearchRunner = func(source, query string, exact bool) ([]packageMatch, error) {
+		if source != "apk" || query != "nano" || !exact {
+			t.Fatalf("unexpected search: %s %q exact=%t", source, query, exact)
+		}
+		return []packageMatch{{Source: "Alpine/Veyra APK", Name: "nano"}}, nil
+	}
+	var commands [][]string
+	commandRunner = func(name string, args ...string) error {
+		commands = append(commands, append([]string{name}, args...))
+		return nil
+	}
+	apkInstallConfirmer = func(candidates []packageMatch) (bool, error) { return false, nil }
+	if err := dispatchAutoInstall([]string{"nano"}); err == nil {
+		t.Fatal("installation continued after declining the plan")
+	}
+	want := [][]string{{"apk", "add", "--simulate", "nano"}}
+	if !reflect.DeepEqual(commands, want) {
+		t.Fatalf("commands after decline = %#v, want only the dry-run plan %#v", commands, want)
+	}
+}
+
+func TestAutomaticAPKInstallStopsWhenSimulationFails(t *testing.T) {
+	oldSearch, oldRunner, oldConfirm := packageSearchRunner, commandRunner, apkInstallConfirmer
+	t.Cleanup(func() {
+		packageSearchRunner, commandRunner, apkInstallConfirmer = oldSearch, oldRunner, oldConfirm
+	})
+	packageSearchRunner = func(source, query string, exact bool) ([]packageMatch, error) {
+		return []packageMatch{{Source: "Alpine/Veyra APK", Name: query}}, nil
+	}
+	var commands [][]string
+	commandRunner = func(name string, args ...string) error {
+		commands = append(commands, append([]string{name}, args...))
+		return errors.New("simulation failed")
+	}
+	apkInstallConfirmer = func([]packageMatch) (bool, error) {
+		t.Fatal("confirmed an unvalidated package plan")
+		return false, nil
+	}
+	if err := dispatchAutoInstall([]string{"nano"}); err == nil {
+		t.Fatal("accepted a failed package simulation")
+	}
+	want := [][]string{{"apk", "add", "--simulate", "nano"}}
+	if !reflect.DeepEqual(commands, want) {
+		t.Fatalf("commands = %#v, want %#v", commands, want)
+	}
+}
+
+func TestAutomaticInstallRequiresTTYConfirmation(t *testing.T) {
+	oldStdin := os.Stdin
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	writer.Close()
+	os.Stdin = reader
+	t.Cleanup(func() {
+		os.Stdin = oldStdin
+		reader.Close()
+	})
+	if _, err := confirmAPKInstall([]packageMatch{{Source: "Alpine/Veyra APK", Name: "nano"}}); err == nil ||
+		!strings.Contains(err.Error(), "--from alpine") {
+		t.Fatalf("non-interactive install confirmation error = %v", err)
 	}
 }
 
