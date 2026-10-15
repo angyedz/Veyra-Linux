@@ -15,18 +15,32 @@ detector=/usr/local/lib/veyra/hardware-detect.sh
 echo 'Detecting CPU and graphics hardware:'
 sh "$detector" --report
 packages=$(sh "$detector" --packages)
-[ -n "$packages" ] || {
-    echo 'No vendor-specific firmware is necessary for detected hardware.'
-    exit 0
-}
+if [ -n "$packages" ]; then
+    # The detector only emits audited, static Alpine package names.
+    # shellcheck disable=SC2086
+    set -- $packages
+    echo "Installing detected hardware support: $*"
+    chroot "$target" apk add --no-cache "$@" || {
+        echo 'Hardware support installation failed. Check network and repositories.' >&2
+        exit 1
+    }
+else
+    echo 'No additional vendor-specific packages required.'
+fi
 
-# Hardware selection is an internal, audited list of package names.
-# shellcheck disable=SC2086
-set -- $packages
-echo "Installing detected hardware support: $*"
-# Failure is fatal: do not silently pretend the right drivers are installed.
-chroot "$target" apk add --no-cache "$@" || {
-    echo 'Hardware support installation failed. Check network and repositories.' >&2
+# Regenerate an initramfs for the INSTALLED kernel, not the live ISO's
+# running uname -r. The kernel modules must have been unpacked to disk by
+# installer-prepare.sh, and this includes newly installed firmware.
+kernel_found=0
+for modules in "$target"/lib/modules/*; do
+    [ -d "$modules" ] || continue
+    kernel_found=1
+    version=${modules##*/}
+    echo "Building initramfs for installed kernel $version"
+    chroot "$target" mkinitfs "$version"
+done
+[ "$kernel_found" -eq 1 ] || {
+    echo 'Cannot generate initramfs: missing installed kernel modules' >&2
     exit 1
 }
 mkdir -p "$target/var/log/veyra"
