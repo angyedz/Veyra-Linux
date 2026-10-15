@@ -1,6 +1,9 @@
 # Veyra Linux graphical live environment.
 # Names must exist in Alpine's main/community repositories for the pinned release.
 plasma-desktop
+linux-lts
+rsync
+util-linux
 plasma-workspace
 kwin
 plasma-nm
@@ -59,6 +62,7 @@ ca-certificates
 grub
 grub-efi
 grub-bios
+kpmcore
 efibootmgr
 parted
 e2fsprogs
