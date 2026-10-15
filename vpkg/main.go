@@ -1,4 +1,4 @@
-// vpkg: minimal Veyra CLI frontend; transactions remain with APK and Nix.
+// vpkg: Veyra package frontend for APK, Nix, glenv, and AppImage.
 package main
 
 import (
@@ -15,9 +15,9 @@ func usage() {
 	fmt.Print(`vpkg ` + version + ` - Veyra package manager
 
 Usage:
-  vpkg install <package>... [--from alpine|nix]
+  vpkg install <package>... [--from auto|alpine|nix]
   vpkg remove <package>...  [--from alpine|nix]
-  vpkg search <term>        [--from alpine|nix]
+  vpkg search <term>        [--from auto|alpine|nix]
   vpkg info <package>       [--from alpine|nix]
   vpkg list                 [--from alpine|nix]
   vpkg update
@@ -33,12 +33,13 @@ Usage:
   vpkg version
   vpkg help
 
-Default source: Alpine APK. Nix commands affect the current user's profile.
+Default install: enabled Alpine/Veyra APK repositories, then an explicit Nix prompt.
+Local .deb and AppImage files are detected automatically. Nix changes the current user's profile.
 `)
 }
 
 func parse(args []string) (string, []string, error) {
-	source := "alpine"
+	source := "auto"
 	var rest []string
 	for i := 0; i < len(args); i++ {
 		switch {
@@ -58,8 +59,8 @@ func parse(args []string) (string, []string, error) {
 			rest = append(rest, args[i])
 		}
 	}
-	if source != "alpine" && source != "nix" && source != "appimage" && source != "glenv" {
-		return "", nil, fmt.Errorf("unsupported source %q (supported: alpine, nix, glenv, appimage)", source)
+	if source != "auto" && source != "alpine" && source != "nix" && source != "appimage" && source != "glenv" {
+		return "", nil, fmt.Errorf("unsupported source %q (supported: auto, alpine, nix, glenv, appimage)", source)
 	}
 	return source, rest, nil
 }
@@ -103,6 +104,9 @@ func dispatch(action, source string, packages []string) error {
 			return fmt.Errorf("%s requires a package name", action)
 		}
 		return nil
+	}
+	if source == "auto" {
+		return dispatchAuto(action, packages, dryRun)
 	}
 	if source == "alpine" {
 		switch action {

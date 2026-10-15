@@ -9,7 +9,7 @@ license="MIT"
 depends="bash ca-certificates curl debian-archive-keyring gpgv python3 tar xz zstd"
 makedepends="git"
 options="!check"
-_glenv_commit=164c9372e92c0673516fbbfe41e6405053b1bcfd
+_glenv_commit=d704b1194ac9d494e28d7c76964a6913a37897d3
 source=""
 builddir="$srcdir"
 

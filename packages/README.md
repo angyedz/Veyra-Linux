@@ -62,6 +62,10 @@ sudo vpkg update --from glenv
 sudo vpkg upgrade --from glenv
 sudo vpkg history --from glenv
 sudo vpkg rollback --from glenv
+vpkg search discord
+vpkg install firefox
+vpkg install ./package.deb
+vpkg install ./MyApp.AppImage
 ```
 
 Nix commands act on the current user's profile. Do not use sudo for Nix
@@ -69,6 +73,12 @@ unless you intend to modify root's profile. Alpine release upgrades are
 not automatic. `vpkg` does not silently switch package backends. Nix, AppImage,
 and glenv history and rollback are available; APK history and rollback are
 not implemented yet.
+
+Without `--from`, `vpkg search` checks enabled APK repositories (including
+Veyra) and Nix. `vpkg install` prefers an APK candidate. If it only finds a Nix
+candidate, it shows the package and asks before installing; non-interactive
+calls must pass `--from nix`. Local `.deb` and AppImage files are detected by
+their file extensions and routed to glenv or the AppImage installer.
 
 The glenv source installs packages into the glenv sysroot, not Alpine's host
 filesystem. A local `.deb` is accepted only when its package name, version,
