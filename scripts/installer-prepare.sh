@@ -5,6 +5,7 @@ target="${1:?target root not given}"
 case "$target" in
     /|''|/tmp|/mnt|/run) echo 'Refusing dangerous target' >&2; exit 1 ;;
 esac
+mountpoint -q "$target" || { echo 'Target must be mounted' >&2; exit 1; }
 [ -e "$target/etc/apk/world" ] || {
     echo 'Target must contain a complete Alpine root' >&2
     exit 1

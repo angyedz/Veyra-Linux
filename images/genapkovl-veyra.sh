@@ -28,12 +28,18 @@ cp "$root/images/veyra-live-user.sh" usr/local/lib/veyra/live-user.sh
 cp "$root/images/veyra-install.sh" usr/local/bin/veyra-install
 cp "$root/scripts/installer-copy.sh" usr/local/lib/veyra/installer-copy.sh
 cp "$root/scripts/installer-prepare.sh" usr/local/lib/veyra/installer-prepare.sh
+cp "$root/scripts/installer-desktop.sh" usr/local/lib/veyra/installer-desktop.sh
+cp "$root/scripts/installer-hardware.sh" usr/local/lib/veyra/installer-hardware.sh
+cp "$root/scripts/hardware-detect.sh" usr/local/lib/veyra/hardware-detect.sh
+cp "$root/calamares/branding/veyra/"*.svg etc/calamares/branding/veyra/
 cp "$root/calamares/settings.conf" etc/calamares/settings.conf
 cp "$root/calamares/modules/"*.conf etc/calamares/modules/
 cp "$root/calamares/branding/veyra/branding.desc" etc/calamares/branding/veyra/branding.desc
 chmod 755 etc/init.d/veyra-live usr/local/lib/veyra/live-user.sh \
     usr/local/bin/veyra-install \
-    usr/local/lib/veyra/installer-copy.sh usr/local/lib/veyra/installer-prepare.sh
+    usr/local/lib/veyra/installer-copy.sh usr/local/lib/veyra/installer-prepare.sh \
+    usr/local/lib/veyra/installer-desktop.sh usr/local/lib/veyra/installer-hardware.sh \
+    usr/local/lib/veyra/hardware-detect.sh
 
 cat > usr/local/bin/veyra-setup <<'SETUP'
 #!/bin/sh

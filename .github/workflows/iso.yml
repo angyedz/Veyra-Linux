@@ -11,6 +11,7 @@ on:
       - 'packaging/calamares/**'
       - 'scripts/build-calamares.sh'
       - 'scripts/installer-*.sh'
+      - 'scripts/hardware-detect.sh'
       - 'scripts/build-iso.sh'
       - 'scripts/test-iso.sh'
       - 'scripts/bootstrap.sh'
