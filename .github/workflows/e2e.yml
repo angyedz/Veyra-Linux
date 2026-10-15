@@ -1,4 +1,7 @@
 name: Veyra E2E (cached ISO)
+concurrency:
+  group: veyra-e2e-${{ github.ref }}
+  cancel-in-progress: true
 on:
   push:
     branches: [main]
