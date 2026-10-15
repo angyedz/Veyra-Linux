@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 )
 
@@ -20,8 +21,10 @@ Usage:
   vpkg info <package>       [--from alpine|nix]
   vpkg list                 [--from alpine|nix]
   vpkg update
-  vpkg upgrade              [--from alpine|nix]
+  vpkg upgrade              [--from alpine|nix] [--check|--dry-run]
   vpkg inspect <binary>
+  vpkg history --from nix
+  vpkg rollback --from nix [version]
   vpkg version
   vpkg help
 
@@ -42,6 +45,8 @@ func parse(args []string) (string, []string, error) {
 			i++
 		case strings.HasPrefix(args[i], "--from="):
 			source = strings.TrimPrefix(args[i], "--from=")
+		case args[i] == "--check" || args[i] == "--dry-run":
+			rest = append(rest, args[i])
 		case strings.HasPrefix(args[i], "-"):
 			return "", nil, fmt.Errorf("unknown option: %s", args[i])
 		default:
@@ -69,7 +74,24 @@ func run(name string, args ...string) error {
 // hosts that do not provide apk or nix.
 var commandRunner = run
 
+func runNix(args ...string) error {
+	return commandRunner("nix", append([]string{"--extra-experimental-features", "nix-command flakes"}, args...)...)
+}
+
 func dispatch(action, source string, packages []string) error {
+	dryRun := false
+	filtered := packages[:0]
+	for _, arg := range packages {
+		if arg == "--check" || arg == "--dry-run" {
+			dryRun = true
+			continue
+		}
+		filtered = append(filtered, arg)
+	}
+	packages = filtered
+	if dryRun && action != "upgrade" {
+		return fmt.Errorf("--check/--dry-run is only supported with upgrade")
+	}
 	need := func() error {
 		if len(packages) == 0 {
 			return fmt.Errorf("%s requires a package name", action)
@@ -103,7 +125,14 @@ func dispatch(action, source string, packages []string) error {
 		case "update":
 			return commandRunner("apk", "update")
 		case "upgrade":
+			if dryRun {
+				return commandRunner("apk", "upgrade", "--simulate")
+			}
 			return commandRunner("apk", "upgrade")
+		case "history":
+			return fmt.Errorf("Alpine APK transaction history is not available through vpkg yet")
+		case "rollback":
+			return fmt.Errorf("Alpine APK rollback is not available through vpkg yet")
 		}
 	} else {
 		switch action {
@@ -112,7 +141,7 @@ func dispatch(action, source string, packages []string) error {
 				return e
 			}
 			for _, p := range packages {
-				if e := commandRunner("nix", "profile", "install", "nixpkgs#"+p); e != nil {
+				if e := runNix("profile", "install", "nixpkgs#"+p); e != nil {
 					return e
 				}
 			}
@@ -121,16 +150,38 @@ func dispatch(action, source string, packages []string) error {
 			if e := need(); e != nil {
 				return e
 			}
-			return commandRunner("nix", append([]string{"profile", "remove"}, packages...)...)
+			return runNix(append([]string{"profile", "remove"}, packages...)...)
 		case "search", "info":
 			if e := need(); e != nil {
 				return e
 			}
-			return commandRunner("nix", append([]string{"search", "nixpkgs"}, packages...)...)
+			return runNix(append([]string{"search", "nixpkgs"}, packages...)...)
 		case "list":
-			return commandRunner("nix", "profile", "list")
+			return runNix("profile", "list")
 		case "upgrade":
-			return commandRunner("nix", "profile", "upgrade", "--all")
+			if dryRun {
+				return runNix("profile", "upgrade", "--all", "--dry-run")
+			}
+			return runNix("profile", "upgrade", "--all")
+		case "update":
+			return runNix("flake", "metadata", "--refresh", "nixpkgs")
+		case "history":
+			if len(packages) != 0 {
+				return fmt.Errorf("history does not accept package names")
+			}
+			return runNix("profile", "history")
+		case "rollback":
+			if len(packages) == 0 {
+				return runNix("profile", "rollback")
+			}
+			if len(packages) != 1 {
+				return fmt.Errorf("rollback accepts at most one profile version")
+			}
+			version, err := strconv.ParseUint(packages[0], 10, 64)
+			if err != nil || version == 0 {
+				return fmt.Errorf("rollback version must be a positive integer")
+			}
+			return runNix("profile", "rollback", "--to", strconv.FormatUint(version, 10))
 		}
 	}
 	return fmt.Errorf("unsupported command %q for %s", action, source)

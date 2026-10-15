@@ -27,6 +27,8 @@ test -f scripts/hardware-detect.sh
 grep -q 'Session=plasma.desktop' images/genapkovl-veyra.sh
 grep -q 'GLENV_REF' scripts/bootstrap.sh
 grep -q 'apk add nix nix-openrc' scripts/bootstrap.sh
+grep -q 'extra-experimental-features = nix-command flakes' scripts/bootstrap.sh
+grep -q 'extra-experimental-features = nix-command flakes' images/genapkovl-veyra.sh
 grep -q 'raw.githubusercontent.com/angyedz/Veyra-Linux/main/packages/repo/x86_64' scripts/installer-prepare.sh
 grep -q 'VEYRA_ISO_REPO_PUBLIC_KEY' images/genapkovl-veyra.sh
 grep -q "github.event_name == 'push' && github.ref == 'refs/heads/main'" .github/workflows/packages.yml
@@ -57,6 +59,7 @@ tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/apk/keys/veyra-iso.rsa.pu
 tar -xOf "$tmpdir/veyra.apkovl.tar.gz" etc/apk/keys/veyra-iso.rsa.pub | grep -qx 'public-key-fixture'
 tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'usr/local/bin/veyra-setup'
 tar -xOf "$tmpdir/veyra.apkovl.tar.gz" etc/hostname | grep -qx veyra
+tar -xOf "$tmpdir/veyra.apkovl.tar.gz" etc/nix/nix.conf | grep -qx 'extra-experimental-features = nix-command flakes'
 tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/sddm.conf.d/10-veyra-live.conf'
 tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/init.d/veyra-live'
 tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/calamares/settings.conf'

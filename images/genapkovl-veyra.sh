@@ -5,6 +5,7 @@ host="${1:-veyra}"
 root=$(CDPATH='' cd "$(dirname "$0")/.." && pwd)
 
 mkdir -p etc/apk etc/sddm.conf.d etc/skel/Desktop etc/sudoers.d \
+    etc/nix \
     etc/init.d etc/runlevels/sysinit etc/runlevels/boot etc/runlevels/default \
     etc/calamares/modules etc/calamares/branding/veyra \
     usr/local/bin usr/local/lib/veyra usr/share/applications
@@ -23,6 +24,9 @@ printf '%s\n' veyra > etc/hostname
 printf '%s\n' 'Veyra Linux — Lightweight by design. Compatible by nature.' > etc/motd
 printf '%s\n' 'Veyra Linux' > etc/issue
 printf '%s\n' 'Veyra Linux development live image' > etc/veyra-release
+cat > etc/nix/nix.conf <<'NIX'
+extra-experimental-features = nix-command flakes
+NIX
 
 # Alpine initramfs installs this package set from the ISO's offline repository
 # to tmpfs; no conventional root= disk is used.

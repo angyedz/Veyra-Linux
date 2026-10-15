@@ -40,17 +40,25 @@ routine updates.
 ```sh
 sudo vpkg install firefox
 sudo vpkg update
+vpkg update --from nix
 sudo vpkg upgrade
+sudo vpkg upgrade --check
 vpkg search firefox
 vpkg install helix --from nix
 vpkg list --from nix
 vpkg upgrade --from nix
+vpkg upgrade --from nix --dry-run
+vpkg history --from nix
+vpkg rollback --from nix
+vpkg rollback --from nix 12
 vpkg inspect ./application
 ```
 
 Nix commands act on the current user's profile. Do not use sudo for Nix
 unless you intend to modify root's profile. Alpine release upgrades are
-not automatic. `vpkg` does not silently switch package backends.
+not automatic. `vpkg` does not silently switch package backends. History and
+rollback currently use Nix profile generations; APK history and rollback are
+not implemented yet.
 
 `vpkg inspect` reports ELF architecture, interpreter, direct shared-library
 dependencies and GLIBC version strings. It checks direct library filenames
