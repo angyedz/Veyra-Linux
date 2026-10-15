@@ -14,10 +14,9 @@ esac
     exit 1
 }
 
-mkdir -p "$target"/{dev,proc,sys,run,tmp,media,mnt,boot/efi} 2>/dev/null || {
-    # BusyBox ash does not implement brace expansion.
-    for d in dev proc sys run tmp media mnt boot/efi; do mkdir -p "$target/$d"; done
-}
+for d in dev proc sys run tmp media mnt boot/efi; do
+    mkdir -p "$target/$d"
+done
 
 # Avoid live-user autologin and boot initialization on the installed system.
 rm -f "$target/etc/sddm.conf.d/10-veyra-live.conf"
