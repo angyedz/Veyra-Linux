@@ -1,0 +1,39 @@
+# Veyra Linux Calamares Qt6 build for Alpine 3.22.
+# This package is separate from Alpine's maintained repositories.
+pkgname=veyra-calamares
+pkgver=3.3.15
+pkgrel=0
+pkgdesc="Calamares graphical Linux installer (Veyra build)"
+url="https://github.com/calamares/calamares"
+arch="x86_64"
+license="GPL-3.0-or-later AND LGPL-2.1-only"
+options="!check"
+depends="python3 py3-yaml parted rsync grub efibootmgr util-linux"
+makedepends="
+    build-base cmake ninja extra-cmake-modules
+    qt6-qtbase-dev qt6-qtdeclarative-dev qt6-qtsvg-dev qt6-qttools-dev
+    yaml-cpp-dev kcoreaddons-dev kcrash-dev
+    kpmcore-dev python3-dev py3-pybind11
+    "
+_commit="95aa33fd2f0ea6f081fe604fb84eb829fc806d86"
+source="calamares-$_commit.tar.gz::https://github.com/calamares/calamares/archive/$_commit.tar.gz"
+builddir="$srcdir/calamares-$_commit"
+
+build() {
+    cmake -S "$builddir" -B "$builddir/build" -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/usr \
+        -DCMAKE_INSTALL_LIBDIR=lib \
+        -DWITH_QT6=ON \
+        -DWITH_PYTHON=ON \
+        -DWITH_PYBIND11=ON \
+        -DWITH_QML=OFF \
+        -DINSTALL_CONFIG=OFF \
+        -DBUILD_TESTING=OFF \
+        -DSKIP_MODULES="webview webviewq qml" 
+    cmake --build "$builddir/build" --parallel 4
+}
+
+package() {
+    DESTDIR="$pkgdir" cmake --install "$builddir/build"
+}
