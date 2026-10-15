@@ -60,6 +60,7 @@ sudo vpkg install ./package.deb --from glenv
 sudo vpkg install package-name --from glenv
 sudo vpkg update --from glenv
 sudo vpkg upgrade --from glenv
+sudo vpkg upgrade --from glenv --dry-run
 sudo vpkg history --from glenv
 sudo vpkg rollback --from glenv
 vpkg search discord

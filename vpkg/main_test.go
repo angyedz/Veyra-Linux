@@ -61,6 +61,7 @@ func TestDispatch(t *testing.T) {
 		{"install", "glenv", []string{"./pkg.deb"}},
 		{"update", "glenv", nil},
 		{"upgrade", "glenv", nil},
+		{"upgrade", "glenv", []string{"--dry-run"}},
 		{"history", "glenv", nil},
 		{"rollback", "glenv", []string{"txid"}},
 	} {
@@ -84,6 +85,7 @@ func TestDispatch(t *testing.T) {
 		{"python3", "/test/fetch-deps.py", "--deb-file", "./pkg.deb"},
 		{"python3", "/test/fetch-deps.py", "--update-index"},
 		{"python3", "/test/fetch-deps.py", "upgrade"},
+		{"python3", "/test/fetch-deps.py", "upgrade", "--dry-run"},
 		{"python3", "/test/fetch-deps.py", "history"},
 		{"python3", "/test/fetch-deps.py", "rollback", "txid"},
 	}
@@ -95,9 +97,6 @@ func TestDispatch(t *testing.T) {
 func TestGlenvRejectsUnsupportedArguments(t *testing.T) {
 	if err := dispatch("install", "glenv", []string{"pkg.deb", "other.deb"}); err == nil {
 		t.Fatal("accepted multiple local .deb files")
-	}
-	if err := dispatch("upgrade", "glenv", []string{"--dry-run"}); err == nil {
-		t.Fatal("accepted dry-run for glenv upgrade")
 	}
 }
 

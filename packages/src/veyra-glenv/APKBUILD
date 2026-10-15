@@ -1,7 +1,7 @@
 # Installs the pinned glenv installer and package helper, not the full Debian sysroot.
 pkgname=veyra-glenv
 pkgver=1.1
-pkgrel=1
+pkgrel=2
 pkgdesc="Pinned glenv runtime installer, authenticated Debian package manager, and Wayland shim"
 url="https://github.com/angyedz/glenv"
 arch="x86_64"
@@ -9,7 +9,7 @@ license="MIT"
 depends="bash ca-certificates curl debian-archive-keyring gpgv python3 tar xz zstd"
 makedepends="git"
 options="!check"
-_glenv_commit=d704b1194ac9d494e28d7c76964a6913a37897d3
+_glenv_commit=720b89b91dc6fc648533ee75155b2120cfad4c70
 source=""
 builddir="$srcdir"
 

@@ -35,13 +35,14 @@ func dispatchGlenv(action string, packages []string, dryRun bool) error {
 		}
 		return runGlenv("--update-index")
 	case "upgrade":
-		if dryRun {
-			return fmt.Errorf("glenv upgrades do not support --check/--dry-run")
-		}
 		if len(packages) != 0 {
 			return fmt.Errorf("upgrade does not accept package names for glenv")
 		}
-		return runGlenv("upgrade")
+		args := []string{"upgrade"}
+		if dryRun {
+			args = append(args, "--dry-run")
+		}
+		return runGlenv(args...)
 	case "history":
 		if len(packages) != 0 {
 			return fmt.Errorf("history does not accept package names")
