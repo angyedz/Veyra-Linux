@@ -1,0 +1,26 @@
+---
+componentName: veyra
+welcomeStyleCalamares: false
+welcomeExpandingLogo: false
+windowExpanding: normal
+windowSize: 900px,600px
+windowPlacement: center
+sidebar: widget
+navigation: widget
+strings:
+  productName: Veyra Linux
+  shortProductName: Veyra
+  version: Development
+  shortVersion: dev
+  versionedName: Veyra Linux Development
+  shortVersionedName: Veyra Linux
+  bootloaderEntryName: Veyra Linux
+  productUrl: https://github.com/angyedz/Veyra-Linux
+  supportUrl: https://github.com/angyedz/Veyra-Linux/issues
+  knownIssuesUrl: https://github.com/angyedz/Veyra-Linux/issues
+  releaseNotesUrl: https://github.com/angyedz/Veyra-Linux
+style:
+  SidebarBackground: "#111827"
+  SidebarText: "#E5E7EB"
+  SidebarTextCurrent: "#FFFFFF"
+  SidebarBackgroundCurrent: "#2563EB"
