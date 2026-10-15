@@ -42,8 +42,15 @@ vpkg search firefox
 vpkg install helix --from nix
 vpkg list --from nix
 vpkg upgrade --from nix
+vpkg inspect ./application
 ```
 
 Nix commands act on the current user's profile. Do not use sudo for Nix
 unless you intend to modify root's profile. Alpine release upgrades are
 not automatic. `vpkg` does not silently switch package backends.
+
+`vpkg inspect` reports ELF architecture, interpreter, direct shared-library
+dependencies and GLIBC version strings. It checks direct library filenames
+against the configured glenv sysroot when present. The result is static
+analysis; a candidate may still need system services, graphics drivers, or
+other runtime files.
