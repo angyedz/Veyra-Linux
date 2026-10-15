@@ -16,10 +16,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install test dependencies
-        run: apk add --no-cache shellcheck
+        run: apk add --no-cache shellcheck python3 py3-yaml
       - name: ShellCheck
         run: shellcheck -s sh scripts/*.sh images/*.sh tests/*.sh
       - name: Validate shell and image overlay
         run: sh tests/static.sh
+      - name: Validate Calamares settings and modules
+        run: python3 tests/test-calamares-config.py
       - name: Verify native Nix package availability
         run: apk add --no-cache nix nix-openrc && nix --version
