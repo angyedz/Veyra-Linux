@@ -15,7 +15,7 @@ exit 2
 STUB
 cat > "$tmp/bin/findmnt" <<'STUB'
 #!/bin/sh
-printf '%s\\n' "${VEYRA_TEST_FS:-ext4}"
+printf '%s\n' "${VEYRA_TEST_FS:-ext4}"
 STUB
 cat > "$tmp/bin/chroot" <<'STUB'
 #!/bin/sh
