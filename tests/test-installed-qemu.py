@@ -107,7 +107,7 @@ def login(child, timeout):
     )
     if index == 0:
         child.sendline("veyra-test")
-        child.expect(r"(?m)^[^\r\n]{0,80}# *$", timeout=45)
+        child.expect(r"(?:^|[\r\n])[A-Za-z0-9_.-]+:[^\r\n]{0,50}# ?", timeout=45)
     elif index != 1:
         raise RuntimeError("Guest root login failed")
 
