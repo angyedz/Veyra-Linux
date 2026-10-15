@@ -87,6 +87,7 @@ jobs:
           mkdir -p /home/builder/.abuild
           chown builder:builder /home/builder/.abuild
           su builder -c 'abuild-keygen -a -n'
+          cp /home/builder/.abuild/*.rsa.pub /etc/apk/keys/
           su builder -c "cd '$GITHUB_WORKSPACE' && sh packages/build.sh"
           mkdir -p packages/keys
           cp /home/builder/.abuild/*.rsa.pub packages/keys/veyra-ci.rsa.pub
