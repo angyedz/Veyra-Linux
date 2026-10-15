@@ -13,7 +13,7 @@ makedepends="
     build-base cmake ninja extra-cmake-modules
     qt6-qtbase-dev qt6-qtdeclarative-dev qt6-qtsvg-dev qt6-qttools-dev
     yaml-cpp-dev kcoreaddons-dev kcrash-dev
-    kpmcore-dev python3-dev py3-pybind11
+    kpmcore-dev polkit-qt6-dev python3-dev py3-pybind11
     "
 _commit="95aa33fd2f0ea6f081fe604fb84eb829fc806d86"
 source="calamares-$_commit.tar.gz::https://github.com/calamares/calamares/archive/$_commit.tar.gz"
