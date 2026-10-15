@@ -1,0 +1,41 @@
+name: Veyra Live Desktop Diagnostics
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tests/diagnose-desktop-qemu.py'
+      - '.github/workflows/desktop-diagnostics.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  examine:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          repository: ${{ github.repository }}
+          run-id: 38697414907
+          github-token: ${{ github.token }}
+          name: veyra-linux-iso
+          path: dist
+      - name: Install test dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-system-x86 qemu-utils python3-pexpect
+      - name: Inspect SDDM and Wayland from booted Alpine
+        run: |
+          iso=$(find dist -name 'veyra-linux-*.iso' -print -quit)
+          test -n "$iso"
+          python3 tests/diagnose-desktop-qemu.py "$iso" --log veyra-live-desktop.log
+      - name: Save SDDM diagnostic log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: veyra-live-sddm-diagnostics
+          path: veyra-live-desktop.log
+          retention-days: 7
+          if-no-files-found: ignore
