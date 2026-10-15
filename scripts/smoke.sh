@@ -10,6 +10,7 @@ fi
 if [ "${ENABLE_NIX:-1}" = 1 ]; then
     command -v nix >/dev/null || { echo 'Nix not installed' >&2; exit 1; }
     nix --version
+    nix profile list >/dev/null
 fi
 if [ "${ENABLE_COMPAT:-1}" = 1 ]; then
     rc-service dbus status

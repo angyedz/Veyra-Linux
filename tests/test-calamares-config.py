@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Validate Veyra's Calamares integration before risking a real disk."""
+import ast
+import re
 from pathlib import Path
 import yaml
 
@@ -24,10 +26,62 @@ with (root / "calamares/modules/packagechooser-desktop.conf").open(encoding="utf
 assert chooser["mode"] == "required"
 assert chooser["method"] == "legacy"
 assert chooser["default"] == "plasma"
-assert [item["id"] for item in chooser["items"]] == ["plasma", "gnome", "xfce", "lxqt"]
+assert [item["id"] for item in chooser["items"]] == ["plasma", "gnome", "xfce", "lxqt", "minimal"]
 for item in chooser["items"]:
     assert Path(item["screenshot"].removeprefix("/etc/")).name
     assert (root / f"calamares/branding/veyra/desktop-{item['id']}.svg").exists()
+
+# Keep the real-disk QEMU install runner selectable for every Calamares option.
+qemu_source = (root / "tests/test-installed-qemu.py").read_text(encoding="utf-8")
+qemu_tree = ast.parse(qemu_source)
+desktop_argument = next(
+    node for node in ast.walk(qemu_tree)
+    if isinstance(node, ast.Call)
+    and isinstance(node.func, ast.Attribute)
+    and node.func.attr == "add_argument"
+    and node.args
+    and isinstance(node.args[0], ast.Constant)
+    and node.args[0].value == "--desktop"
+)
+desktop_choices = next(
+    ast.literal_eval(keyword.value)
+    for keyword in desktop_argument.keywords
+    if keyword.arg == "choices"
+)
+assert desktop_choices == [item["id"] for item in chooser["items"]]
+workflow = yaml.safe_load((root / ".github/workflows/iso.yml").read_text(encoding="utf-8"))
+install_matrix = workflow["jobs"]["install-e2e"]["strategy"]["matrix"]
+assert install_matrix["desktop"] == desktop_choices
+assert install_matrix["firmware"] == ["bios"]
+assert {(item["desktop"], item["firmware"]) for item in install_matrix["include"]} == {
+    ("plasma", "uefi"), ("minimal", "uefi")
+}
+firmware_argument = next(
+    node for node in ast.walk(qemu_tree)
+    if isinstance(node, ast.Call)
+    and isinstance(node.func, ast.Attribute)
+    and node.func.attr == "add_argument"
+    and node.args
+    and isinstance(node.args[0], ast.Constant)
+    and node.args[0].value == "--firmware"
+)
+firmware_choices = next(
+    ast.literal_eval(keyword.value)
+    for keyword in firmware_argument.keywords
+    if keyword.arg == "choices"
+)
+assert firmware_choices == ["bios", "uefi"]
+
+with (root / "calamares/modules/services-openrc.conf").open(encoding="utf-8") as stream:
+    openrc = yaml.safe_load(stream)
+service_entries = {entry["name"]: entry for entry in openrc["services"]}
+for name in ("dbus", "elogind", "networkmanager"):
+    assert service_entries[name]["mandatory"] is True
+assert "nix-daemon" in service_entries
+service_loop = re.search(r"for service in ([a-z0-9 -]+); do", qemu_source)
+assert service_loop is not None
+assert set(service_loop.group(1).split()) == set(service_entries)
+assert r"[A-Za-z0-9_.()-]+ )?login:" in qemu_source
 
 seq = settings["sequence"]
 assert any("show" in step for step in seq)

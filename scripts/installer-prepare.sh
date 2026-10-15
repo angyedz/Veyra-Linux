@@ -18,6 +18,8 @@ done
 rm -f "$target/etc/sddm.conf.d/10-veyra-live.conf"
 rm -f "$target/etc/sudoers.d/veyra-live"
 rm -f "$target/etc/runlevels/boot/veyra-live"
+rm -f "$target/etc/firefox/policies/policies.json"
+rm -f "$target/etc/polkit-1/rules.d/49-veyra-live.rules"
 # Disk installations must not depend on the live CD's squashfs modloop.
 rm -f "$target/etc/runlevels/sysinit/modloop" "$target/etc/runlevels/boot/modloop"
 rm -f "$target/usr/share/applications/veyra-install.desktop"
@@ -33,6 +35,10 @@ cat > "$target/etc/apk/repositories" <<'REPOS'
 https://dl-cdn.alpinelinux.org/alpine/v3.22/main
 https://dl-cdn.alpinelinux.org/alpine/v3.22/community
 REPOS
+if [ -s "$target/etc/apk/keys/veyra.rsa.pub" ]; then
+    printf '%s\n' 'https://raw.githubusercontent.com/angyedz/Veyra-Linux/main/packages/repo/x86_64' \
+        >> "$target/etc/apk/repositories"
+fi
 
 # The new root needs DNS before desktop and firmware downloads begin.
 if [ -r /etc/resolv.conf ]; then

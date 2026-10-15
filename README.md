@@ -9,13 +9,13 @@ Veyra Linux is an experimental Linux distribution built on Alpine Linux. It comb
 - **Lean foundation** — Alpine Linux and OpenRC.
 - **Broad application support** — the [glenv](https://github.com/angyedz/glenv) glibc environment alongside native musl.
 - **Flexible packages** — `apk` and the Nix package manager.
-- **Personalized desktop** — choose your interface during installation, with automatic hardware setup.
+- **Flexible installation** — choose Plasma, GNOME, Xfce, LXQt, or a console-only system; hardware setup is automatic.
 - **Modular setup** — add only the components you need.
 - **Open development** — transparent scripts and automated builds.
 
 ## Get started
 
-Veyra is in **early development**. Automated ISO builds are experimental and have not yet completed end-to-end installation testing.
+Veyra is in **early development**. CI builds the ISO, verifies live boot, and tests installation plus first boot on blank QEMU disks for Plasma and the console-only profile. GNOME, Xfce, and LXQt are validated through configuration, package-resolution, and installer-routing checks; their full disk installation is not yet covered.
 
 Try the integration in an Alpine Linux x86_64 virtual machine:
 

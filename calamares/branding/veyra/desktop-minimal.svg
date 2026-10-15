@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360">
+  <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#172554"/><stop offset="1" stop-color="#0f766e"/></linearGradient></defs>
+  <rect width="640" height="360" rx="24" fill="url(#g)"/>
+  <rect x="76" y="48" width="488" height="226" rx="14" fill="#0b1020" stroke="#99f6e4" stroke-opacity=".8" stroke-width="3"/>
+  <circle cx="105" cy="76" r="7" fill="#fb7185"/>
+  <circle cx="129" cy="76" r="7" fill="#fbbf24"/>
+  <circle cx="153" cy="76" r="7" fill="#34d399"/>
+  <text x="112" y="144" font-family="monospace" font-size="25" fill="#5eead4">$ vpkg install</text>
+  <rect x="113" y="162" width="12" height="27" fill="#5eead4"/>
+  <text x="80" y="321" font-family="sans-serif" font-size="34" font-weight="bold" fill="white">Minimal · Console only</text>
+</svg>

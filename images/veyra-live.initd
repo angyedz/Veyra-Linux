@@ -3,6 +3,14 @@ description="Prepare ephemeral Veyra live account"
 command="/usr/local/lib/veyra/live-user.sh"
 command_background="no"
 
+start_pre() {
+    key=/etc/apk/keys/veyra.rsa.pub
+    repo=https://raw.githubusercontent.com/angyedz/Veyra-Linux/main/packages/repo/x86_64
+    if [ -s "$key" ] && [ -f /etc/apk/repositories ] && ! grep -Fqx "$repo" /etc/apk/repositories; then
+        printf '%s\n' "$repo" >> /etc/apk/repositories
+    fi
+}
+
 depend() {
     need localmount
     before sddm
