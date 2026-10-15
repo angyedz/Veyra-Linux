@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Validate Veyra's Calamares integration before risking a real disk."""
+import ast
 from pathlib import Path
 import yaml
 
@@ -28,6 +29,25 @@ assert [item["id"] for item in chooser["items"]] == ["plasma", "gnome", "xfce", 
 for item in chooser["items"]:
     assert Path(item["screenshot"].removeprefix("/etc/")).name
     assert (root / f"calamares/branding/veyra/desktop-{item['id']}.svg").exists()
+
+# Keep the real-disk QEMU install runner selectable for every Calamares option.
+qemu_source = (root / "tests/test-installed-qemu.py").read_text(encoding="utf-8")
+qemu_tree = ast.parse(qemu_source)
+desktop_argument = next(
+    node for node in ast.walk(qemu_tree)
+    if isinstance(node, ast.Call)
+    and isinstance(node.func, ast.Attribute)
+    and node.func.attr == "add_argument"
+    and node.args
+    and isinstance(node.args[0], ast.Constant)
+    and node.args[0].value == "--desktop"
+)
+desktop_choices = next(
+    ast.literal_eval(keyword.value)
+    for keyword in desktop_argument.keywords
+    if keyword.arg == "choices"
+)
+assert desktop_choices == [item["id"] for item in chooser["items"]]
 
 seq = settings["sequence"]
 assert any("show" in step for step in seq)

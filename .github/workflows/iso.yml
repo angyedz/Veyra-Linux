@@ -141,6 +141,10 @@ jobs:
     needs: boot
     runs-on: ubuntu-latest
     timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        desktop: [plasma, minimal]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -153,16 +157,16 @@ jobs:
           sudo apt-get install -y -qq qemu-system-x86 qemu-utils python3-pexpect
       - name: Syntax-check console automation
         run: python3 -m py_compile tests/test-installed-qemu.py
-      - name: Install Plasma on an isolated virtual disk and reboot
+      - name: Install ${{ matrix.desktop }} on an isolated virtual disk and reboot
         run: |
           iso=$(find dist -maxdepth 1 -name 'veyra-linux-*.iso' -print -quit)
           test -n "$iso"
-          python3 tests/test-installed-qemu.py "$iso" --desktop plasma --log-dir e2e-logs
+          python3 tests/test-installed-qemu.py "$iso" --desktop "${{ matrix.desktop }}" --log-dir "e2e-logs/${{ matrix.desktop }}"
       - name: Preserve serial console diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: veyra-installed-qemu-console
-          path: e2e-logs/*.log
+          name: veyra-installed-qemu-console-${{ matrix.desktop }}
+          path: e2e-logs/
           if-no-files-found: ignore
           retention-days: 7

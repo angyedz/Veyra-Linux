@@ -22,7 +22,9 @@ def install_script(desktop):
     if desktop not in {"plasma", "gnome", "xfce", "lxqt", "minimal"}:
         raise ValueError("Invalid desktop")
     service_check = (
-        'test ! -e "$target/etc/runlevels/default/sddm"'
+        'test ! -e "$target/etc/runlevels/default/sddm" && '
+        'test ! -e "$target/etc/runlevels/default/gdm" && '
+        'test ! -e "$target/etc/runlevels/default/lightdm"'
         if desktop == "minimal" else
         'test -e "$target/etc/runlevels/default/SERVICE"'
     )
@@ -169,7 +171,7 @@ def upload_script(child, content, remote_path):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("iso", type=pathlib.Path)
-    parser.add_argument("--desktop", choices=["plasma", "gnome", "xfce", "lxqt"],
+    parser.add_argument("--desktop", choices=["plasma", "gnome", "xfce", "lxqt", "minimal"],
                         default="plasma")
     parser.add_argument("--log-dir", type=pathlib.Path, default=pathlib.Path("."))
     args = parser.parse_args()
