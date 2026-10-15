@@ -15,7 +15,7 @@ func TestInstallAppImageCopiesAndRegistersWithoutRunning(t *testing.T) {
 		t.Fatal(err)
 	}
 	source := filepath.Join(root, "Demo App.AppImage")
-	if err := writeELFFixture(source, "/lib64/ld-linux-x86-64.so.2"); err != nil {
+	if err := writeAppImageFixture(source, "/lib64/ld-linux-x86-64.so.2", 2); err != nil {
 		t.Fatal(err)
 	}
 
@@ -59,12 +59,41 @@ func TestInstallAppImageRejectsWrongFormatAndSymlink(t *testing.T) {
 	if _, err := installAppImageAt(textFile, home); err == nil {
 		t.Fatal("accepted a non-ELF AppImage")
 	}
+	plainELF := filepath.Join(root, "plain-elf.AppImage")
+	if err := writeELFFixture(plainELF, "/lib64/ld-linux-x86-64.so.2"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := installAppImageAt(plainELF, home); err == nil || !strings.Contains(err.Error(), "missing Type 1/2 marker") {
+		t.Fatalf("accepted a plain ELF with an AppImage extension: %v", err)
+	}
 	link := filepath.Join(root, "linked.AppImage")
 	if err := os.Symlink(textFile, link); err != nil {
 		t.Skipf("symlink creation unavailable: %v", err)
 	}
 	if _, err := installAppImageAt(link, home); err == nil {
 		t.Fatal("accepted a symlink AppImage")
+	}
+}
+
+func TestValidateAppImageAcceptsLegacyType1ISODescriptor(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "legacy.AppImage")
+	if err := writeELFFixture(path, "/lib64/ld-linux-x86-64.so.2"); err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.OpenFile(path, os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, writeErr := f.WriteAt([]byte{1, 'C', 'D', '0', '0', '1', 1}, 32768)
+	closeErr := f.Close()
+	if writeErr != nil {
+		t.Fatal(writeErr)
+	}
+	if closeErr != nil {
+		t.Fatal(closeErr)
+	}
+	if err := validateAppImageFormat(path); err != nil {
+		t.Fatalf("rejected legacy Type 1 image: %v", err)
 	}
 }
 
@@ -85,7 +114,7 @@ func TestAppImageUpdateHistoryAndRollback(t *testing.T) {
 		t.Fatal(err)
 	}
 	source := filepath.Join(root, "Editor.AppImage")
-	if err := writeELFFixture(source, "/lib64/ld-linux-x86-64.so.2"); err != nil {
+	if err := writeAppImageFixture(source, "/lib64/ld-linux-x86-64.so.2", 1); err != nil {
 		t.Fatal(err)
 	}
 	first, err := os.ReadFile(source)
@@ -136,7 +165,7 @@ func TestAppImageRollbackRefusesModifiedFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	source := filepath.Join(root, "Editor.AppImage")
-	if err := writeELFFixture(source, "/lib64/ld-linux-x86-64.so.2"); err != nil {
+	if err := writeAppImageFixture(source, "/lib64/ld-linux-x86-64.so.2", 2); err != nil {
 		t.Fatal(err)
 	}
 	installed, err := installAppImageAt(source, home)
@@ -149,4 +178,20 @@ func TestAppImageRollbackRefusesModifiedFile(t *testing.T) {
 	if err := rollbackLatestAppImage(home); err == nil {
 		t.Fatal("rollback accepted a modified AppImage")
 	}
+}
+
+func writeAppImageFixture(path, interpreter string, imageType byte) error {
+	if err := writeELFFixture(path, interpreter); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(path, os.O_WRONLY, 0)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	if imageType == 1 || imageType == 2 {
+		_, err = f.WriteAt([]byte{'A', 'I', imageType}, 8)
+		return err
+	}
+	return os.ErrInvalid
 }

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -124,6 +125,9 @@ func installAppImageAt(source, home string) (string, error) {
 	if err := appTemp.Close(); err != nil {
 		return "", fmt.Errorf("close staged AppImage: %w", err)
 	}
+	if err := validateAppImageFormat(appTempPath); err != nil {
+		return "", err
+	}
 	info, err := inspectELF(appTempPath)
 	if err != nil {
 		return "", fmt.Errorf("invalid AppImage: %w", err)
@@ -214,6 +218,38 @@ func installAppImageAt(source, home string) (string, error) {
 	}
 	keepBackup = true
 	return appPath, nil
+}
+
+func validateAppImageFormat(path string) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("read AppImage header: %w", err)
+	}
+	defer f.Close()
+
+	info, err := f.Stat()
+	if err != nil {
+		return fmt.Errorf("read AppImage metadata: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("AppImage must be a regular file")
+	}
+
+	var marker [3]byte
+	if _, err := f.ReadAt(marker[:], 8); err == nil {
+		if bytes.Equal(marker[:], []byte{'A', 'I', 1}) || bytes.Equal(marker[:], []byte{'A', 'I', 2}) {
+			return nil
+		}
+	}
+
+	// Older Type 1 images can omit the recommended AI\x01 marker. Their ISO
+	// 9660 primary volume descriptor remains at sector 16, byte offset 32768.
+	var descriptor [7]byte
+	if _, err := f.ReadAt(descriptor[:], 32768); err == nil &&
+		descriptor[0] == 1 && bytes.Equal(descriptor[1:6], []byte("CD001")) && descriptor[6] == 1 {
+		return nil
+	}
+	return fmt.Errorf("invalid AppImage: missing Type 1/2 marker and ISO 9660 descriptor")
 }
 
 func appImageDesktopEntry(name, path string) string {
