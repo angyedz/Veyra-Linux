@@ -14,6 +14,7 @@ on:
       - 'scripts/hardware-detect.sh'
       - 'scripts/build-iso.sh'
       - 'scripts/test-iso.sh'
+      - 'tests/test-installed-qemu.py'
       - 'scripts/bootstrap.sh'
       - 'scripts/compat.sh'
       - 'scripts/smoke.sh'
@@ -98,3 +99,33 @@ jobs:
           name: veyra-qemu-boot-log
           path: veyra-boot.log
           if-no-files-found: ignore
+  install-e2e:
+    name: Install on blank QEMU disk and boot it
+    needs: boot
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: veyra-linux-iso
+          path: dist
+      - name: Install QEMU and guest console test dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-system-x86 qemu-utils python3-pexpect
+      - name: Syntax-check console automation
+        run: python3 -m py_compile tests/test-installed-qemu.py
+      - name: Install Plasma on an isolated virtual disk and reboot
+        run: |
+          iso=$(find dist -maxdepth 1 -name 'veyra-linux-*.iso' -print -quit)
+          test -n "$iso"
+          python3 tests/test-installed-qemu.py "$iso" --desktop plasma --log-dir e2e-logs
+      - name: Preserve serial console diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: veyra-installed-qemu-console
+          path: e2e-logs/*.log
+          if-no-files-found: ignore
+          retention-days: 7
