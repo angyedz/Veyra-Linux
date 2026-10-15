@@ -36,4 +36,8 @@ build() {
 
 package() {
     DESTDIR="$pkgdir" cmake --install "$builddir/build"
+    # Alpine APK packages require compressed manual pages.
+    if [ -d "$pkgdir/usr/share/man" ]; then
+        find "$pkgdir/usr/share/man" -type f ! -name '*.gz' -exec gzip -9 '{}' ';'
+    fi
 }
