@@ -22,6 +22,7 @@ Usage:
   vpkg list                 [--from alpine|nix]
   vpkg update
   vpkg upgrade              [--from alpine|nix] [--check|--dry-run]
+  vpkg history              [--from alpine]
   vpkg install <file.AppImage> --from appimage
   vpkg install <package|file.deb>... --from glenv
   vpkg update|upgrade|history|rollback --from glenv
@@ -140,9 +141,12 @@ func dispatch(action, source string, packages []string) error {
 			}
 			return commandRunner("apk", "upgrade")
 		case "history":
-			return fmt.Errorf("Alpine APK transaction history is not available through vpkg yet")
+			if len(packages) != 0 {
+				return fmt.Errorf("history does not accept package names")
+			}
+			return showAPKHistory()
 		case "rollback":
-			return fmt.Errorf("Alpine APK rollback is not available through vpkg yet")
+			return fmt.Errorf("APK does not retain reversible transaction snapshots; vpkg cannot safely roll back an Alpine package operation")
 		}
 	} else if source == "appimage" {
 		switch action {

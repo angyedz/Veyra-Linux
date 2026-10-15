@@ -1,7 +1,9 @@
 package main
 
 import (
+	"os"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -91,6 +93,30 @@ func TestDispatch(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("commands = %#v, want %#v", got, want)
+	}
+}
+
+func TestPrintAPKHistory(t *testing.T) {
+	path := t.TempDir() + "/apk.log"
+	if err := os.WriteFile(path, []byte("2026-10-15 12:00:00 add vpkg\n2026-10-15 12:01:00 upgrade nix\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var output strings.Builder
+	if err := printAPKHistory(path, &output); err != nil {
+		t.Fatal(err)
+	}
+	got := output.String()
+	for _, want := range []string{"read-only", "add vpkg", "upgrade nix"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("history output %q does not contain %q", got, want)
+		}
+	}
+}
+
+func TestAPKRollbackIsExplicitlyUnsupported(t *testing.T) {
+	err := dispatch("rollback", "alpine", nil)
+	if err == nil || !strings.Contains(err.Error(), "cannot safely roll back") {
+		t.Fatalf("rollback error = %v, want explicit safe limitation", err)
 	}
 }
 

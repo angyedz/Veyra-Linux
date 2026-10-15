@@ -56,6 +56,7 @@ vpkg install ./MyApp.AppImage --from appimage
 vpkg history --from appimage
 vpkg rollback --from appimage
 vpkg inspect ./application
+vpkg history --from alpine
 sudo vpkg install ./package.deb --from glenv
 sudo vpkg install package-name --from glenv
 sudo vpkg update --from glenv
@@ -71,9 +72,10 @@ vpkg install ./MyApp.AppImage
 
 Nix commands act on the current user's profile. Do not use sudo for Nix
 unless you intend to modify root's profile. Alpine release upgrades are
-not automatic. `vpkg` does not silently switch package backends. Nix, AppImage,
-and glenv history and rollback are available; APK history and rollback are
-not implemented yet.
+not automatic. `vpkg` does not silently switch package backends. APK history
+shows the read-only `/var/log/apk.log`; Alpine APK does not retain reversible
+transaction snapshots, so `vpkg` cannot safely roll back APK operations. Nix,
+AppImage, and glenv history and rollback are available.
 
 Without `--from`, `vpkg search` checks enabled APK repositories (including
 Veyra) and Nix. `vpkg install` prefers an APK candidate, previews the resolved
