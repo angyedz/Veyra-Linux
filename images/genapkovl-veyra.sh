@@ -6,6 +6,7 @@ root=$(CDPATH='' cd "$(dirname "$0")/.." && pwd)
 
 mkdir -p etc/apk etc/sddm.conf.d etc/skel/Desktop etc/sudoers.d \
     etc/init.d etc/runlevels/boot etc/runlevels/default \
+    etc/calamares/modules etc/calamares/branding/veyra \
     usr/local/bin usr/local/lib/veyra usr/share/applications
 printf '%s\n' veyra > etc/hostname
 printf '%s\n' 'Veyra Linux — Lightweight by design. Compatible by nature.' > etc/motd
@@ -25,8 +26,14 @@ cp "$root/scripts/smoke.sh" usr/local/lib/veyra/smoke.sh
 cp "$root/images/veyra-live.initd" etc/init.d/veyra-live
 cp "$root/images/veyra-live-user.sh" usr/local/lib/veyra/live-user.sh
 cp "$root/images/veyra-install.sh" usr/local/bin/veyra-install
+cp "$root/scripts/installer-copy.sh" usr/local/lib/veyra/installer-copy.sh
+cp "$root/scripts/installer-prepare.sh" usr/local/lib/veyra/installer-prepare.sh
+cp "$root/calamares/settings.conf" etc/calamares/settings.conf
+cp "$root/calamares/modules/"*.conf etc/calamares/modules/
+cp "$root/calamares/branding/veyra/branding.desc" etc/calamares/branding/veyra/branding.desc
 chmod 755 etc/init.d/veyra-live usr/local/lib/veyra/live-user.sh \
-    usr/local/bin/veyra-install
+    usr/local/bin/veyra-install \
+    usr/local/lib/veyra/installer-copy.sh usr/local/lib/veyra/installer-prepare.sh
 
 cat > usr/local/bin/veyra-setup <<'SETUP'
 #!/bin/sh
