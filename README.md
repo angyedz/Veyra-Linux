@@ -9,6 +9,7 @@ Veyra Linux is an experimental Linux distribution built on Alpine Linux. It comb
 - **Lean foundation** — Alpine Linux and OpenRC.
 - **Broad application support** — the [glenv](https://github.com/angyedz/glenv) glibc environment alongside native musl.
 - **Flexible packages** — `apk` and the Nix package manager.
+- **Personalized desktop** — choose your interface during installation, with automatic hardware setup.
 - **Modular setup** — add only the components you need.
 - **Open development** — transparent scripts and automated builds.
 
