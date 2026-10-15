@@ -127,6 +127,32 @@ def run_command(child, command, timeout=300):
         raise RuntimeError(f"Guest command returned {code}: {command[:100]}")
 
 
+
+def upload_script(child, content, remote_path):
+    """Upload a script over a serial TTY without hitting MAX_CANON (4096)."""
+    # All remote paths are fixed internal allowlist values.
+    if not (
+        remote_path == "/tmp/e2e-install.sh"
+        or remote_path.startswith("/usr/local/lib/veyra/installer-")
+    ):
+        raise ValueError("Unexpected remote script path")
+    payload = base64.b64encode(content).decode("ascii")
+    run_command(child, ": > /tmp/veyra-e2e-transfer.b64", 30)
+    for pos in range(0, len(payload), 512):
+        chunk = payload[pos:pos + 512]
+        run_command(
+            child,
+            "printf '%s' '" + chunk + "' >> /tmp/veyra-e2e-transfer.b64",
+            45,
+        )
+    run_command(
+        child,
+        "base64 -d /tmp/veyra-e2e-transfer.b64 > " + remote_path
+        + " && sh -n " + remote_path,
+        45,
+    )
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("iso", type=pathlib.Path)
@@ -148,24 +174,20 @@ def main():
             child = boot(qemu, str(disk), str(args.iso.resolve()), log, 400)
             try:
                 login(child, 360)
-                payload = base64.b64encode(install_script(args.desktop).encode()).decode()
-                # Linux tty canonical input is limited to 4095 bytes per line.
-                # A one-line base64 payload silently truncates and leaves ash
-                # at its '>' continuation prompt. Send short, validated chunks.
-                run_command(child, ": > /tmp/veyra-e2e.b64", 30)
-                for pos in range(0, len(payload), 512):
-                    chunk = payload[pos:pos + 512]
-                    run_command(
+                # The cached-ISO workflow tests current installer scripts:
+                # patch them into the disposable live guest before installing.
+                srcroot = pathlib.Path(__file__).resolve().parents[1]
+                for script in (
+                    "installer-copy.sh", "installer-prepare.sh",
+                    "installer-desktop.sh", "installer-hardware.sh",
+                ):
+                    upload_script(
                         child,
-                        "printf '%s' '" + chunk + "' >> /tmp/veyra-e2e.b64",
-                        45,
+                        (srcroot / "scripts" / script).read_bytes(),
+                        "/usr/local/lib/veyra/" + script,
                     )
-                run_command(
-                    child,
-                    "base64 -d /tmp/veyra-e2e.b64 > /tmp/e2e-install.sh && "
-                    "sh -n /tmp/e2e-install.sh",
-                    45,
-                )
+                upload_script(child, install_script(args.desktop).encode(),
+                              "/tmp/e2e-install.sh")
                 # A shell in QEMU runs everything on ONLY the blank /dev/vda disk.
                 # It verifies actual installations/downloads rather than mocked calls.
                 run_command(child, "sh /tmp/e2e-install.sh", timeout=1500)

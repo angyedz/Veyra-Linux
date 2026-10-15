@@ -34,10 +34,6 @@ case "$choice" in
         ;;
 esac
 
-# Calamares runs from the live session, not inside this target. Strip its
-# development package from installed machines to avoid a dangling APK origin.
-chroot "$target" apk del veyra-calamares
-
 if [ "$choice" != plasma ]; then
     # These desktop apps are explicitly in the live ISO's apk world.
     # The shared Wayland/X11/graphics stack is retained as needed.

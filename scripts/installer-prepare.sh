@@ -40,6 +40,16 @@ if [ -r /etc/resolv.conf ]; then
     cp -L /etc/resolv.conf "$target/etc/resolv.conf"
 fi
 
+# Live images may leave a failed GRUB trigger in APK's package state
+# because GRUB cannot probe a RAM-backed / root. The installed target now
+# has a real block-device root, so repair that state before touching the kernel.
+# Calamares runs in the live session and does not belong on the target.
+if chroot "$target" apk info -e veyra-calamares >/dev/null 2>&1; then
+    chroot "$target" apk del veyra-calamares
+fi
+echo 'Repairing GRUB state on the mounted destination...'
+chroot "$target" apk fix --reinstall grub grub-bios grub-efi
+
 # Alpine live media mounts the kernel modules in a separate squashfs
 # modloop, which rsync deliberately does not copy to disk. Restore the
 # complete kernel and its modules from the official Alpine repository.
