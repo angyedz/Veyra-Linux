@@ -15,7 +15,7 @@ command -v timeout >/dev/null || {
 }
 
 set +e
-timeout "${VEYRA_BOOT_TIMEOUT:-120}" qemu-system-x86_64 \
+timeout "${VEYRA_BOOT_TIMEOUT:-180}" qemu-system-x86_64 \
     -machine accel=tcg -m 6144 -smp 2 \
     -vga virtio -display none -monitor none -serial stdio \
     -no-reboot -nic none -boot d -cdrom "$iso" > "$log" 2>&1
@@ -26,6 +26,18 @@ set -e
 if [ "$code" -ne 0 ] && [ "$code" -ne 124 ]; then
     tail -n 100 "$log" >&2
     echo "QEMU exited with unexpected status $code" >&2
+    exit 1
+fi
+# Reaching a login prompt alone is not enough: Alpine may still have failed
+# to unpack KDE packages into its RAM-backed root filesystem.
+if grep -aq 'No space left on device' "$log"; then
+    tail -n 100 "$log" >&2
+    echo 'Live image exhausted its tmpfs root while unpacking packages.' >&2
+    exit 1
+fi
+if grep -aq '^ERROR: Failed to create ' "$log"; then
+    tail -n 100 "$log" >&2
+    echo 'Live image has missing files after APK extraction.' >&2
     exit 1
 fi
 if ! grep -aEq '(^|[[:space:]])login:|Welcome to Alpine Linux|Veyra Linux \(experimental\)' "$log"; then
