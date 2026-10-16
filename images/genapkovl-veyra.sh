@@ -69,7 +69,7 @@ DisplayServer=x11
 
 [Autologin]
 User=veyra
-Session=plasma.desktop
+Session=plasmax11.desktop
 Relogin=true
 SDDM
 
@@ -94,7 +94,7 @@ DESKTOP
 cp usr/share/applications/veyra-install.desktop etc/skel/Desktop/Install\ Veyra\ Linux.desktop
 chmod 755 etc/skel/Desktop/Install\ Veyra\ Linux.desktop
 
-# KDE/Wayland needs eudev for input devices, DRM and seat management.
+# KDE sessions need eudev for input devices, DRM and seat management.
 for svc in udev udev-trigger udev-settle; do
     ln -s "/etc/init.d/$svc" "etc/runlevels/sysinit/$svc"
 done
