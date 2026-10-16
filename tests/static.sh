@@ -24,7 +24,7 @@ grep -qx 'ID=veyra' branding/os-release
 grep -qx 'ID_LIKE=alpine' branding/os-release
 grep -qx plasma-desktop images/packages-desktop.txt
 grep -qx plasma-workspace images/packages-desktop.txt
-for app in firefox konsole dolphin veyra-calamares; do
+for app in firefox konsole dolphin veyra-calamares testdisk tzdata; do
     grep -qx "$app" images/packages-desktop.txt || { echo "Missing live app: $app" >&2; exit 1; }
 done
 for app in systemsettings kscreen kde-cli-tools plasma-systemmonitor plasma-workspace-wallpapers ark kate spectacle kcalc; do
@@ -36,6 +36,56 @@ done
 grep -qx qt6-qtwayland images/packages-desktop.txt
 grep -qx sddm-openrc images/packages-desktop.txt
 test -f calamares/modules/packagechooser-desktop.conf
+test -f calamares/modules/locale.conf
+grep -q '^useSystemTimezone: false' calamares/modules/locale.conf
+grep -q '^      - locale
+test -f scripts/hardware-detect.sh
+grep -q 'Session=plasma.desktop' images/genapkovl-veyra.sh
+grep -q 'apk add veyra-glenv' scripts/bootstrap.sh
+grep -q 'apk add vpkg' scripts/bootstrap.sh
+grep -q 'setup-pkgrepo.sh' scripts/bootstrap.sh
+grep -q 'apk add nix nix-openrc' scripts/bootstrap.sh
+if grep -Eiq 'VPN|WireGuard|OpenVPN|OpenConnect' README.md; then
+    echo 'Keep README product-focused; put technical details in docs.' >&2
+    exit 1
+fi
+
+# Validate the Veyra image profile without fetching packages.
+(
+    profile_standard() { apks=alpine-base; }
+    # shellcheck disable=SC1091
+    . ./images/mkimg.veyra.sh
+    profile_veyra
+    [ "$image_name" = veyra-linux ]
+    [ "$apkovl" = images/genapkovl-veyra.sh ]
+    case " $apks " in *" nix "* ) : ;; * ) exit 1 ;; esac
+)
+
+# The image overlay is reproducible and contains our setup script.
+tmpdir=$(mktemp -d)
+trap 'rm -rf "$tmpdir"' EXIT HUP INT TERM
+(cd "$tmpdir" && sh "$root/images/genapkovl-veyra.sh" veyra)
+tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/hostname'
+tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/os-release'
+tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/fastfetch/config.jsonc'
+tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/skel/.config/neofetch/config.conf'
+tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'usr/share/veyra/fastfetch/logo.txt'
+tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'usr/local/bin/veyra-setup'
+tar -xOf "$tmpdir/veyra.apkovl.tar.gz" etc/hostname | grep -qx veyra
+tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/sddm.conf.d/10-veyra-live.conf'
+tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/init.d/veyra-live'
+tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/calamares/settings.conf'
+tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/calamares/modules/locale.conf'
+tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'usr/share/applications/veyra-testdisk.desktop'
+tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'usr/share/applications/veyra-photorec.desktop'
+tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/calamares/branding/veyra/desktop-plasma.svg'
+tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'usr/local/lib/veyra/installer-hardware.sh'
+tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'usr/local/lib/veyra/installer-desktop.sh'
+tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'usr/local/lib/veyra/installer-copy.sh'
+
+printf 'Veyra static and overlay tests passed\n'
+ calamares/settings.conf
+grep -q 'installer-prepare.sh' calamares/modules/shellprocess-prepare.conf
 test -f scripts/hardware-detect.sh
 grep -q 'Session=plasma.desktop' images/genapkovl-veyra.sh
 grep -q 'apk add veyra-glenv' scripts/bootstrap.sh
