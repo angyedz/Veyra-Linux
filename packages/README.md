@@ -1,6 +1,6 @@
 # Veyra native packages
 
-The `packages/src/` folder contains our own Alpine APKBUILD recipes.
+Canonical Veyra desktop APKBUILD recipes and sources live in `angyedz/veyra-pkgrepo/src/`. The workflow checks out that repository to `pkgrepo-source/` before building. Only `vpkg` continues to be built from `packages/src/vpkg/` in this distro repository.
 The `packages/repo/x86_64/` folder is a **local/CI build output**, not a public package mirror. Signed releases are published to `angyedz/veyra-pkgrepo` under `stable/v1/x86_64/` with a public key in `keys/`. Alpine's thousands of packages stay in upstream Alpine repositories.
 
 Published package families (new packages are published after CI builds succeed):
@@ -18,7 +18,7 @@ Initial packages:
   and the Wayland filter shared library. It does **not** embed the full
   Debian/glibc sysroot; setup downloads that on explicit invocation.
 
-Build on Alpine 3.22 with `alpine-sdk go git` and an abuild signing key:
+Build on Alpine 3.22 with `alpine-sdk go git`, an abuild signing key, and a checkout of `angyedz/veyra-pkgrepo` at `pkgrepo-source/`:
 
 ```sh
 sh packages/build.sh
