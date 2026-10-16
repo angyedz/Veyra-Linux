@@ -113,7 +113,38 @@ Icon=drive-removable-media
 Terminal=false
 Categories=System;Utility;
 PHOTOREC
-cp usr/share/applications/veyra-install.desktop etc/skel/Desktop/Install\ Veyra\ Linux.desktop
+# Disk rescue launchers open trusted upstream TestDisk/PhotoRec in Konsole.
+# Require explicit authentication; never run disk recovery as the live user.
+cat > usr/local/bin/veyra-testdisk <<'RECOVERY'
+#!/bin/sh
+exec konsole --hold -e su -c /usr/bin/testdisk
+RECOVERY
+cat > usr/local/bin/veyra-photorec <<'RECOVERY'
+#!/bin/sh
+exec konsole --hold -e su -c /usr/bin/photorec
+RECOVERY
+chmod 755 usr/local/bin/veyra-testdisk usr/local/bin/veyra-photorec
+cat > usr/share/applications/veyra-testdisk.desktop <<'DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=TestDisk (Disk Recovery)
+Comment=Recover partitions and repair partition tables (advanced)
+Exec=veyra-testdisk
+Icon=drive-harddisk
+Terminal=false
+Categories=System;Utility;
+DESKTOP
+cat > usr/share/applications/veyra-photorec.desktop <<'DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=PhotoRec (File Recovery)
+Comment=Recover lost files from disks and memory cards
+Exec=veyra-photorec
+Icon=drive-removable-media
+Terminal=false
+Categories=System;Utility;
+DESKTOP
+cp usr/share/applications/veyra-install.desktop etc/skel/Desktop/Install\\ Veyra\\ Linux.desktop
 chmod 755 etc/skel/Desktop/Install\ Veyra\ Linux.desktop
 
 # KDE sessions need eudev for input devices, DRM and seat management.
