@@ -24,6 +24,15 @@ grep -qx 'ID=veyra' branding/os-release
 grep -qx 'ID_LIKE=alpine' branding/os-release
 grep -qx plasma-desktop images/packages-desktop.txt
 grep -qx plasma-workspace images/packages-desktop.txt
+for app in firefox konsole dolphin veyra-calamares; do
+    grep -qx "$app" images/packages-desktop.txt || { echo "Missing live app: $app" >&2; exit 1; }
+done
+for app in systemsettings kscreen kde-cli-tools plasma-systemmonitor plasma-workspace-wallpapers ark kate spectacle kcalc; do
+    if grep -qx "$app" images/packages-desktop.txt; then
+        echo "Unwanted KDE app in minimal live image: $app" >&2
+        exit 1
+    fi
+done
 grep -qx qt6-qtwayland images/packages-desktop.txt
 grep -qx sddm-openrc images/packages-desktop.txt
 test -f calamares/modules/packagechooser-desktop.conf
