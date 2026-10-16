@@ -19,6 +19,9 @@ if grep -Eq '^grub(-bios|-efi)?$' images/packages-desktop.txt; then
     exit 1
 fi
 grep -q 'apk add --no-cache grub grub-bios grub-efi' scripts/installer-prepare.sh
+grep -qx fastfetch images/packages-desktop.txt
+grep -qx 'ID=veyra' branding/os-release
+grep -qx 'ID_LIKE=alpine' branding/os-release
 grep -qx plasma-desktop images/packages-desktop.txt
 grep -qx qt6-qtwayland images/packages-desktop.txt
 grep -qx sddm-openrc images/packages-desktop.txt
@@ -50,6 +53,9 @@ tmpdir=$(mktemp -d)
 trap 'rm -rf "$tmpdir"' EXIT HUP INT TERM
 (cd "$tmpdir" && sh "$root/images/genapkovl-veyra.sh" veyra)
 tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/hostname'
+tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/os-release'
+tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/fastfetch/config.jsonc'
+tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'usr/share/veyra/fastfetch/logo.txt'
 tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'usr/local/bin/veyra-setup'
 tar -xOf "$tmpdir/veyra.apkovl.tar.gz" etc/hostname | grep -qx veyra
 tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/sddm.conf.d/10-veyra-live.conf'
