@@ -23,7 +23,7 @@ grep -qx fastfetch images/packages-desktop.txt
 grep -qx 'ID=veyra' branding/os-release
 grep -qx 'ID_LIKE=alpine' branding/os-release
 grep -qx plasma-desktop images/packages-desktop.txt
-grep -qx plasma-x11-session images/packages-desktop.txt
+grep -qx plasma-workspace images/packages-desktop.txt
 grep -qx qt6-qtwayland images/packages-desktop.txt
 grep -qx sddm-openrc images/packages-desktop.txt
 test -f calamares/modules/packagechooser-desktop.conf
