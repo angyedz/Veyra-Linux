@@ -44,3 +44,21 @@ jobs:
           apk add --simulate linux-firmware-nvidia mesa-vulkan-nouveau
       - name: Verify native Nix package availability
         run: apk add --no-cache nix nix-openrc && nix --version
+
+  signed-pkgrepo:
+    name: Install signed Veyra packages on clean Alpine
+    runs-on: ubuntu-latest
+    container: alpine:3.22
+    steps:
+      - uses: actions/checkout@v4
+      - name: Trust pinned Veyra key and configure APK repository
+        run: sh scripts/setup-pkgrepo.sh
+      - name: Install vpkg and veyra-glenv using verified APK signatures
+        run: |
+          apk update
+          apk add --no-cache vpkg veyra-glenv
+          command -v vpkg
+          command -v veyra-glenv
+          apk info -e vpkg
+          apk info -e veyra-glenv
+          vpkg --help
