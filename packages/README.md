@@ -3,6 +3,14 @@
 The `packages/src/` folder contains our own Alpine APKBUILD recipes.
 The `packages/repo/x86_64/` folder is a **local/CI build output**, not a public package mirror. Signed releases are published to `angyedz/veyra-pkgrepo` under `stable/v1/x86_64/` with a public key in `keys/`. Alpine's thousands of packages stay in upstream Alpine repositories.
 
+Published package families (new packages are published after CI builds succeed):
+
+- Core: `vpkg`, `veyra-glenv`, `veyra-meta`.
+- Desktop: `veyra-themes`, `veyra-welcome`, `veyra-settings`, `veyra-appcenter`.
+- Maintenance: `veyra-update`, `veyra-repair`, `veyra-session`, `veyra-hardware`, `veyra-driver-manager`, `veyra-compat`.
+
+The first AppCenter version is an APK search/install/remove GUI using KDE's `kdialog` and `pkexec`. Nix is currently supported through the `vpkg` CLI, **not** through the AppCenter GUI. Driver Manager is diagnostic-only; it does not automatically install proprietary drivers. The compatibility utility reports backend availability and does not automatically run foreign binaries. These are early MVP tools, not finished graphical control centers.
+
 Initial packages:
 
 - `vpkg` — Go CLI frontend for Alpine APK and user-scoped Nix.
