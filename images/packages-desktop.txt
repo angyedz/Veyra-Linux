@@ -1,4 +1,5 @@
-# Veyra Linux graphical live environment.
+# Minimal Veyra graphical live environment: Firefox, Konsole, Dolphin and Calamares.
+# Plasma shell, display/login services and hardware/network dependencies remain.
 # Names must exist in Alpine's main/community repositories for the pinned release.
 plasma-desktop
 linux-lts
@@ -13,11 +14,6 @@ breeze
 breeze-icons
 sddm-breeze
 polkit-kde-agent-1
-systemsettings
-kscreen
-kde-cli-tools
-plasma-systemmonitor
-plasma-workspace-wallpapers
 sddm
 sddm-openrc
 xorg-server
@@ -48,10 +44,6 @@ xdg-desktop-portal-kde
 konsole
 fastfetch
 dolphin
-ark
-kate
-spectacle
-kcalc
 firefox
 nix
 nix-openrc
