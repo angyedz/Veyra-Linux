@@ -56,6 +56,12 @@ jobs:
             su builder -c 'abuild-keygen -a -n'
             echo ephemeral > /tmp/veyra-signing-mode
           fi
+          printf "PACKAGER_PRIVKEY=/home/builder/.abuild/veyra.rsa\n" > /home/builder/.abuild/abuild.conf
+          if [ "$(cat /tmp/veyra-signing-mode)" = ephemeral ]; then
+            key=$(find /home/builder/.abuild -maxdepth 1 -name "*.rsa" -print -quit)
+            printf "PACKAGER_PRIVKEY=%s\n" "$key" > /home/builder/.abuild/abuild.conf
+          fi
+          chown builder:builder /home/builder/.abuild/abuild.conf
           cp /home/builder/.abuild/*.rsa.pub /etc/apk/keys/
       - name: Compile Veyra APKs
         run: su builder -c "cd '$GITHUB_WORKSPACE' && sh packages/build.sh"
