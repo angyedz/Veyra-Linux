@@ -51,6 +51,12 @@ if chroot "$target" apk info -e veyra-calamares >/dev/null 2>&1; then
     chroot "$target" apk del veyra-calamares
 fi
 
+# Install the signed Veyra desktop essentials from our separate APK repository.
+# This runs only on the installed system, not on the RAM-backed live image.
+echo 'Installing Veyra desktop applications from the signed repository...'
+chroot "$target" apk update
+chroot "$target" apk add --no-cache veyra-meta veyra-appcenter
+
 # GRUB cannot generate a proper configuration on the RAM-backed live root.
 # Install and configure its BIOS/UEFI packages only AFTER the disk filesystem
 # has been mounted. This avoids a failed live grub.trigger poisoning APK state.
