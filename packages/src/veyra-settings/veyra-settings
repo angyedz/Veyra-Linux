@@ -1,0 +1,13 @@
+#!/bin/sh
+set -eu
+if ! command -v kdialog >/dev/null; then
+ echo 'Veyra Settings requires kdialog. Available: veyra-session, veyra-hardware, veyra-update, veyra-compat'; exit 0
+fi
+choice=$(kdialog --title 'Veyra Settings' --menu 'Choose a tool' session 'Session information' hardware 'Hardware details' compatibility 'Compatibility status' update 'Update instructions') || exit 0
+case "$choice" in
+ session) data=$(veyra-session status);;
+ hardware) data=$(veyra-hardware);;
+ compatibility) data=$(veyra-compat);;
+ update) data='Run sudo veyra-update in Konsole to upgrade installed APK packages.';;
+esac
+kdialog --title 'Veyra Settings' --msgbox "$data"
