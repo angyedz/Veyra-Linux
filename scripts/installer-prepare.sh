@@ -34,6 +34,10 @@ https://dl-cdn.alpinelinux.org/alpine/v3.22/main
 https://dl-cdn.alpinelinux.org/alpine/v3.22/community
 REPOS
 
+# Pin Veyra's trusted public signing key and preserve the package source
+# across installation; the live overlay includes this script.
+VEYRA_ROOT="$target" sh /usr/local/lib/veyra/setup-pkgrepo.sh
+
 # The new root needs DNS before desktop and firmware downloads begin.
 if [ -r /etc/resolv.conf ]; then
     rm -f "$target/etc/resolv.conf"
