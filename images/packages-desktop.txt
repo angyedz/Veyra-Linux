@@ -61,4 +61,7 @@ kpmcore
 efibootmgr
 parted
 e2fsprogs
+btrfs-progs
+xfsprogs
+f2fs-tools
 dosfstools
