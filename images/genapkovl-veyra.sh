@@ -161,7 +161,7 @@ ln -s /etc/init.d/udev-postmount etc/runlevels/default/udev-postmount
 
 # Live-specific services never get enabled on an installed target.
 ln -s /etc/init.d/veyra-live etc/runlevels/boot/veyra-live
-ln -s /etc/init.d/veyra-live-mode etc/runlevels/default/veyra-live-mode
+ln -s /etc/init.d/veyra-live-mode etc/runlevels/boot/veyra-live-mode
 for service in dbus elogind networkmanager sddm; do
     ln -s "/etc/init.d/$service" "etc/runlevels/default/$service"
 done
