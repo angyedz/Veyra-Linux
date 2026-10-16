@@ -40,6 +40,9 @@ cp "$root/scripts/setup-pkgrepo.sh" usr/local/lib/veyra/setup-pkgrepo.sh
 cp "$root/scripts/compat.sh" usr/local/lib/veyra/compat.sh
 cp "$root/scripts/smoke.sh" usr/local/lib/veyra/smoke.sh
 cp "$root/images/veyra-live.initd" etc/init.d/veyra-live
+cp "$root/images/veyra-live-mode.initd" etc/init.d/veyra-live-mode
+cp "$root/images/veyra-live-mode.sh" usr/local/lib/veyra/live-mode.sh
+cp "$root/images/veyra-tui-install.sh" usr/local/lib/veyra/tui-install.sh
 cp "$root/images/veyra-live-user.sh" usr/local/lib/veyra/live-user.sh
 cp "$root/images/veyra-install.sh" usr/local/bin/veyra-install
 cp "$root/images/veyra-install-tui.sh" usr/local/bin/veyra-install-tui
@@ -156,6 +159,7 @@ ln -s /etc/init.d/udev-postmount etc/runlevels/default/udev-postmount
 
 # Live-specific services never get enabled on an installed target.
 ln -s /etc/init.d/veyra-live etc/runlevels/boot/veyra-live
+ln -s /etc/init.d/veyra-live-mode etc/runlevels/default/veyra-live-mode
 for service in dbus elogind networkmanager sddm; do
     ln -s "/etc/init.d/$service" "etc/runlevels/default/$service"
 done
