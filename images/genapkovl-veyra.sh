@@ -148,7 +148,7 @@ Icon=drive-removable-media
 Terminal=false
 Categories=System;Utility;
 DESKTOP
-cp usr/share/applications/veyra-install.desktop etc/skel/Desktop/Install\\ Veyra\\ Linux.desktop
+cp usr/share/applications/veyra-install.desktop 'etc/skel/Desktop/Install Veyra Linux.desktop'
 chmod 755 etc/skel/Desktop/Install\ Veyra\ Linux.desktop
 
 # KDE sessions need eudev for input devices, DRM and seat management.
