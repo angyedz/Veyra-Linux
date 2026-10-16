@@ -28,7 +28,7 @@ grep -qx qt6-qtwayland images/packages-desktop.txt
 grep -qx sddm-openrc images/packages-desktop.txt
 test -f calamares/modules/packagechooser-desktop.conf
 test -f scripts/hardware-detect.sh
-grep -q 'Session=plasmax11.desktop' images/genapkovl-veyra.sh
+grep -q 'Session=plasma.desktop' images/genapkovl-veyra.sh
 grep -q 'apk add veyra-glenv' scripts/bootstrap.sh
 grep -q 'apk add vpkg' scripts/bootstrap.sh
 grep -q 'setup-pkgrepo.sh' scripts/bootstrap.sh
