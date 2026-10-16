@@ -56,7 +56,7 @@ install_veyra() {
     case "$hostname" in *[!a-zA-Z0-9-]*|''|-*|*-) say 'Invalid hostname.'; return ;; esac
     ask 'New user name: '; username=$answer
     case "$username" in *[!a-z_0-9-]*|''|[!a-z_]* ) say 'Invalid username.'; return ;; esac
-    [ "$username" != root ] && [ "$username" != veyra ] || { say 'Reserved username.'; return; }
+    if [ "$username" = root ] || [ "$username" = veyra ]; then say 'Reserved username.'; return; fi
     say "ROOT WILL BE FORMATTED: $rootdev ($fs). Desktop: $desktop. EFI: ${efi:-BIOS}."
     ask 'Type ERASE to continue: '
     [ "$answer" = ERASE ] || { say 'Cancelled.'; return; }
