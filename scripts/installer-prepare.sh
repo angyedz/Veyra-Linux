@@ -21,6 +21,7 @@ rm -f "$target/etc/runlevels/boot/veyra-live"
 # Disk installations must not depend on the live CD's squashfs modloop.
 rm -f "$target/etc/runlevels/sysinit/modloop" "$target/etc/runlevels/boot/modloop"
 rm -f "$target/usr/share/applications/veyra-install.desktop"
+rm -f "$target/usr/share/applications/veyra-testdisk.desktop" "$target/usr/share/applications/veyra-photorec.desktop"
 rm -f "$target/etc/skel/Desktop/Install Veyra Linux.desktop"
 rm -rf "$target/home/veyra"
 if [ -e "$target/etc/passwd" ]; then
