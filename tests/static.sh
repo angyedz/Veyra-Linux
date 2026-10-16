@@ -25,6 +25,10 @@ grep -qx fastfetch images/packages-desktop.txt
 grep -qx 'ID=veyra' branding/os-release
 grep -qx 'ID_LIKE=alpine' branding/os-release
 grep -qx plasma-desktop images/packages-desktop.txt
+test -f images/veyra-tui-install.sh
+test -f images/veyra-live-mode.sh
+grep -q 'veyra-live-mode' images/genapkovl-veyra.sh
+grep -q 'tui-install.sh' images/veyra-install.sh
 grep -qx plasma-workspace images/packages-desktop.txt
 for app in firefox konsole dolphin veyra-calamares testdisk tzdata; do
     grep -qx "$app" images/packages-desktop.txt || { echo "Missing live app: $app" >&2; exit 1; }
