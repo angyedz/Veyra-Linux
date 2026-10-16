@@ -46,6 +46,7 @@ pipewire-alsa
 xdg-desktop-portal
 xdg-desktop-portal-kde
 konsole
+fastfetch
 dolphin
 ark
 kate
