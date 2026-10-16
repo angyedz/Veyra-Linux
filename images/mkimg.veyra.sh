@@ -3,7 +3,7 @@
 profile_veyra() {
     profile_standard
     title="Veyra Linux"
-    desc="A fast and flexible Alpine-based KDE Plasma desktop."
+    desc="Minimal Plasma live ISO with Firefox, Konsole, Dolphin and installer."
     profile_abbrev="veyra"
     image_name="veyra-linux"
     arch="x86_64"

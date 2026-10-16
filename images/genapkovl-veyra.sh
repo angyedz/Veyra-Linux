@@ -40,8 +40,12 @@ cp "$root/scripts/setup-pkgrepo.sh" usr/local/lib/veyra/setup-pkgrepo.sh
 cp "$root/scripts/compat.sh" usr/local/lib/veyra/compat.sh
 cp "$root/scripts/smoke.sh" usr/local/lib/veyra/smoke.sh
 cp "$root/images/veyra-live.initd" etc/init.d/veyra-live
+cp "$root/images/veyra-live-mode.initd" etc/init.d/veyra-live-mode
+cp "$root/images/veyra-live-mode.sh" usr/local/lib/veyra/live-mode.sh
+cp "$root/images/veyra-tui-install.sh" usr/local/lib/veyra/tui-install.sh
 cp "$root/images/veyra-live-user.sh" usr/local/lib/veyra/live-user.sh
 cp "$root/images/veyra-install.sh" usr/local/bin/veyra-install
+cp "$root/images/veyra-install-tui.sh" usr/local/bin/veyra-install-tui
 cp "$root/scripts/installer-copy.sh" usr/local/lib/veyra/installer-copy.sh
 cp "$root/scripts/installer-prepare.sh" usr/local/lib/veyra/installer-prepare.sh
 cp "$root/scripts/installer-desktop.sh" usr/local/lib/veyra/installer-desktop.sh
@@ -51,8 +55,10 @@ cp "$root/calamares/branding/veyra/"*.svg etc/calamares/branding/veyra/
 cp "$root/calamares/settings.conf" etc/calamares/settings.conf
 cp "$root/calamares/modules/"*.conf etc/calamares/modules/
 cp "$root/calamares/branding/veyra/branding.desc" etc/calamares/branding/veyra/branding.desc
-chmod 755 etc/init.d/veyra-live usr/local/lib/veyra/live-user.sh \
-    usr/local/bin/veyra-install \
+chmod 755 etc/init.d/veyra-live etc/init.d/veyra-live-mode \
+    usr/local/lib/veyra/live-user.sh usr/local/lib/veyra/live-mode.sh \
+    usr/local/lib/veyra/tui-install.sh \
+    usr/local/bin/veyra-install usr/local/bin/veyra-install-tui \
     usr/local/lib/veyra/installer-copy.sh usr/local/lib/veyra/installer-prepare.sh \
     usr/local/lib/veyra/installer-desktop.sh usr/local/lib/veyra/installer-hardware.sh \
     usr/local/lib/veyra/hardware-detect.sh
@@ -73,11 +79,11 @@ Session=plasma.desktop
 Relogin=true
 SDDM
 
-# Root privileges only for the explicitly selected graphical installer.
+# Only specific installer and recovery commands receive passwordless privileges.
 # Live environment account has no permanent password.
 cat > etc/sudoers.d/veyra-live <<'SUDO'
 Defaults:veyra env_keep += "DISPLAY WAYLAND_DISPLAY XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS QT_QPA_PLATFORM"
-veyra ALL=(root) NOPASSWD: /usr/bin/calamares
+veyra ALL=(root) NOPASSWD: /usr/bin/calamares, /bin/sh /usr/local/lib/veyra/tui-install.sh, /usr/bin/testdisk, /usr/bin/photorec
 SUDO
 chmod 0440 etc/sudoers.d/veyra-live
 
@@ -91,7 +97,60 @@ Icon=drive-harddisk
 Terminal=false
 Categories=System;
 DESKTOP
-cp usr/share/applications/veyra-install.desktop etc/skel/Desktop/Install\ Veyra\ Linux.desktop
+# Recovery tools are intentionally available only in the live rescue environment.
+# No custom recovery implementation: both programs come from Alpine's TestDisk package.
+cat > usr/share/applications/veyra-testdisk.desktop <<'TESTDISK'
+[Desktop Entry]
+Type=Application
+Name=TestDisk — Recover Partitions
+Comment=Recover lost partitions and repair disk partition tables (advanced)
+Exec=konsole -e pkexec /usr/bin/testdisk
+Icon=drive-harddisk
+Terminal=false
+Categories=System;Utility;
+TESTDISK
+cat > usr/share/applications/veyra-photorec.desktop <<'PHOTOREC'
+[Desktop Entry]
+Type=Application
+Name=PhotoRec — Recover Files
+Comment=Recover deleted files to a different storage device
+Exec=konsole -e pkexec /usr/bin/photorec
+Icon=drive-removable-media
+Terminal=false
+Categories=System;Utility;
+PHOTOREC
+# Disk rescue launchers open trusted upstream TestDisk/PhotoRec in Konsole.
+# Require explicit authentication; never run disk recovery as the live user.
+cat > usr/local/bin/veyra-testdisk <<'RECOVERY'
+#!/bin/sh
+exec konsole --hold -e sudo /usr/bin/testdisk
+RECOVERY
+cat > usr/local/bin/veyra-photorec <<'RECOVERY'
+#!/bin/sh
+exec konsole --hold -e sudo /usr/bin/photorec
+RECOVERY
+chmod 755 usr/local/bin/veyra-testdisk usr/local/bin/veyra-photorec
+cat > usr/share/applications/veyra-testdisk.desktop <<'DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=TestDisk (Disk Recovery)
+Comment=Recover partitions and repair partition tables (advanced)
+Exec=veyra-testdisk
+Icon=drive-harddisk
+Terminal=false
+Categories=System;Utility;
+DESKTOP
+cat > usr/share/applications/veyra-photorec.desktop <<'DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=PhotoRec (File Recovery)
+Comment=Recover lost files from disks and memory cards
+Exec=veyra-photorec
+Icon=drive-removable-media
+Terminal=false
+Categories=System;Utility;
+DESKTOP
+cp usr/share/applications/veyra-install.desktop 'etc/skel/Desktop/Install Veyra Linux.desktop'
 chmod 755 etc/skel/Desktop/Install\ Veyra\ Linux.desktop
 
 # KDE sessions need eudev for input devices, DRM and seat management.
@@ -102,6 +161,7 @@ ln -s /etc/init.d/udev-postmount etc/runlevels/default/udev-postmount
 
 # Live-specific services never get enabled on an installed target.
 ln -s /etc/init.d/veyra-live etc/runlevels/boot/veyra-live
+ln -s /etc/init.d/veyra-live-mode etc/runlevels/default/veyra-live-mode
 for service in dbus elogind networkmanager sddm; do
     ln -s "/etc/init.d/$service" "etc/runlevels/default/$service"
 done

@@ -64,6 +64,9 @@ chroot "$target" grub-mkconfig -o /boot/grub/grub.cfg
 test -s "$target/boot/grub/grub.cfg"
 grep -q 'menuentry' "$target/boot/grub/grub.cfg"
 test -s "$target/boot/vmlinuz-lts"
+grep -Eq '^[[:xdigit:]]{32}$' "$target/etc/machine-id"
+test ! -e "$target/etc/veyra-release"
+test ! -e "$target/etc/runlevels/default/veyra-live-mode"
 test -s "$target/boot/initramfs-lts"
 grep -q 'rootfstype=ext4' "$target/etc/default/grub"
 grep -q 'ext4 virtio nvme' "$target/etc/mkinitfs/mkinitfs.conf"
@@ -99,7 +102,7 @@ def boot(qemu, disk, iso, logfile, timeout, installed=False):
 def login(child, timeout):
     # Wait for a REAL getty, never mistake the APK download progress bar
     # (which prints lots of '#') for an interactive root shell.
-    prompt = r"(?:^|[\r\n])(?:[A-Za-z0-9_.-]+ )?login: *"
+    prompt = r"(?:^|[\r\n])(?:[A-Za-z0-9_.()-]+ )?login: *"
     child.expect(prompt, timeout=timeout)
     child.sendline("root")
     index = child.expect(
@@ -204,6 +207,7 @@ def main():
                 login(child, 240)
                 run_command(child, "test -r /etc/veyra/desktop && cat /etc/veyra/desktop", 30)
                 run_command(child, "test -s /boot/grub/grub.cfg", 30)
+                run_command(child, "test -s /etc/machine-id && rc-service dbus status", 60)
                 print(f"VEYRA_E2E_SUCCESS: clean virtual disk boots installed {args.desktop}", flush=True)
             finally:
                 child.close(force=True)
