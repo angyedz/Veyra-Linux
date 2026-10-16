@@ -1,25 +1,25 @@
 #!/bin/sh
 set -eu
-command -v kdialog >/dev/null || { echo 'Install kdialog' >&2; exit 1; }
+command -v zenity >/dev/null || { echo 'Veyra AppCenter requires zenity' >&2; exit 1; }
 while :; do
- action=$(kdialog --title 'Veyra AppCenter' --menu 'Manage applications' search 'Search APK packages' install 'Install APK package' remove 'Remove APK package' nix 'Nix catalog instructions') || exit 0
+ action=$(zenity --list --title='Veyra AppCenter' --column='Action' search install remove nix --height=310) || exit 0
  case "$action" in
  search)
-   query=$(kdialog --title 'Search packages' --inputbox 'Package name or keyword:') || continue
+   query=$(zenity --entry --title='Search packages' --text='Package name or keyword:') || continue
    [ -n "$query" ] || continue
    result=$(apk search -v -- "$query" | head -80) || :
    [ -n "$result" ] || result='No matches found.'
-   kdialog --title 'APK search results' --msgbox "$result"
+   printf '%s\n' "$result" | zenity --text-info --title='APK search results' --width=850 --height=520
    ;;
  install|remove)
-   name=$(kdialog --title 'Veyra AppCenter' --inputbox 'Exact APK package name:') || continue
-   case "$name" in ''|*[!a-zA-Z0-9._+@-]*) kdialog --error 'Invalid package name'; continue ;; esac
-   kdialog --yesno "Run apk $([ "$action" = install ] && echo add || echo del) for $name?" || continue
-   command -v pkexec >/dev/null || { kdialog --error 'pkexec is required for administrative actions'; continue; }
+   name=$(zenity --entry --title='Veyra AppCenter' --text='Exact APK package name:') || continue
+   case "$name" in ''|*[!a-zA-Z0-9._+@-]*) zenity --error --text='Invalid package name'; continue ;; esac
+   zenity --question --text="Run apk $([ "$action" = install ] && echo add || echo del) for $name?" || continue
+   command -v pkexec >/dev/null || { zenity --error --text='pkexec is required for administrative actions'; continue; }
    if [ "$action" = install ]; then pkexec apk add -- "$name"; else pkexec apk del -- "$name"; fi
    ;;
  nix)
-   kdialog --msgbox 'Nix packages can be managed with vpkg:\nvpkg search NAME --from nix\nvpkg install NAME --from nix'
+   zenity --info --text='Use vpkg search NAME --from nix and vpkg install NAME --from nix in a terminal.'
    ;;
  esac
 done
