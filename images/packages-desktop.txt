@@ -5,12 +5,11 @@ plasma-desktop
 linux-lts
 veyra-calamares
 alpine-conf
+util-linux-login
 # Timezone database and open-source disk/file recovery tools.
 tzdata
 testdisk
 # Offline disk/partition and deleted-file recovery tools (TestDisk includes PhotoRec).
-testdisk
-tzdata
 rsync
 util-linux
 plasma-workspace
