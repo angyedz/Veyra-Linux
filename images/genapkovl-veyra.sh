@@ -91,6 +91,28 @@ Icon=drive-harddisk
 Terminal=false
 Categories=System;
 DESKTOP
+# Recovery tools are intentionally available only in the live rescue environment.
+# No custom recovery implementation: both programs come from Alpine's TestDisk package.
+cat > usr/share/applications/veyra-testdisk.desktop <<'TESTDISK'
+[Desktop Entry]
+Type=Application
+Name=TestDisk — Recover Partitions
+Comment=Recover lost partitions and repair disk partition tables (advanced)
+Exec=konsole -e pkexec /usr/bin/testdisk
+Icon=drive-harddisk
+Terminal=false
+Categories=System;Utility;
+TESTDISK
+cat > usr/share/applications/veyra-photorec.desktop <<'PHOTOREC'
+[Desktop Entry]
+Type=Application
+Name=PhotoRec — Recover Files
+Comment=Recover deleted files to a different storage device
+Exec=konsole -e pkexec /usr/bin/photorec
+Icon=drive-removable-media
+Terminal=false
+Categories=System;Utility;
+PHOTOREC
 cp usr/share/applications/veyra-install.desktop etc/skel/Desktop/Install\ Veyra\ Linux.desktop
 chmod 755 etc/skel/Desktop/Install\ Veyra\ Linux.desktop
 
