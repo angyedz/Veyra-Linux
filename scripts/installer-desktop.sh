@@ -40,8 +40,7 @@ if [ "$choice" != plasma ]; then
     chroot "$target" apk del \
         plasma-desktop plasma-workspace kwin plasma-nm plasma-pa \
         breeze breeze-icons sddm-breeze polkit-kde-agent-1 \
-        systemsettings kscreen kde-cli-tools plasma-systemmonitor \
-        plasma-workspace-wallpapers konsole dolphin ark kate spectacle kcalc \
+        konsole dolphin \
         xdg-desktop-portal-kde
 fi
 if [ "$display_manager" != sddm ]; then
