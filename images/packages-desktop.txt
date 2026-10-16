@@ -6,7 +6,6 @@ veyra-calamares
 rsync
 util-linux
 plasma-workspace
-plasma-x11-session
 kwin
 plasma-nm
 plasma-pa
