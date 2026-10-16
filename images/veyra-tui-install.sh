@@ -3,7 +3,7 @@
 set -eu
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 export PATH
-[ "$(id -u)" -eq 0 ] || { echo "Run as root: sudo veyra-install --tui" >&2; exit 1; }
+[ "$(id -u)" -eq 0 ] || { echo "Run as root: veyra-install --tui" >&2; exit 1; }
 [ -r /etc/veyra-release ] || { echo "Run this installer from Veyra Live ISO." >&2; exit 1; }
 lib=/usr/local/lib/veyra
 target=/mnt/veyra-target
