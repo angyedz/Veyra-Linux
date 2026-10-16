@@ -1,0 +1,16 @@
+#!/bin/sh
+set -eu
+if ! command -v kdialog >/dev/null; then echo 'Veyra AppCenter requires kdialog' >&2; exit 1; fi
+query=$(kdialog --title 'Veyra AppCenter' --inputbox 'Search Alpine and Veyra APK packages:') || exit 0
+[ -n "$query" ] || exit 0
+results=$(apk search -v -- "$query" | head -60) || :
+[ -n "$results" ] || { kdialog --sorry 'No matching APK packages found.'; exit 0; }
+kdialog --title 'Veyra AppCenter — Search results' --textbox /dev/stdin 700 450 <<EOF
+$results
+
+To install a package, run:
+sudo vpkg install PACKAGE_NAME
+
+For Nix packages:
+vpkg search PACKAGE_NAME --from nix
+EOF
