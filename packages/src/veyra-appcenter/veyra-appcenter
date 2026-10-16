@@ -1,16 +1,25 @@
 #!/bin/sh
 set -eu
-if ! command -v kdialog >/dev/null; then echo 'Veyra AppCenter requires kdialog' >&2; exit 1; fi
-query=$(kdialog --title 'Veyra AppCenter' --inputbox 'Search Alpine and Veyra APK packages:') || exit 0
-[ -n "$query" ] || exit 0
-results=$(apk search -v -- "$query" | head -60) || :
-[ -n "$results" ] || { kdialog --sorry 'No matching APK packages found.'; exit 0; }
-kdialog --title 'Veyra AppCenter — Search results' --textbox /dev/stdin 700 450 <<EOF
-$results
-
-To install a package, run:
-sudo vpkg install PACKAGE_NAME
-
-For Nix packages:
-vpkg search PACKAGE_NAME --from nix
-EOF
+command -v kdialog >/dev/null || { echo 'Install kdialog' >&2; exit 1; }
+while :; do
+ action=$(kdialog --title 'Veyra AppCenter' --menu 'Manage applications' search 'Search APK packages' install 'Install APK package' remove 'Remove APK package' nix 'Nix catalog instructions') || exit 0
+ case "$action" in
+ search)
+   query=$(kdialog --title 'Search packages' --inputbox 'Package name or keyword:') || continue
+   [ -n "$query" ] || continue
+   result=$(apk search -v -- "$query" | head -80) || :
+   [ -n "$result" ] || result='No matches found.'
+   kdialog --title 'APK search results' --msgbox "$result"
+   ;;
+ install|remove)
+   name=$(kdialog --title 'Veyra AppCenter' --inputbox 'Exact APK package name:') || continue
+   case "$name" in ''|*[!a-zA-Z0-9._+@-]*) kdialog --error 'Invalid package name'; continue ;; esac
+   kdialog --yesno "Run apk $([ "$action" = install ] && echo add || echo del) for $name?" || continue
+   command -v pkexec >/dev/null || { kdialog --error 'pkexec is required for administrative actions'; continue; }
+   if [ "$action" = install ]; then pkexec apk add -- "$name"; else pkexec apk del -- "$name"; fi
+   ;;
+ nix)
+   kdialog --msgbox 'Nix packages can be managed with vpkg:\nvpkg search NAME --from nix\nvpkg install NAME --from nix'
+   ;;
+ esac
+done
