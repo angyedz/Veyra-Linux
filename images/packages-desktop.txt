@@ -4,6 +4,9 @@
 plasma-desktop
 linux-lts
 veyra-calamares
+# Timezone database and open-source disk/file recovery tools.
+tzdata
+testdisk
 # Offline disk/partition and deleted-file recovery tools (TestDisk includes PhotoRec).
 testdisk
 tzdata
