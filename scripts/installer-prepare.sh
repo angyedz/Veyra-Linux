@@ -92,14 +92,11 @@ done
     exit 1
 }
 
-# Generate an actual 128-bit machine ID for D-Bus and elogind on first boot.
-# An empty machine-id is invalid and prevents D-Bus, networking and SDDM from starting.
-[ -r /proc/sys/kernel/random/uuid ] || { echo 'Kernel random UUID source unavailable' >&2; exit 1; }
+# Generate a valid 128-bit machine-id. An empty ID prevents D-Bus from starting.
+[ -r /proc/sys/kernel/random/uuid ] || { echo 'Missing kernel random UUID source' >&2; exit 1; }
 tr -d '-' < /proc/sys/kernel/random/uuid > "$target/etc/machine-id"
-if ! grep -Eq '^[[:xdigit:]]{32}
-echo 'Prepared installed Veyra environment.'
- "$target/etc/machine-id"; then
-    echo 'Failed to generate valid installed machine-id' >&2
+if ! grep -Eq '^[[:xdigit:]]{32}$' "$target/etc/machine-id"; then
+    echo 'Invalid installed machine-id' >&2
     exit 1
 fi
 rm -f "$target/var/lib/dbus/machine-id"
