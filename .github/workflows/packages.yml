@@ -15,7 +15,10 @@ on:
       - '.github/workflows/packages.yml'
   workflow_dispatch:
 permissions:
-  contents: write
+  contents: read
+concurrency:
+  group: veyra-packages-publish
+  cancel-in-progress: false
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -26,6 +29,7 @@ jobs:
           go-version-file: vpkg/go.mod
       - run: cd vpkg && go test ./... && go vet ./...
   build:
+    needs: test
     runs-on: ubuntu-latest
     container: alpine:3.22
     steps:
@@ -47,33 +51,14 @@ jobs:
             printf '%s' "$VEYRA_PUB_B64" | base64 -d > /home/builder/.abuild/veyra.rsa.pub
             chmod 600 /home/builder/.abuild/veyra.rsa
             chown -R builder:builder /home/builder/.abuild
-            echo "stable" > /tmp/veyra-signing-mode
+            echo stable > /tmp/veyra-signing-mode
           else
             su builder -c 'abuild-keygen -a -n'
-            echo "ephemeral" > /tmp/veyra-signing-mode
+            echo ephemeral > /tmp/veyra-signing-mode
           fi
           cp /home/builder/.abuild/*.rsa.pub /etc/apk/keys/
       - name: Compile Veyra APKs
         run: su builder -c "cd '$GITHUB_WORKSPACE' && sh packages/build.sh"
-      - name: Publish stable-key signed binaries into this repository
-        if: github.event_name == 'push'
-        run: |
-          if [ "$(cat /tmp/veyra-signing-mode)" != stable ]; then
-            echo 'Stable signing secrets absent: APKs uploaded as CI artifacts only.'
-            exit 0
-          fi
-          mkdir -p packages/keys
-          cp /home/builder/.abuild/veyra.rsa.pub packages/keys/veyra.rsa.pub
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add packages/repo/x86_64 packages/keys/veyra.rsa.pub
-          if git diff --cached --quiet; then
-            echo 'No binary package changes'
-            exit 0
-          fi
-          git commit -m "packages: publish signed vpkg and glenv APKs [skip ci]"
-          git push origin HEAD:main
       - uses: actions/upload-artifact@v4
         with:
           name: veyra-native-apks
@@ -82,3 +67,39 @@ jobs:
             packages/repo/x86_64/APKINDEX.tar.gz
           if-no-files-found: error
           retention-days: 7
+      - name: Require persistent signing key for publication
+        if: github.event_name != 'pull_request'
+        run: |
+          test "$(cat /tmp/veyra-signing-mode)" = stable || {
+            echo 'Cannot publish with an ephemeral signing key.' >&2
+            exit 1
+          }
+          test -s packages/repo/x86_64/APKINDEX.tar.gz
+          test -n "$(find packages/repo/x86_64 -maxdepth 1 -name '*.apk' -print -quit)"
+      - name: Checkout package distribution repository
+        if: github.event_name != 'pull_request'
+        uses: actions/checkout@v4
+        with:
+          repository: angyedz/veyra-pkgrepo
+          token: ${{ secrets.VEYRA_PKGREPO_TOKEN }}
+          path: pkgrepo
+          persist-credentials: true
+      - name: Publish signed APK repository
+        if: github.event_name != 'pull_request'
+        run: |
+          set -eu
+          mkdir -p pkgrepo/stable/v1/x86_64 pkgrepo/keys
+          cp packages/repo/x86_64/*.apk pkgrepo/stable/v1/x86_64/
+          cp packages/repo/x86_64/APKINDEX.tar.gz pkgrepo/stable/v1/x86_64/
+          cp /home/builder/.abuild/veyra.rsa.pub pkgrepo/keys/veyra.rsa.pub
+          cd pkgrepo
+          git config --global --add safe.directory "$PWD"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add stable/v1/x86_64 keys/veyra.rsa.pub
+          if git diff --cached --quiet; then
+            echo 'No package changes'
+            exit 0
+          fi
+          git commit -m "packages: publish signed Veyra APKs"
+          git push origin HEAD:main
