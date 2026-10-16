@@ -81,7 +81,7 @@ SDDM
 # Live environment account has no permanent password.
 cat > etc/sudoers.d/veyra-live <<'SUDO'
 Defaults:veyra env_keep += "DISPLAY WAYLAND_DISPLAY XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS QT_QPA_PLATFORM"
-veyra ALL=(root) NOPASSWD: /usr/bin/calamares, /usr/bin/testdisk, /usr/bin/photorec
+veyra ALL=(root) NOPASSWD: /usr/bin/calamares, /bin/sh /usr/local/lib/veyra/tui-install.sh, /bin/sh, /bin/bash, /usr/bin/cfdisk, /sbin/cfdisk, /usr/bin/testdisk, /usr/bin/photorec
 SUDO
 chmod 0440 etc/sudoers.d/veyra-live
 
