@@ -4,13 +4,13 @@ on:
     branches: [main]
     paths:
       - 'vpkg/**'
-      - 'packages/src/**'
+      - 'packages/src/vpkg/**'
       - 'packages/build.sh'
       - '.github/workflows/packages.yml'
   pull_request:
     paths:
       - 'vpkg/**'
-      - 'packages/src/**'
+      - 'packages/src/vpkg/**'
       - 'packages/build.sh'
       - '.github/workflows/packages.yml'
   workflow_dispatch:
@@ -34,6 +34,12 @@ jobs:
     container: alpine:3.22
     steps:
       - uses: actions/checkout@v4
+      - name: Checkout canonical Veyra package sources
+        uses: actions/checkout@v4
+        with:
+          repository: angyedz/veyra-pkgrepo
+          path: pkgrepo-source
+          persist-credentials: false
       - name: Install build tools
         run: apk add --no-cache alpine-sdk go git && apk update
       - name: Prepare unprivileged Alpine builder and signing key
