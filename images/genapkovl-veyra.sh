@@ -16,7 +16,7 @@ printf '%s\n' 'Veyra Linux' > etc/issue
 printf '%s\n' 'Veyra Linux development live image' > etc/veyra-release
 cp "$root/branding/os-release" etc/os-release
 # Compatibility metadata for fetch utilities that still read LSB fields.
-printf '%s\\n' 'DISTRIB_ID=Veyra' 'DISTRIB_RELEASE=1.0' 'DISTRIB_CODENAME=glacier' 'DISTRIB_DESCRIPTION="Veyra Linux 1.0 (Glacier)"' > etc/lsb-release
+printf '%s\n' 'DISTRIB_ID=Veyra' 'DISTRIB_RELEASE=1.0' 'DISTRIB_CODENAME=glacier' 'DISTRIB_DESCRIPTION="Veyra Linux 1.0 (Glacier)"' > etc/lsb-release
 cp "$root/branding/fastfetch/config.jsonc" etc/fastfetch/config.jsonc
 cp "$root/branding/fastfetch/config.jsonc" etc/skel/.config/fastfetch/config.jsonc
 cp "$root/branding/fastfetch/logo.txt" usr/share/veyra/fastfetch/logo.txt
