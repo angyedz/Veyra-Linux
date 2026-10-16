@@ -25,7 +25,9 @@ grep -qx sddm-openrc images/packages-desktop.txt
 test -f calamares/modules/packagechooser-desktop.conf
 test -f scripts/hardware-detect.sh
 grep -q 'Session=plasma.desktop' images/genapkovl-veyra.sh
-grep -q 'GLENV_REF' scripts/bootstrap.sh
+grep -q 'apk add veyra-glenv' scripts/bootstrap.sh
+grep -q 'apk add vpkg' scripts/bootstrap.sh
+grep -q 'setup-pkgrepo.sh' scripts/bootstrap.sh
 grep -q 'apk add nix nix-openrc' scripts/bootstrap.sh
 if grep -Eiq 'VPN|WireGuard|OpenVPN|OpenConnect' README.md; then
     echo 'Keep README product-focused; put technical details in docs.' >&2
