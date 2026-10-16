@@ -15,7 +15,7 @@ if [ -z "$mode" ] && [ -c /dev/tty1 ]; then
 fi
 if [ "$mode" = tty ]; then
     rc-update del sddm default >/dev/null 2>&1 || :
-    # Do not start a graphical session on this boot.
+    # Autologin is limited to the disposable live environment.\n    if [ -f /etc/inittab ]; then\n        sed -i '/^tty1::respawn:/c\\tty1::respawn:/sbin/agetty --autologin veyra 38400 tty1 linux' /etc/inittab\n        telinit q 2>/dev/null || :\n    fi\n    # Do not start a graphical session on this boot.
     touch /run/veyra-live-tty
     printf '\nTTY selected. Log in as veyra, then run: sudo veyra-install\n' > /dev/tty1
 else
