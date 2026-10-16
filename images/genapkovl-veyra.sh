@@ -9,7 +9,7 @@ mkdir -p etc/apk etc/sddm.conf.d etc/skel/Desktop etc/sudoers.d \
     etc/calamares/modules etc/calamares/branding/veyra \
     usr/local/bin usr/local/lib/veyra usr/share/applications \
     usr/share/veyra/fastfetch usr/share/pixmaps etc/fastfetch \
-    etc/skel/.config/fastfetch
+    etc/skel/.config/fastfetch etc/skel/.config/neofetch
 printf '%s\n' veyra > etc/hostname
 printf '%s\n' 'Veyra Linux — Lightweight by design. Compatible by nature.' > etc/motd
 printf '%s\n' 'Veyra Linux' > etc/issue
@@ -20,6 +20,12 @@ printf '%s\\n' 'DISTRIB_ID=Veyra' 'DISTRIB_RELEASE=1.0' 'DISTRIB_CODENAME=glacie
 cp "$root/branding/fastfetch/config.jsonc" etc/fastfetch/config.jsonc
 cp "$root/branding/fastfetch/config.jsonc" etc/skel/.config/fastfetch/config.jsonc
 cp "$root/branding/fastfetch/logo.txt" usr/share/veyra/fastfetch/logo.txt
+cat > etc/skel/.config/neofetch/config.conf <<'NEOFETCH'
+# Use Veyra's own ASCII art instead of guessing from the distro ID.
+image_backend="ascii"
+image_source="/usr/share/veyra/fastfetch/logo.txt"
+ascii_distro="off"
+NEOFETCH
 cp "$root/branding/veyra-logo.svg" usr/share/pixmaps/veyra-logo.svg
 
 # Alpine initramfs installs this package set from the ISO's offline repository
