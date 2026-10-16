@@ -1,4 +1,4 @@
 #!/bin/sh
 set -eu
-msg='Welcome to Veyra Linux!\n\nOpen Veyra AppCenter to browse packages, or use Veyra Settings to explore system tools.'
-if command -v kdialog >/dev/null; then kdialog --title 'Welcome to Veyra Linux' --msgbox "$(printf '%b' "$msg")"; else printf '%b\n' "$msg"; fi
+message='Welcome to Veyra Linux! Open Veyra AppCenter to browse packages or Veyra Settings to explore system tools.'
+if command -v zenity >/dev/null; then zenity --info --title='Welcome to Veyra Linux' --text="$message" --width=440; else printf '%s\n' "$message"; fi
