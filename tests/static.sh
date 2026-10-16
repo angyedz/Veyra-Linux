@@ -14,6 +14,8 @@ done
 [ -f images/packages-desktop.txt ]
 [ -f calamares/settings.conf ]
 grep -qx linux-lts images/packages-desktop.txt
+grep -qx alpine-conf images/packages-desktop.txt
+sh -n images/veyra-install-tui.sh
 if grep -Eq '^grub(-bios|-efi)?$' images/packages-desktop.txt; then
     echo 'GRUB must only be installed on the disk-backed target' >&2
     exit 1
@@ -71,6 +73,7 @@ tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/fastfetch/config.jsonc'
 tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/skel/.config/neofetch/config.conf'
 tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'usr/share/veyra/fastfetch/logo.txt'
 tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'usr/local/bin/veyra-setup'
+tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'usr/local/bin/veyra-install-tui'
 tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'usr/share/applications/veyra-testdisk.desktop'
 tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'usr/share/applications/veyra-photorec.desktop'
 tar -xOf "$tmpdir/veyra.apkovl.tar.gz" etc/hostname | grep -qx veyra
