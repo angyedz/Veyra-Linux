@@ -7,11 +7,18 @@ root=$(CDPATH='' cd "$(dirname "$0")/.." && pwd)
 mkdir -p etc/apk etc/sddm.conf.d etc/skel/Desktop etc/sudoers.d \
     etc/init.d etc/runlevels/sysinit etc/runlevels/boot etc/runlevels/default \
     etc/calamares/modules etc/calamares/branding/veyra \
-    usr/local/bin usr/local/lib/veyra usr/share/applications
+    usr/local/bin usr/local/lib/veyra usr/share/applications \
+    usr/share/veyra/fastfetch usr/share/pixmaps etc/fastfetch \
+    etc/skel/.config/fastfetch
 printf '%s\n' veyra > etc/hostname
 printf '%s\n' 'Veyra Linux — Lightweight by design. Compatible by nature.' > etc/motd
 printf '%s\n' 'Veyra Linux' > etc/issue
 printf '%s\n' 'Veyra Linux development live image' > etc/veyra-release
+cp "$root/branding/os-release" etc/os-release
+cp "$root/branding/fastfetch/config.jsonc" etc/fastfetch/config.jsonc
+cp "$root/branding/fastfetch/config.jsonc" etc/skel/.config/fastfetch/config.jsonc
+cp "$root/branding/fastfetch/logo.txt" usr/share/veyra/fastfetch/logo.txt
+cp "$root/branding/veyra-logo.svg" usr/share/pixmaps/veyra-logo.svg
 
 # Alpine initramfs installs this package set from the ISO's offline repository
 # to tmpfs; no conventional root= disk is used.
