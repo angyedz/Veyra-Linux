@@ -21,6 +21,7 @@ printf '%s\n' 'Veyra Linux development live image' > etc/veyra-release
 } > etc/apk/world
 
 cp "$root/scripts/bootstrap.sh" usr/local/lib/veyra/bootstrap.sh
+cp "$root/scripts/setup-pkgrepo.sh" usr/local/lib/veyra/setup-pkgrepo.sh
 cp "$root/scripts/compat.sh" usr/local/lib/veyra/compat.sh
 cp "$root/scripts/smoke.sh" usr/local/lib/veyra/smoke.sh
 cp "$root/images/veyra-live.initd" etc/init.d/veyra-live
