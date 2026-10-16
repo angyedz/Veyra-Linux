@@ -62,3 +62,21 @@ jobs:
           apk info -e vpkg
           apk info -e veyra-glenv
           vpkg --help
+      - name: Install the signed Veyra desktop and AppCenter
+        run: |
+          set -eu
+          apk add --no-cache veyra-meta veyra-appcenter
+          apk info -e veyra-meta
+          apk info -e veyra-appcenter
+          command -v veyra-appcenter
+          test -s /usr/share/veyra/appcenter/main.qml
+          test -s /usr/share/veyra/appcenter/backend.py
+      - name: Launch signed AppCenter from APK installation
+        run: |
+          set +e
+          QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software timeout 6s veyra-appcenter > /tmp/veyra-signed-appcenter.log 2>&1
+          result=$?
+          set -e
+          cat /tmp/veyra-signed-appcenter.log
+          grep -q 'VEYRA_QML_READY' /tmp/veyra-signed-appcenter.log
+          test "$result" -eq 124 || test "$result" -eq 143
