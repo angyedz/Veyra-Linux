@@ -3,6 +3,8 @@ set -eu
 [ -f /etc/alpine-release ] || exit 1
 command -v apk >/dev/null
 command -v rc-service >/dev/null
+command -v vpkg >/dev/null
+apk policy vpkg | grep -q "vpkg"
 if [ "${ENABLE_GLENV:-1}" = 1 ]; then
     command -v glenv >/dev/null || { echo 'glenv not installed' >&2; exit 1; }
     glenv doctor
