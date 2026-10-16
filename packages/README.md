@@ -1,9 +1,7 @@
 # Veyra native packages
 
 The `packages/src/` folder contains our own Alpine APKBUILD recipes.
-The `packages/repo/x86_64/` folder is reserved for compiled, signed
-`.apk` packages and the signed `APKINDEX.tar.gz`. Alpine's thousands
-of packages stay in upstream Alpine repositories.
+The `packages/repo/x86_64/` folder is a **local/CI build output**, not a public package mirror. Signed releases are published to `angyedz/veyra-pkgrepo` under `stable/v1/x86_64/` with a public key in `keys/`. Alpine's thousands of packages stay in upstream Alpine repositories.
 
 Initial packages:
 
@@ -18,15 +16,9 @@ Build on Alpine 3.22 with `alpine-sdk go git` and an abuild signing key:
 sh packages/build.sh
 ```
 
-CI builds APKs and publishes them as workflow artifacts. With stable signing
-secrets configured, CI also commits the **compiled signed APK files** and
-signed `APKINDEX.tar.gz` into `packages/repo/x86_64/`, and the public
-signing key into `packages/keys/`. The private signing key must never
-be committed.
+CI builds APKs and publishes them as workflow artifacts. On pushes to `main` and manual runs, CI also publishes the **signed APK files** and signed `APKINDEX.tar.gz` to the separate `angyedz/veyra-pkgrepo` repository. It never commits build outputs to the Veyra-Linux source repository. The private signing key must never be committed.
 
-Configure two GitHub Actions secrets: `VEYRA_ABUILD_PRIVATE_KEY_B64`
-and `VEYRA_ABUILD_PUBLIC_KEY_B64` containing base64-encoded matching
-`abuild-keygen` key files. Until these are configured, CI uses an
+Configure three GitHub Actions secrets: `VEYRA_ABUILD_PRIVATE_KEY_B64` and `VEYRA_ABUILD_PUBLIC_KEY_B64` containing base64-encoded matching `abuild-keygen` key files, and `VEYRA_PKGREPO_TOKEN`, a fine-grained token with Contents read/write access **only** to `angyedz/veyra-pkgrepo`. Until these are configured, CI uses an
 ephemeral key and **does not publish packages to the git repository**;
 only CI artifacts are generated. Install the matching public key into
 `/etc/apk/keys/` before trusting this repository. Never use
