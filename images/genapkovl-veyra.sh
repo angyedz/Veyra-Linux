@@ -55,7 +55,9 @@ cp "$root/calamares/branding/veyra/"*.svg etc/calamares/branding/veyra/
 cp "$root/calamares/settings.conf" etc/calamares/settings.conf
 cp "$root/calamares/modules/"*.conf etc/calamares/modules/
 cp "$root/calamares/branding/veyra/branding.desc" etc/calamares/branding/veyra/branding.desc
-chmod 755 etc/init.d/veyra-live usr/local/lib/veyra/live-user.sh \
+chmod 755 etc/init.d/veyra-live etc/init.d/veyra-live-mode \
+    usr/local/lib/veyra/live-user.sh usr/local/lib/veyra/live-mode.sh \
+    usr/local/lib/veyra/tui-install.sh \
     usr/local/bin/veyra-install usr/local/bin/veyra-install-tui \
     usr/local/lib/veyra/installer-copy.sh usr/local/lib/veyra/installer-prepare.sh \
     usr/local/lib/veyra/installer-desktop.sh usr/local/lib/veyra/installer-hardware.sh \
@@ -77,11 +79,11 @@ Session=plasma.desktop
 Relogin=true
 SDDM
 
-# Root privileges only for the explicitly selected graphical installer.
+# Only specific installer and recovery commands receive passwordless privileges.
 # Live environment account has no permanent password.
 cat > etc/sudoers.d/veyra-live <<'SUDO'
 Defaults:veyra env_keep += "DISPLAY WAYLAND_DISPLAY XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS QT_QPA_PLATFORM"
-veyra ALL=(root) NOPASSWD: /usr/bin/calamares, /bin/sh /usr/local/lib/veyra/tui-install.sh, /bin/sh, /bin/bash, /usr/bin/cfdisk, /sbin/cfdisk, /usr/bin/testdisk, /usr/bin/photorec
+veyra ALL=(root) NOPASSWD: /usr/bin/calamares, /bin/sh /usr/local/lib/veyra/tui-install.sh, /usr/bin/testdisk, /usr/bin/photorec
 SUDO
 chmod 0440 etc/sudoers.d/veyra-live
 
