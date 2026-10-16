@@ -10,13 +10,12 @@ case "$root" in
 esac
 [ -f "$root/etc/alpine-release" ] || { echo 'Alpine root not found' >&2; exit 1; }
 [ -d "$root/etc/apk" ] || { echo 'APK configuration not found' >&2; exit 1; }
-command -v sha256sum >/dev/null || exit 1
 repo='https://raw.githubusercontent.com/angyedz/veyra-pkgrepo/main/stable/v1/x86_64'
 mkdir -p "$root/etc/apk/keys"
 # Trust anchor is embedded in the distribution source; never trust a
 # remotely downloaded replacement key without explicit review.
 tmp=$(mktemp)
-trap 'rm -f "$tmp"' EXIT HUP INT TERM
+trap 'rm -f "$tmp"' 0 HUP INT TERM
 cat > "$tmp" <<'VEYRA_PUBLIC_KEY'
 -----BEGIN PUBLIC KEY-----
 MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEArdUDsMMIjUSA28/ymlgf
