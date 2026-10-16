@@ -64,6 +64,8 @@ chroot "$target" grub-mkconfig -o /boot/grub/grub.cfg
 test -s "$target/boot/grub/grub.cfg"
 grep -q 'menuentry' "$target/boot/grub/grub.cfg"
 test -s "$target/boot/vmlinuz-lts"
+test ! -e "$target/etc/veyra-release"
+test ! -e "$target/etc/runlevels/default/veyra-live-mode"
 test -s "$target/boot/initramfs-lts"
 grep -q 'rootfstype=ext4' "$target/etc/default/grub"
 grep -q 'ext4 virtio nvme' "$target/etc/mkinitfs/mkinitfs.conf"
