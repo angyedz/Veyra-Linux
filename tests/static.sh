@@ -31,7 +31,7 @@ grep -q 'tui-install.sh' images/veyra-install.sh
 grep -q 'veyra-install --tui' images/veyra-install-tui.sh
 grep -q 'runlevels/default/veyra-live-mode' scripts/installer-prepare.sh
 grep -qx plasma-workspace images/packages-desktop.txt
-for app in firefox konsole dolphin veyra-calamares testdisk tzdata; do
+for app in firefox konsole dolphin veyra-calamares testdisk tzdata btrfs-progs xfsprogs f2fs-tools; do
     grep -qx "$app" images/packages-desktop.txt || { echo "Missing live app: $app" >&2; exit 1; }
 done
 for app in systemsettings kscreen kde-cli-tools plasma-systemmonitor plasma-workspace-wallpapers ark kate spectacle kcalc; do
