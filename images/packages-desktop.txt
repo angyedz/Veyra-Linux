@@ -4,6 +4,9 @@
 plasma-desktop
 linux-lts
 veyra-calamares
+# Offline disk/partition and deleted-file recovery tools (TestDisk includes PhotoRec).
+testdisk
+tzdata
 rsync
 util-linux
 plasma-workspace
