@@ -1,0 +1,4 @@
+#!/bin/sh
+set -eu
+msg='Welcome to Veyra Linux!\n\nOpen Veyra AppCenter to browse packages, or use Veyra Settings to explore system tools.'
+if command -v kdialog >/dev/null; then kdialog --title 'Welcome to Veyra Linux' --msgbox "$(printf '%b' "$msg")"; else printf '%b\n' "$msg"; fi
