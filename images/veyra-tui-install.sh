@@ -41,6 +41,11 @@ install_veyra() {
     valid_device "$rootdev" || { say 'Invalid root partition.'; return; }
     case "$rootdev" in /dev/*) ;; *) say 'Invalid path.'; return ;; esac
     [ "$(lsblk -dn -o TYPE "$rootdev")" = part ] || { say 'Select a partition, not an entire disk.'; return; }
+    # Never format a partition that is currently mounted in the live system.
+    if findmnt -rn -S "$rootdev" >/dev/null 2>&1; then
+        say 'Root partition is mounted. Unmount it before installation.'
+        return
+    fi
     ask 'Root filesystem [ext4/btrfs/xfs/f2fs] (default ext4): '; fs=${answer:-ext4}
     case "$fs" in ext4|btrfs|xfs|f2fs) ;; *) say 'Unsupported filesystem.'; return ;; esac
     efi=
@@ -57,6 +62,13 @@ install_veyra() {
     ask 'New user name: '; username=$answer
     case "$username" in *[!a-z_0-9-]*|''|[!a-z_]* ) say 'Invalid username.'; return ;; esac
     if [ "$username" = root ] || [ "$username" = veyra ]; then say 'Reserved username.'; return; fi
+    bootdisk=''
+    if [ -z "$efi" ]; then
+        say 'Legacy BIOS on GPT requires a small BIOS boot partition; MBR is also supported.'
+        ask 'BIOS GRUB install disk (WHOLE disk, e.g. /dev/sda): '; bootdisk=$answer
+        valid_device "$bootdisk" || { say 'Invalid boot disk.'; return; }
+        [ "$(lsblk -dn -o TYPE "$bootdisk")" = disk ] || { say 'BIOS boot target must be a whole disk.'; return; }
+    fi
     say "ROOT WILL BE FORMATTED: $rootdev ($fs). Desktop: $desktop. EFI: ${efi:-BIOS}."
     ask 'Type ERASE to continue: '
     [ "$answer" = ERASE ] || { say 'Cancelled.'; return; }
@@ -107,9 +119,6 @@ install_veyra() {
     if [ -n "$efi" ]; then
         chroot "$target" grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=Veyra --removable
     else
-        ask 'BIOS boot disk (WHOLE disk, e.g. /dev/sda): '; bootdisk=$answer
-        valid_device "$bootdisk" || { say 'Invalid boot disk.'; return 1; }
-        [ "$(lsblk -dn -o TYPE "$bootdisk")" = disk ] || { say 'BIOS boot target must be a whole disk.'; return 1; }
         chroot "$target" grub-install --target=i386-pc "$bootdisk"
     fi
     chroot "$target" grub-mkconfig -o /boot/grub/grub.cfg
