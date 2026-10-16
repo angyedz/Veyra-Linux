@@ -42,6 +42,7 @@ cp "$root/scripts/smoke.sh" usr/local/lib/veyra/smoke.sh
 cp "$root/images/veyra-live.initd" etc/init.d/veyra-live
 cp "$root/images/veyra-live-user.sh" usr/local/lib/veyra/live-user.sh
 cp "$root/images/veyra-install.sh" usr/local/bin/veyra-install
+cp "$root/images/veyra-install-tui.sh" usr/local/bin/veyra-install-tui
 cp "$root/scripts/installer-copy.sh" usr/local/lib/veyra/installer-copy.sh
 cp "$root/scripts/installer-prepare.sh" usr/local/lib/veyra/installer-prepare.sh
 cp "$root/scripts/installer-desktop.sh" usr/local/lib/veyra/installer-desktop.sh
@@ -52,7 +53,7 @@ cp "$root/calamares/settings.conf" etc/calamares/settings.conf
 cp "$root/calamares/modules/"*.conf etc/calamares/modules/
 cp "$root/calamares/branding/veyra/branding.desc" etc/calamares/branding/veyra/branding.desc
 chmod 755 etc/init.d/veyra-live usr/local/lib/veyra/live-user.sh \
-    usr/local/bin/veyra-install \
+    usr/local/bin/veyra-install usr/local/bin/veyra-install-tui \
     usr/local/lib/veyra/installer-copy.sh usr/local/lib/veyra/installer-prepare.sh \
     usr/local/lib/veyra/installer-desktop.sh usr/local/lib/veyra/installer-hardware.sh \
     usr/local/lib/veyra/hardware-detect.sh
