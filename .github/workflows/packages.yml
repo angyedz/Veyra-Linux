@@ -35,7 +35,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install build tools
-        run: apk add --no-cache alpine-sdk go git
+        run: apk add --no-cache alpine-sdk go git && apk update
       - name: Prepare unprivileged Alpine builder and signing key
         env:
           VEYRA_KEY_B64: ${{ secrets.VEYRA_ABUILD_PRIVATE_KEY_B64 }}
