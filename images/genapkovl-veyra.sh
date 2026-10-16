@@ -77,7 +77,7 @@ SDDM
 # Live environment account has no permanent password.
 cat > etc/sudoers.d/veyra-live <<'SUDO'
 Defaults:veyra env_keep += "DISPLAY WAYLAND_DISPLAY XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS QT_QPA_PLATFORM"
-veyra ALL=(root) NOPASSWD: /usr/bin/calamares
+veyra ALL=(root) NOPASSWD: /usr/bin/calamares, /usr/bin/testdisk, /usr/bin/photorec
 SUDO
 chmod 0440 etc/sudoers.d/veyra-live
 
@@ -117,11 +117,11 @@ PHOTOREC
 # Require explicit authentication; never run disk recovery as the live user.
 cat > usr/local/bin/veyra-testdisk <<'RECOVERY'
 #!/bin/sh
-exec konsole --hold -e su -c /usr/bin/testdisk
+exec konsole --hold -e sudo /usr/bin/testdisk
 RECOVERY
 cat > usr/local/bin/veyra-photorec <<'RECOVERY'
 #!/bin/sh
-exec konsole --hold -e su -c /usr/bin/photorec
+exec konsole --hold -e sudo /usr/bin/photorec
 RECOVERY
 chmod 755 usr/local/bin/veyra-testdisk usr/local/bin/veyra-photorec
 cat > usr/share/applications/veyra-testdisk.desktop <<'DESKTOP'
