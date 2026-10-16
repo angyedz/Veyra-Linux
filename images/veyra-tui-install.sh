@@ -7,19 +7,19 @@ export PATH
 [ -r /etc/veyra-release ] || { echo "Run this installer from Veyra Live ISO." >&2; exit 1; }
 lib=/usr/local/lib/veyra
 target=/mnt/veyra-target
-trap 'printf "\\nInstallation interrupted. Mounted target left intact at %s\\n" "$target"' HUP INT TERM
-say() { printf '\\n%s\\n' "$*"; }
+trap 'printf "\nInstallation interrupted. Mounted target left intact at %s\n" "$target"' HUP INT TERM
+say() { printf '\n%s\n' "$*"; }
 ask() { printf '%s' "$1"; IFS= read -r answer || exit 1; }
 pause() { printf 'Press Enter to continue... '; IFS= read -r _ || :; }
 menu() {
     while :; do
         clear 2>/dev/null || :
-        printf '=== Veyra Linux — TUI installer ===\\n'
-        printf '1) List disks and partitions\\n'
-        printf '2) Partition disks manually (cfdisk)\\n'
-        printf '3) Install Veyra onto prepared partitions\\n'
-        printf '4) Open shell for manual installation\\n'
-        printf '5) Exit\\n\\n'
+        printf '=== Veyra Linux — TUI installer ===\n'
+        printf '1) List disks and partitions\n'
+        printf '2) Partition disks manually (cfdisk)\n'
+        printf '3) Install Veyra onto prepared partitions\n'
+        printf '4) Open shell for manual installation\n'
+        printf '5) Exit\n\n'
         ask 'Select [1-5]: '
         case "$answer" in
             1) lsblk -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINTS; pause ;;
@@ -80,14 +80,14 @@ install_veyra() {
     sh "$lib/installer-prepare.sh" "$target"
     sh "$lib/installer-desktop.sh" "$target" "$desktop"
     sh "$lib/installer-hardware.sh" "$target"
-    printf '%s\\n' "$hostname" > "$target/etc/hostname"
+    printf '%s\n' "$hostname" > "$target/etc/hostname"
     mkdir -p "$target/etc"
     root_uuid=$(blkid -s UUID -o value "$rootdev")
     [ -n "$root_uuid" ] || { say 'Missing root UUID'; return 1; }
-    printf 'UUID=%s / %s defaults 0 1\\n' "$root_uuid" "$fs" > "$target/etc/fstab"
+    printf 'UUID=%s / %s defaults 0 1\n' "$root_uuid" "$fs" > "$target/etc/fstab"
     if [ -n "$efi" ]; then
         efi_uuid=$(blkid -s UUID -o value "$efi")
-        printf 'UUID=%s /boot/efi vfat defaults 0 2\\n' "$efi_uuid" >> "$target/etc/fstab"
+        printf 'UUID=%s /boot/efi vfat defaults 0 2\n' "$efi_uuid" >> "$target/etc/fstab"
     fi
     for dir in dev proc sys run; do mkdir -p "$target/$dir"; done
     mount --rbind /dev "$target/dev"
