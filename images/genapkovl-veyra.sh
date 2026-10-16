@@ -69,7 +69,7 @@ DisplayServer=x11
 
 [Autologin]
 User=veyra
-Session=plasmax11.desktop
+Session=plasma.desktop
 Relogin=true
 SDDM
 
