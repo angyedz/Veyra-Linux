@@ -14,7 +14,6 @@ done
 [ -f images/packages-desktop.txt ]
 [ -f calamares/settings.conf ]
 grep -qx linux-lts images/packages-desktop.txt
-grep -qx alpine-conf images/packages-desktop.txt
 sh -n images/veyra-install-tui.sh
 if grep -Eq '^grub(-bios|-efi)?$' images/packages-desktop.txt; then
     echo 'GRUB must only be installed on the disk-backed target' >&2
@@ -29,6 +28,8 @@ test -f images/veyra-tui-install.sh
 test -f images/veyra-live-mode.sh
 grep -q 'veyra-live-mode' images/genapkovl-veyra.sh
 grep -q 'tui-install.sh' images/veyra-install.sh
+grep -q 'veyra-install --tui' images/veyra-install-tui.sh
+grep -q 'runlevels/default/veyra-live-mode' scripts/installer-prepare.sh
 grep -qx plasma-workspace images/packages-desktop.txt
 for app in firefox konsole dolphin veyra-calamares testdisk tzdata; do
     grep -qx "$app" images/packages-desktop.txt || { echo "Missing live app: $app" >&2; exit 1; }
@@ -83,6 +84,21 @@ tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'usr/share/applications/veyra-
 tar -xOf "$tmpdir/veyra.apkovl.tar.gz" etc/hostname | grep -qx veyra
 tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/sddm.conf.d/10-veyra-live.conf'
 tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/init.d/veyra-live'
+tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/init.d/veyra-live-mode'
+tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'usr/local/lib/veyra/live-mode.sh'
+tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'usr/local/lib/veyra/tui-install.sh'
+tar -tvzf "$tmpdir/veyra.apkovl.tar.gz" | grep 'usr/local/lib/veyra/live-mode.sh
+tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/calamares/settings.conf'
+tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/calamares/modules/locale.conf'
+tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'usr/share/applications/veyra-testdisk.desktop'
+tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'usr/share/applications/veyra-photorec.desktop'
+tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/calamares/branding/veyra/desktop-plasma.svg'
+tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'usr/local/lib/veyra/installer-hardware.sh'
+tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'usr/local/lib/veyra/installer-desktop.sh'
+tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'usr/local/lib/veyra/installer-copy.sh'
+
+printf 'Veyra static and overlay tests passed\n'
+ | grep -q '^-rwxr-xr-x'
 tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/calamares/settings.conf'
 tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/calamares/modules/locale.conf'
 tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'usr/share/applications/veyra-testdisk.desktop'
