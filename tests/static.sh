@@ -30,6 +30,13 @@ grep -q 'veyra-live-mode' images/genapkovl-veyra.sh
 grep -q 'tui-install.sh' images/veyra-install.sh
 grep -q 'veyra-install --tui' images/veyra-install-tui.sh
 grep -q 'runlevels/boot/veyra-live-mode' scripts/installer-prepare.sh
+# The TTY installer must mount target pseudo-filesystems before chroot/APK steps.
+dev_mount_line=$(grep -n '^    mount --rbind /dev ' images/veyra-tui-install.sh | cut -d: -f1)
+# Match the literal $lib token in the install script; no shell expansion intended.
+# shellcheck disable=SC2016
+prepare_line=$(grep -n '^    sh "$lib/installer-prepare.sh"' images/veyra-tui-install.sh | cut -d: -f1)
+[ -n "$dev_mount_line" ] && [ -n "$prepare_line" ] && [ "$dev_mount_line" -lt "$prepare_line" ]
+grep -q 'setup-pkgrepo.sh' tests/test-installed-qemu.py
 grep -qx plasma-workspace images/packages-desktop.txt
 for app in firefox konsole dolphin veyra-calamares testdisk tzdata btrfs-progs xfsprogs f2fs-tools; do
     grep -qx "$app" images/packages-desktop.txt || { echo "Missing live app: $app" >&2; exit 1; }

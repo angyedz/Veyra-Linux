@@ -139,6 +139,7 @@ def upload_script(child, content, remote_path):
     if not (
         remote_path == "/tmp/e2e-install.sh"
         or remote_path.startswith("/usr/local/lib/veyra/installer-")
+        or remote_path == "/usr/local/lib/veyra/setup-pkgrepo.sh"
     ):
         raise ValueError("Unexpected remote script path")
     payload = base64.b64encode(content).decode("ascii")
@@ -181,10 +182,13 @@ def main():
                 login(child, 360)
                 # The cached-ISO workflow tests current installer scripts:
                 # patch them into the disposable live guest before installing.
+                # Always copy the matching Veyra trust bootstrap script too:
+                # older cached ISOs lack setup-pkgrepo.sh altogether.
                 srcroot = pathlib.Path(__file__).resolve().parents[1]
                 for script in (
                     "installer-copy.sh", "installer-prepare.sh",
                     "installer-desktop.sh", "installer-hardware.sh",
+                    "setup-pkgrepo.sh",
                 ):
                     upload_script(
                         child,

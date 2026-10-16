@@ -19,11 +19,27 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
-      - name: Download the last confirmed bootable ISO artifact
+      # Avoid a pinned run ID: ISO artifacts expire after seven days.
+      # Only trust artifacts produced by a Veyra ISO build on main.
+      - name: Find the newest unexpired main-branch ISO
+        id: iso
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          run_id=$(gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts?name=veyra-linux-iso&per_page=100" \
+            --jq '[.artifacts[] | select(.expired == false and .workflow_run.head_branch == "main")] | sort_by(.created_at) | reverse | .[0].workflow_run.id // empty')
+          if [ -z "$run_id" ]; then
+            echo "No unexpired main-branch Veyra ISO artifact found." >&2
+            exit 1
+          fi
+          echo "Using ISO artifact from run $run_id"
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+      - name: Download the latest main-branch ISO artifact
         uses: actions/download-artifact@v4
         with:
           repository: ${{ github.repository }}
-          run-id: 38697414907
+          run-id: ${{ steps.iso.outputs.run_id }}
           github-token: ${{ github.token }}
           name: veyra-linux-iso
           path: dist
