@@ -3,15 +3,15 @@
 set -eu
 [ -r /etc/veyra-release ] || exit 0
 mode=
-for arg in $(cat /proc/cmdline); do
-    case "$arg" in veyra.mode=tty) mode=tty ;; veyra.mode=kde) mode=kde ;; esac
+for arg in $(cat /proc/cmdline); do # shellcheck disable=SC2013
+    case "$arg" in veyra.mode='tty') mode='tty' ;; veyra.mode='kde') mode='kde' ;; esac
 done
 if [ -z "$mode" ] && [ -c /dev/tty1 ]; then
     printf '\033[2J\033[H' > /dev/tty1
     printf 'Veyra Linux Live\n\n  1) Veyra Live KDE\n  2) Veyra Live TTY (manual tools / veyra-install)\n\nSelect [1, default KDE in 12 seconds]: ' > /dev/tty1
     choice=
-    IFS= read -r -t 12 choice < /dev/tty1 || :
-    case "$choice" in 2) mode=tty ;; *) mode=kde ;; esac
+    read -r -t 12 choice < /dev/tty1 || : # shellcheck disable=SC3045
+    case "$choice" in 2) mode='tty' ;; *) mode='kde' ;; esac
 fi
 if [ "$mode" = tty ]; then
     rc-update del sddm default >/dev/null 2>&1 || :
