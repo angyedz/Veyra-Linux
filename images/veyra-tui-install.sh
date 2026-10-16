@@ -76,26 +76,28 @@ install_veyra() {
     fi
     say 'Copying live system...'
     sh "$lib/installer-copy.sh" "$target"
-    say 'Preparing repositories, kernel and base system (network required)...'
-    sh "$lib/installer-prepare.sh" "$target"
-    sh "$lib/installer-desktop.sh" "$target" "$desktop"
-    sh "$lib/installer-hardware.sh" "$target"
-    printf '%s\n' "$hostname" > "$target/etc/hostname"
-    mkdir -p "$target/etc"
-    root_uuid=$(blkid -s UUID -o value "$rootdev")
-    [ -n "$root_uuid" ] || { say 'Missing root UUID'; return 1; }
-    printf 'UUID=%s / %s defaults 0 1\n' "$root_uuid" "$fs" > "$target/etc/fstab"
-    if [ -n "$efi" ]; then
-        efi_uuid=$(blkid -s UUID -o value "$efi")
-        printf 'UUID=%s /boot/efi vfat defaults 0 2\n' "$efi_uuid" >> "$target/etc/fstab"
-    fi
+    # APK and chroot require /dev, /proc and /sys BEFORE any target commands.
+    # Give the installed root its own /run instead of copying live session data.
     for dir in dev proc sys run; do mkdir -p "$target/$dir"; done
     mount --rbind /dev "$target/dev"
     mount --make-rslave "$target/dev"
     mount -t proc proc "$target/proc"
     mount --rbind /sys "$target/sys"
     mount --make-rslave "$target/sys"
-    mount --bind /run "$target/run"
+    mount -t tmpfs tmpfs "$target/run"
+    say 'Preparing repositories, kernel and base system (network required)...'
+    sh "$lib/installer-prepare.sh" "$target"
+    sh "$lib/installer-desktop.sh" "$target" "$desktop"
+    sh "$lib/installer-hardware.sh" "$target"
+    printf '%s\n' "$hostname" > "$target/etc/hostname"
+    root_uuid=$(blkid -s UUID -o value "$rootdev")
+    [ -n "$root_uuid" ] || { say 'Missing root UUID'; return 1; }
+    printf 'UUID=%s / %s defaults 0 1\n' "$root_uuid" "$fs" > "$target/etc/fstab"
+    if [ -n "$efi" ]; then
+        efi_uuid=$(blkid -s UUID -o value "$efi")
+        [ -n "$efi_uuid" ] || { say 'Missing EFI UUID'; return 1; }
+        printf 'UUID=%s /boot/efi vfat defaults 0 2\n' "$efi_uuid" >> "$target/etc/fstab"
+    fi
     say 'Set root password:'
     chroot "$target" passwd root
     chroot "$target" adduser -D -s /bin/bash "$username"
