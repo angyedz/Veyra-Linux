@@ -18,6 +18,10 @@ done
 rm -f "$target/etc/sddm.conf.d/10-veyra-live.conf"
 rm -f "$target/etc/sudoers.d/veyra-live"
 rm -f "$target/etc/runlevels/boot/veyra-live"
+rm -f "$target/etc/runlevels/default/veyra-live-mode"
+rm -f "$target/etc/veyra-release"
+rm -f "$target/usr/local/lib/veyra/live-mode.sh" "$target/usr/local/lib/veyra/live-user.sh"
+rm -f "$target/etc/init.d/veyra-live-mode" "$target/etc/init.d/veyra-live"
 # Disk installations must not depend on the live CD's squashfs modloop.
 rm -f "$target/etc/runlevels/sysinit/modloop" "$target/etc/runlevels/boot/modloop"
 rm -f "$target/usr/share/applications/veyra-install.desktop"
