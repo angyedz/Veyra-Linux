@@ -24,7 +24,7 @@ if [ "$mode" = tty ]; then
         telinit q 2>/dev/null || :
     fi
     touch /run/veyra-live-tty
-    printf '\nTTY selected. Run: sudo veyra-install --tui\n' > /dev/tty1
+    printf '\nTTY selected. Run: veyra-install --tui\n' > /dev/tty1
 else
     printf '\nStarting KDE Plasma...\n' > /dev/tty1
 fi
