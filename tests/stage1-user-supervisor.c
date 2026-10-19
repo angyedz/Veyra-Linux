@@ -73,6 +73,26 @@ static void proof_ordinary_user(void) {
         !WIFEXITED(status) || WEXITSTATUS(status) != 0)
         die("ordinary user proof child failed");
 }
+/* Test a normal user executing SUID sudo to become root only in this
+ * user namespace. The resulting file must be owned by OUTER_ROOT_UID,
+ * never outside UID 0. This is a guest-only proof, not a security audit.
+ */
+static void proof_user_sudo(void) {
+    pid_t pid = fork();
+    if (pid < 0) die("fork namespace-local sudo probe");
+    if (pid == 0) {
+        if (setgid(INNER_NORMAL_UID) || setuid(INNER_NORMAL_UID))
+            die("drop to ordinary inner account before sudo");
+        execl("/usr/bin/sudo", "sudo", "-n", "/bin/sh", "-c",
+              "id -u > /home/veyrauser/inner-sudo-proof",
+              (char *)NULL);
+        die("execute namespace-local sudo");
+    }
+    int status = 0;
+    if (waitpid(pid, &status, 0) != pid ||
+        !WIFEXITED(status) || WEXITSTATUS(status) != 0)
+        die("inner sudo privilege elevation failed");
+}
 static void inner_pid_one(const char *root) {
     if (geteuid() != 0 || getegid() != 0 || getpid() != 1)
         die("inner uid/gid or PID1 mismatch");
@@ -110,6 +130,7 @@ static void inner_pid_one(const char *root) {
     if (mount("tmpfs", "/tmp", "tmpfs", MS_NODEV | MS_NOSUID, "mode=1777") < 0)
         die("mount isolated tmp");
     proof_ordinary_user();
+    proof_user_sudo();
     printf("VEYRA_STAGE1_USER_PID1_STARTED: pid=%ld\n", (long)getpid());
     fflush(stdout);
     execl("/sbin/init", "init", (char *)NULL);
@@ -243,6 +264,18 @@ int main(int argc, char **argv) {
                  argv[1]) >= (int)sizeof(proof)) die("proof path overflow");
     if (stat(proof, &st) < 0 || st.st_uid != OUTER_NORMAL_UID)
         die("normal user proof is not mapped to outside UID 101000");
+    if (snprintf(proof, sizeof(proof), "%s/home/veyrauser/inner-sudo-proof",
+                 argv[1]) >= (int)sizeof(proof))
+        die("inner sudo proof path overflow");
+    if (stat(proof, &st) < 0 || st.st_uid != OUTER_ROOT_UID)
+        die("inner sudo did not map to unprivileged outside UID 100000");
+    FILE *sudo_proof = fopen(proof, "r");
+    int sudo_uid = -1;
+    if (!sudo_proof || fscanf(sudo_proof, "%d", &sudo_uid) != 1 ||
+        sudo_uid != 0)
+        die("inner sudo did not produce namespace UID 0");
+    if (fclose(sudo_proof) < 0) die("close inner sudo proof");
+    printf("VEYRA_STAGE1_SUDO_READY inside-uid=0 outside-uid=100000\n");
     printf("VEYRA_STAGE1_USER_OPENRC_READY count=%d outside-normal-uid=%u\n",
            actual, (unsigned)st.st_uid);
     fflush(stdout);
