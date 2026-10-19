@@ -292,3 +292,61 @@ jobs:
           fi
           test ! -e /tmp/veyra-ci-boot/unsigned
           echo 'Signed Veyra/glenv boot integration passed'
+
+  glenv-signed-mount:
+    name: Authenticated glenv host/user read-only mounts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Fetch tested glenv source
+        uses: actions/checkout@v4
+        with:
+          repository: angyedz/veyra-glenv
+          ref: aab7625ea5ab8674f693c7b0afd54adfb66001a5
+          path: glenv
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: false
+      - name: Compile native glenv manager
+        working-directory: glenv
+        run: go build -trimpath -o /tmp/veyra-glenv-signed-test ./cmd/glenv
+      - name: Mount signed runtime into both views in isolated namespace
+        shell: bash
+        run: |
+          set -euo pipefail
+          temp="$(mktemp -d /tmp/veyra-glenv-signed-mount.XXXXXX)"
+          trap 'sudo rm -rf "$temp"' EXIT
+          runtime="$temp/unsigned-staging"
+          store="$temp/store"
+          public_key="$temp/trusted.pub"
+          mkdir -p "$runtime/sysroot" "$temp/userroot"
+          printf 'signed Veyra glenv mount fixture' > "$runtime/sysroot/libc.so.6"
+          /tmp/veyra-glenv-signed-test release inventory "$runtime" test-v1 > "$runtime/glenv-manifest.json"
+          (cd glenv && go run ./tests/signfixture "$runtime" "$public_key")
+          sudo chown root:root "$public_key"
+          /tmp/veyra-glenv-signed-test release --store "$store" stage-signed "$runtime" test-v1 "$public_key"
+          /tmp/veyra-glenv-signed-test release --store "$store" pair-host veyra-test test-v1
+          printf 'veyra-test\n' > "$temp/deployment-id"
+
+          sudo env VEYRA_DEPLOYMENT_ID_FILE="$temp/deployment-id" \
+            VEYRA_GLENV_STORE="$store" \
+            VEYRA_GLENV_PIN="$temp/selected" \
+            VEYRA_GLENV_BIN=/tmp/veyra-glenv-signed-test \
+            VEYRA_GLENV_REQUIRE_SIGNATURE=1 \
+            VEYRA_GLENV_TRUST_KEY="$public_key" \
+            sh scripts/glenv-boot-pin.sh
+
+          sudo unshare --mount --propagation private env \
+            VEYRA_GLENV_STORE="$store" \
+            VEYRA_GLENV_SELECTED="$temp/selected" \
+            VEYRA_GLENV_RUNTIME_MOUNT="$temp/host/runtime" \
+            VEYRA_GLENV_USER_ROOT="$temp/userroot" \
+            VEYRA_GLENV_BIN=/tmp/veyra-glenv-signed-test \
+            VEYRA_GLENV_REQUIRE_SIGNATURE=1 \
+            VEYRA_GLENV_TRUST_KEY="$public_key" \
+            sh tests/test-glenv-signed-mount.sh
