@@ -7,13 +7,13 @@ set -eu
 [ "$#" -eq 1 ] || { echo 'usage: build-veyra-init.sh OUTPUT' >&2; exit 2; }
 output=$1
 case "$output" in /*) :;; *) echo 'Output path must be absolute' >&2; exit 2;; esac
-project=$(CDPATH='' cd "$(dirname "$0")/.." && pwd)
+scriptdir=$(CDPATH='' cd "$(dirname "$0")" && pwd)
 source=${VEYRA_MKINITFS_INIT:-/usr/share/mkinitfs/initramfs-init}
 [ -f "$source" ] && [ ! -L "$source" ] ||
     { echo "Alpine initramfs source missing: $source" >&2; exit 1; }
 [ ! -e "$output" ] && [ ! -L "$output" ] ||
     { echo "Refusing to overwrite initramfs script: $output" >&2; exit 1; }
-inject="$project/scripts/veyra-initramfs-select.sh"
+inject="$scriptdir/veyra-initramfs-select.sh"
 [ -f "$inject" ] || { echo 'Missing Veyra initramfs selector' >&2; exit 1; }
 tmp="$output.tmp.$$"
 trap 'rm -f "$tmp"' EXIT HUP INT TERM
