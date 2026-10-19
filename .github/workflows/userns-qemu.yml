@@ -50,6 +50,9 @@ jobs:
               cp /boot/vmlinuz-lts /out/veyra-userns-kernel
               test -s /out/veyra-userns-kernel
               test -s /out/veyra-userns-initramfs
+              # mkinitfs creates root-only initramfs permissions; the
+              # unprivileged QEMU runner must be able to read these artifacts.
+              chmod 0644 /out/veyra-userns-kernel /out/veyra-userns-initramfs
             '
       - name: Verify rootless namespaces inside guest
         run: |
