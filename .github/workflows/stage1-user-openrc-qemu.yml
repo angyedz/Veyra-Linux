@@ -86,7 +86,10 @@ jobs:
               mknod -m 0666 /out/userroot/dev/tty c 5 0
               mknod -m 0666 /out/userroot/dev/random c 1 8
               mknod -m 0666 /out/userroot/dev/urandom c 1 9
-              chown -R 100000:100000 /out/userroot
+              # Include recovery metadata before formatting and map package
+              # symlinks as well as regular files to the nested UID range.
+              mkdir -p /out/userroot/lost+found
+              chown -hR 100000:100000 /out/userroot
               # chown clears setuid; set it again on the test root-owned sudo.
               chmod 4755 /out/userroot/usr/bin/sudo
               chown 101000:101000 /out/userroot/home/veyrauser

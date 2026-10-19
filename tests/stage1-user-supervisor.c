@@ -166,8 +166,9 @@ static int scan_directory(int fd, const char *parent, int depth,
             return -1;
         }
         if (!valid_owner(&st)) {
-            set_error(scan->error, scan->error_size,
-                      "rootfs entry owner lies outside mapped UID/GID range");
+            snprintf(scan->error, scan->error_size,
+                     "rootfs entry owner lies outside mapped UID/GID range: %s uid=%lu gid=%lu",
+                     path, (unsigned long)st.st_uid, (unsigned long)st.st_gid);
             closedir(dir);
             return -1;
         }
