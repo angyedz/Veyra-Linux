@@ -58,6 +58,8 @@ func run(name string,args ...string) error {
 // Atomic mode is fail-closed; missing marker denotes a conventional Live ISO
 // or an existing non-atomic Alpine-based Veyra installation.
 var markerFile = "/etc/veyra/deployment-mode"
+var bootCtlBinary = "/usr/local/sbin/veyra-bootctl"
+var bootCtlStore = "/var/lib/veyra/store"
 
 func atomicSystem()(bool,error){
  data,err:=os.ReadFile(markerFile)
@@ -80,6 +82,15 @@ func dispatch(action,source string,packages []string) error {
  if source=="alpine" {
   atomic,err:=atomicSystem()
   if err!=nil{return err}
+  if action=="deployments"||action=="activate"||action=="rollback"{
+   if !atomic{return fmt.Errorf("%s requires an atomic Veyra installation",action)}
+   if action=="deployments"{
+    if len(packages)!=0{return fmt.Errorf("deployments takes no arguments")}
+    return run(bootCtlBinary,"--store",bootCtlStore,"status")
+   }
+   if len(packages)!=1{return fmt.Errorf("%s requires exactly one deployment ID",action)}
+   return run(bootCtlBinary,"--store",bootCtlStore,action,packages[0])
+  }
   switch action {
   case "install","remove","update","upgrade":
    if atomic{return fmt.Errorf("atomic Veyra forbids in-place system changes; update an inactive deployment instead")}
