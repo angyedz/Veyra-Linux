@@ -2,6 +2,8 @@
 # Experimental FS-neutral *offline staging* for the installed Veyra Plasma
 # edition. No partition formatting, bootloader updates or root switching.
 # ext4, XFS, F2FS, Btrfs and other Linux filesystems may host this store.
+# ShellCheck SC2015: each A && B || die pattern deliberately rejects either failed check.
+# shellcheck disable=SC2015
 set -eu
 
 die() { echo "veyra-deployment: $*" >&2; exit 1; }
