@@ -42,7 +42,7 @@ enum manager_state { STATE_STOPPED, STATE_STARTING, STATE_RUNNING,
                      STATE_STOPPING, STATE_FAILED };
 struct child_args {
     int ready_write, proceed_read, pid_write;
-    const char *root;
+    int root_fd;
     pid_t expected_parent;
 };
 struct scan_state {
@@ -387,7 +387,7 @@ static void proof_user_sudo(void) {
     if (waitpid(pid, &status, 0) != pid || !WIFEXITED(status) ||
         WEXITSTATUS(status) != 0) die("inner sudo privilege elevation failed");
 }
-static void inner_pid_one(const char *root, int ready_fd) {
+static void inner_pid_one(int root_fd, int ready_fd) {
     /* The launcher waits for this acknowledgment before reporting the PID.
      * If the launcher dies before this signal is armed, the pipe is closed
      * and this process exits instead of becoming an orphaned environment.
@@ -407,7 +407,16 @@ static void inner_pid_one(const char *root, int ready_fd) {
     if (mount("tmpfs", bootstrap, "tmpfs", MS_NOSUID | MS_NODEV, "mode=0700") < 0)
         die("mount private intermediate tmpfs root");
     if (mkdir(newroot, 0700) < 0) die("create temporary newroot");
-    if (mount(root, newroot, NULL, MS_BIND, NULL) < 0) die("bind persistent user rootfs");
+    char root_fd_path[64];
+    if (snprintf(root_fd_path, sizeof(root_fd_path), "/proc/self/fd/%d", root_fd)
+        >= (int)sizeof(root_fd_path)) die("format pinned user-rootfs descriptor path");
+    if (mount(root_fd_path, newroot, NULL, MS_BIND, NULL) < 0)
+        die("bind pinned persistent user rootfs");
+    struct stat source_st, bound_st;
+    if (fstat(root_fd, &source_st) < 0 || stat(newroot, &bound_st) < 0 ||
+        source_st.st_dev != bound_st.st_dev || source_st.st_ino != bound_st.st_ino)
+        die("bound user rootfs is not the validated directory inode");
+    close(root_fd);
     if (mkdir(oldroot, 0700) < 0 && errno != EEXIST) die("create oldroot directory");
     if (chroot(bootstrap) < 0 || chdir("/") < 0) die("enter intermediate root");
     if (syscall(SYS_pivot_root, "/root", "/root/.veyra-stage1-oldroot") < 0)
@@ -465,10 +474,11 @@ static void launch_user(const struct child_args *ctx) {
     if (!pid1) {
         close(init_ready[0]);
         close(ctx->pid_write);
-        inner_pid_one(ctx->root, init_ready[1]);
+        inner_pid_one(ctx->root_fd, init_ready[1]);
         _exit(1);
     }
     close(init_ready[1]);
+    close(ctx->root_fd);
     char init_ready_signal = 0;
     if (read_one_timeout(init_ready[0], &init_ready_signal, 10000) < 0 ||
         init_ready_signal != 'D') {
@@ -573,10 +583,10 @@ static int start_environment(char *response, size_t response_size) {
         if (prctl(PR_SET_PDEATHSIG, SIGKILL) < 0 ||
             getppid() != expected_parent)
             _exit(1);
-        close(ready[0]); close(proceed[1]); close(pid_pipe[0]); close(rootfd);
+        close(ready[0]); close(proceed[1]); close(pid_pipe[0]);
         struct child_args args = {
             .ready_write = ready[1], .proceed_read = proceed[0],
-            .pid_write = pid_pipe[1], .root = ROOT_PATH,
+            .pid_write = pid_pipe[1], .root_fd = rootfd,
             .expected_parent = expected_parent,
         };
         launch_user(&args);
