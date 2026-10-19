@@ -407,11 +407,10 @@ static void inner_pid_one(int root_fd, int ready_fd) {
     if (mount("tmpfs", bootstrap, "tmpfs", MS_NOSUID | MS_NODEV, "mode=0700") < 0)
         die("mount private intermediate tmpfs root");
     if (mkdir(newroot, 0700) < 0) die("create temporary newroot");
-    char root_fd_path[64];
-    if (snprintf(root_fd_path, sizeof(root_fd_path), "/proc/self/fd/%d", root_fd)
-        >= (int)sizeof(root_fd_path)) die("format pinned user-rootfs descriptor path");
-    if (mount(root_fd_path, newroot, NULL, MS_BIND, NULL) < 0)
+    if (fchdir(root_fd) < 0) die("select validated rootfs by descriptor");
+    if (mount(".", newroot, NULL, MS_BIND, NULL) < 0)
         die("bind pinned persistent user rootfs");
+    if (chdir("/") < 0) die("return to system root after pinned bind");
     struct stat source_st, bound_st;
     if (fstat(root_fd, &source_st) < 0 || stat(newroot, &bound_st) < 0 ||
         source_st.st_dev != bound_st.st_dev || source_st.st_ino != bound_st.st_ino)
