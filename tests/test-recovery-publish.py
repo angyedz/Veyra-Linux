@@ -26,6 +26,7 @@ def main():
         assert published == boot / "veyra-recovery/recovery-v1"
         metadata = json.loads((published / "manifest.json").read_text())
         assert metadata["id"] == "recovery-v1"
+        assert mod.verify_published(boot, "recovery-v1") == published
         assert metadata["authentication"] == "unsigned-experimental"
         for name, content in (
             ("vmlinuz", kernel.read_bytes()),
@@ -55,6 +56,13 @@ def main():
             pass
         else:
             raise AssertionError("accepted symlinked kernel image")
+        (published / "initramfs").write_bytes(b"tampered data")
+        try:
+            mod.verify_published(boot, "recovery-v1")
+        except mod.RecoveryError:
+            pass
+        else:
+            raise AssertionError("accepted corrupted recovery initramfs")
     print("Immutable Recovery artifact staging tests passed")
 
 
