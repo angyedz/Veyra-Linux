@@ -11,7 +11,7 @@ set -eu
 deployment_file=${VEYRA_DEPLOYMENT_ID_FILE:-/etc/veyra/deployment-id}
 store=${VEYRA_GLENV_STORE:-/var/lib/veyra/glenv}
 pin=${VEYRA_GLENV_PIN:-/run/glenv/selected}
-glenv_bin=${VEYRA_GLENV_BIN:-glenv}
+glenv_bin=${VEYRA_GLENV_BIN:-/usr/local/lib/veyra/glenv-manager}
 
 [ -f "$deployment_file" ] || {
     echo "Missing trusted Veyra deployment ID file: $deployment_file" >&2
