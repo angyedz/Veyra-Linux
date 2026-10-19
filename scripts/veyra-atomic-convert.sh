@@ -17,10 +17,15 @@ esac
 [ "$store" != / ] || die 'refusing running root'
 mountpoint -q "$store" || die 'root must be mounted separately (offline)'
 [ ! -L "$store" ] || die 'refusing symlink store'
-for req in etc/apk/world boot/vmlinuz-lts boot/initramfs-lts boot/grub/grub.cfg sbin/init; do
+for req in etc/apk/world boot/vmlinuz-lts boot/initramfs-lts boot/grub/grub.cfg; do
     [ -f "$store/$req" ] && [ ! -L "$store/$req" ] ||
         die "incomplete conventional Alpine root: $req"
 done
+# Alpine/OpenRC commonly uses /sbin/init -> /bin/busybox. A symlink is
+# expected and must not be rejected by the regular-file preflight.
+# -x checks that it resolves to a runnable init inside the mounted root.
+[ -x "$store/sbin/init" ] ||
+    die 'incomplete conventional Alpine root: executable sbin/init'
 [ ! -e "$store/.veyra-deployment-store" ] ||
     die 'target already has deployment store; refusing partial conversion'
 command -v python3 >/dev/null || die 'requires Python 3 for boot transaction metadata'
