@@ -25,6 +25,10 @@ printf 'A\n' > "$store/deployments/A/etc/veyra/deployment-id"
 printf '#!/bin/sh\nexit 0\n' > "$store/deployments/A/sbin/init"
 chmod 0755 "$store/deployments/A/sbin/init"
 printf 'durable user file\n' > "$store/persistent/home/user.txt"
+mkdir -p "$store/boot/grub"
+printf 'A B\n' > "$store/boot-state/pending"
+printf '# VEYRA_DEFAULT=B\n' > "$store/boot-state/fallback-grub.cfg"
+printf '# VEYRA_DEFAULT=A\n' > "$store/boot/grub/grub.cfg"
 
 # No selection must never change the conventional root.
 mount --bind "$store" "$sysroot"
@@ -45,6 +49,7 @@ umount "$sysroot"
 mount --bind "$store" "$sysroot"
 sysroot="$sysroot" KOPT_veyra_deployment='A' sh -c     '. "$1"' sh "$root/scripts/veyra-initramfs-select.sh"
 test "$(cat "$sysroot/etc/veyra/deployment-id")" = A
+grep -qx '# VEYRA_DEFAULT=B' "$sysroot/var/lib/veyra/store/boot/grub/grub.cfg"
 test "$(cat "$sysroot/home/user.txt")" = 'durable user file'
 test -f "$sysroot/var/lib/veyra/store/.veyra-deployment-store"
 test "$(cat "$sysroot/var/lib/veyra/store/deployments/A/etc/veyra/deployment-id")" = A
