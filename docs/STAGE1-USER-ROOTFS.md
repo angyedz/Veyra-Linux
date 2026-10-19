@@ -1,6 +1,6 @@
 # Stage 1: persistent user rootfs and independent init — QEMU prototype
 
-**Status:** the QEMU lifecycle and rootfs-validation milestone passed in [PR #10 QEMU CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39312323358) and [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39312323395). The [PR #11 manager-exit cleanup follow-up](https://github.com/angyedz/Veyra-Linux/pull/11) passed [QEMU](https://github.com/angyedz/Veyra-Linux/actions/runs/39318056661) and [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39318056566). The [PR #12 rootfs launch validation follow-up](https://github.com/angyedz/Veyra-Linux/pull/12) passed [QEMU](https://github.com/angyedz/Veyra-Linux/actions/runs/39319980009) and [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39319980026), including rejection of an init symlink that points outside the user rootfs. **Not enabled** by installed Veyra or Live ISO; this remains a disposable prototype, not production security validation.
+**Status:** the QEMU lifecycle and rootfs-validation milestone passed in [PR #10 QEMU CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39312323358) and [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39312323395). The [PR #11 manager-exit cleanup follow-up](https://github.com/angyedz/Veyra-Linux/pull/11) passed [QEMU](https://github.com/angyedz/Veyra-Linux/actions/runs/39318056661) and [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39318056566). The [PR #12 rootfs launch validation follow-up](https://github.com/angyedz/Veyra-Linux/pull/12) passed [QEMU](https://github.com/angyedz/Veyra-Linux/actions/runs/39319980009) and [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39319980026), including both inode-comparator outcomes and rejection of an init symlink that points outside the user rootfs. **Not enabled** by installed Veyra or Live ISO; this remains a disposable prototype, not production security validation.
 This prototype is stacked on [Stage 0](DUAL-ENVIRONMENT.md) in PR #8.
 Track product requirements and future steps in [ROADMAP.md](ROADMAP.md).
 
@@ -37,7 +37,9 @@ binary acting as the literal PID 1. The system still has its own init.
   before each start, waits for OpenRC readiness, reaps the launcher to detect
   PID 1 crashes, and stops only that nested PID 1. It retains the validated
   rootfs directory descriptor through launch, then checks the bind-mounted
-  rootfs device/inode before pivoting; a mismatch aborts startup. On an unexpected manager
+  rootfs device/inode before pivoting; a mismatch aborts startup. A QEMU
+  self-test exercises both same-directory and different-directory comparator
+  results. On an unexpected manager
   exit, `PR_SET_PDEATHSIG` terminates the launcher; nested PID 1 also arms
   that signal against launcher exit. It creates separate
   user/mount/PID/network/IPC/UTS namespaces and maps inner IDs 0..65535 to
@@ -53,8 +55,8 @@ binary acting as the literal PID 1. The system still has its own init.
   EINVAL.
 - tests/test-stage1-user-openrc-qemu.py — boots the same disk image twice;
   in each guest boot it tests invalid rootfs ownership and extra setuid
-  rejection, an init symlink escape attempt, start/status/stop/restart,
-  forced PID 1 crash detection, and
+  rejection, an init symlink escape attempt, both inode identity outcomes,
+  start/status/stop/restart, forced PID 1 crash detection, and
   cleanup after killing the system-side manager. Three nested starts per
   guest boot leave persistent counts 3 then 6.
 - .github/workflows/stage1-user-openrc-qemu.yml — builds a disposable Alpine
@@ -106,8 +108,9 @@ recovery. The [PR #10 QEMU run](https://github.com/angyedz/Veyra-Linux/actions/r
 asserts counts 2 then 4 for the baseline. The [PR #11 QEMU run](https://github.com/angyedz/Veyra-Linux/actions/runs/39318056661)
 asserts persistent counts 3 then 6, including manager-death cleanup. The
 [PR #12 QEMU run](https://github.com/angyedz/Veyra-Linux/actions/runs/39319980009)
-retains those lifecycle checks and additionally requires `openat2(RESOLVE_IN_ROOT)
-to reject an `/sbin/init` symlink targeting an existing system-side file; the
+retains those lifecycle checks and additionally exercises both outcomes of the
+rootfs inode comparator and requires `openat2(RESOLVE_IN_ROOT)` to reject an
+`/sbin/init` symlink targeting an existing system-side file; the
 [integration run](https://github.com/angyedz/Veyra-Linux/actions/runs/39319980026)
 passed on the same PR head.
 
@@ -123,7 +126,7 @@ The earlier PR #9 baseline passed a static C build and QEMU checks for
 separate PID 1, mapped UIDs, namespace-local sudo and persistent state. The
 PR #10 manager and rootfs checks passed in [QEMU CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39312323358)
 and [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39312323395). The PR #11 manager-exit cleanup follow-up passed [QEMU CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39318056661)
-and [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39318056566). The PR #12 rootfs launch follow-up passed [QEMU CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39319980009) and [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39319980026).
+and [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39318056566). The PR #12 rootfs launch follow-up passed [QEMU CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39319980009) and [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39319980026), exercising matching and mismatching inode comparator results.
 
 - [x] Build the system-side manager statically with -Werror.
 - [x] Start, report running status, stop, report stopped status and restart
@@ -139,8 +142,8 @@ and [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/3931805
       cleanup.
 - [x] Reject an `/sbin/init` symlink that would resolve to an existing file
       outside the rootfs with `openat2(RESOLVE_IN_ROOT)`.
-- [x] Retain and compare the validated rootfs descriptor with the bound
-      directory's device/inode before pivoting into it.
+- [x] Exercise matching and mismatching directory-identity results for the
+      validated descriptor comparator; require a match before pivoting.
 - [x] Keep the existing inner UID 1000 and sudo proof mapped to outside UIDs
       101000 and 100000 respectively.
 - [x] Retain serial evidence for the manager and rootfs validation checks.
@@ -164,8 +167,10 @@ This prototype deliberately has the following gaps:
 4. The validator checks mount and ownership structure at start. The launcher
    retains the validated directory descriptor and compares its device/inode
    with the bind-mounted rootfs before pivoting, but still uses the configured
-   mountpoint as the bind source. This is not an atomic descriptor-based bind
-   and does not authenticate or freeze mutable contents against a privileged
+   mountpoint as the bind source. The QEMU self-test exercises the comparator
+   with the rootfs and system `/run`; it does not simulate a concurrent
+   mountpoint replacement. This is not an atomic descriptor-based bind and
+   does not authenticate or freeze mutable contents against a privileged
    concurrent writer. Production mount policy and the full storage lifecycle
    need a separate review.
 5. **Normal interactive user login, password policy, vpkg and KDE** are *not* integrated. `sudo` is validated **only inside this controlled disposable guest**, with an explicit temporary NOPASSWD test rule. User-side sudo maps to outside UID 100000; it does not control the system-side manager. This does not prevent a shared-kernel exploit.
