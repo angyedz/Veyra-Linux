@@ -26,6 +26,14 @@ def guest_boot(qemu, kernel, initramfs, user_disk, count, logfile):
     guest = pexpect.spawn(qemu, cmd, encoding=None, timeout=150)
     guest.logfile_read = logfile
     try:
+        sudo_outcome = guest.expect([
+            b"VEYRA_STAGE1_SUDO_READY inside-uid=0 outside-uid=100000",
+            b"VEYRA_STAGE1_FAILURE:",
+            b"VEYRA_STAGE1_QEMU_FAILURE:",
+            b"Kernel panic",
+        ], timeout=150)
+        if sudo_outcome != 0:
+            raise RuntimeError(f"inner sudo confinement failed on run {count}")
         outcome = guest.expect([
             f"VEYRA_STAGE1_USER_OPENRC_READY count={count}".encode(),
             b"VEYRA_STAGE1_FAILURE:",
@@ -67,7 +75,7 @@ def main():
                        expected, logfile)
             print(f"VEYRA_STAGE1_BOOT_{expected}_PASS", flush=True)
     print("VEYRA_STAGE1_PERSISTENCE_PASS: separate OpenRC and rootfs survived reboot")
-    print("NOTE: not the installed Veyra OS, no sudo/VPN/KDE/host security claim")
+    print("NOTE: guest-only inner sudo test, not installed Veyra sudo/VPN/KDE/security validation")
 
 
 if __name__ == "__main__":
