@@ -12,6 +12,8 @@ jobs:
         run: sh tests/static.sh
       - name: Test ISO artifact integrity verifier
         run: sh tests/test-iso-artifact.sh
+      - name: Validate recovery builder safety preflight
+        run: sh tests/test-recovery-builder.sh
   alpine-smoke:
     runs-on: ubuntu-latest
     container: alpine:3.22
