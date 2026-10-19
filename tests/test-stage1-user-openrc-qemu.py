@@ -32,6 +32,7 @@ def guest_boot(qemu, kernel, initramfs, user_disk, qemu_boot, logfile):
     try:
         patterns = [
             b"VEYRA_STAGE1_MANAGER_READY",
+            b"VEYRA_STAGE1_ROOTFS_INODE_GUARD_PASS",
             b"VEYRA_STAGE1_ROOTFS_REJECT_NESTED_MOUNT",
             b"VEYRA_STAGE1_ROOTFS_REJECT_UNMAPPED_OWNER",
             b"VEYRA_STAGE1_ROOTFS_REJECT_BLOCK_DEVICE",
@@ -52,7 +53,7 @@ def guest_boot(qemu, kernel, initramfs, user_disk, qemu_boot, logfile):
             b"VEYRA_STAGE1_FAILURE:",
             b"Kernel panic",
         ]
-        for expected_index in range(18):
+        for expected_index in range(19):
             active_patterns = patterns if expected_index == 0 else patterns[1:]
             outcome = guest.expect(active_patterns, timeout=180)
             if expected_index != 0:
@@ -99,4 +100,3 @@ if __name__ == "__main__":
     except (OSError, RuntimeError, pexpect.ExceptionPexpect) as error:
         print(f"VEYRA_STAGE1_TEST_FAIL: {error}", file=sys.stderr, flush=True)
         sys.exit(1)
-
