@@ -50,8 +50,12 @@ static void rootless(const char *user, const char *mnt, const char *net,
         die("drop guest root");
     if (geteuid() != 1000) die("expected nonroot outside userns");
     if (unshare(CLONE_NEWUSER) < 0) die("unprivileged user namespace");
-    write_map("/proc/self/setgroups", "deny\n");
+    /* Map namespace UID 0 first: before uid_map is populated, opening
+     * procfs setgroups may fail with EACCES because the process owner is
+     * unmapped. setgroups must still be set to "deny" before gid_map.
+     */
     write_map("/proc/self/uid_map", "0 1000 1\n");
+    write_map("/proc/self/setgroups", "deny\n");
     write_map("/proc/self/gid_map", "0 1000 1\n");
     if (geteuid() != 0 || getegid() != 0) die("inner root mapping");
     assert_other_ns("user", user);
