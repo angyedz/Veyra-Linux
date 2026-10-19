@@ -30,7 +30,7 @@ No GRUB-only graphical animation should be mistaken for actual progress. VRE sho
 
 ## VRE user experience
 
-- Veyra snowflake branding; minimal accessible text + progress.
+- Use the canonical repository asset `branding/veyra-logo.svg` as the Veyra logo (convert it to a supported boot/recovery bitmap format during the build); minimal accessible text + progress. Do not substitute a snowflake or invent another symbol.
 - Modes: "Applying offline update", "Verifying system", "Rolling back", "Repairing boot", "Diagnostics".
 - Esc: show detailed log, generation selection and recovery options.
 - On failure: keep the last confirmed generation bootable; show a concrete error and write durable logs to persistent/shared (only after checking mount integrity).
