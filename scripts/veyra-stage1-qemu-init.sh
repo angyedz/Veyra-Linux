@@ -127,6 +127,28 @@ esac
 /bin/busybox rm -f "$bad_suid"
 echo 'VEYRA_STAGE1_ROOTFS_REJECT_UNEXPECTED_SUID'
 
+# An init symlink must not resolve through the system-side root. The host
+# target exists, but RESOLVE_IN_ROOT must clamp it to the user rootfs.
+init_backup=/mnt/veyra-user/.veyra-stage1-init-backup
+init_escape=/tmp/.veyra-stage1-init-escape
+/bin/busybox rm -f "$init_backup" "$init_escape"
+/bin/busybox printf '#!/bin/sh\nexit 0\n' > "$init_escape"
+/bin/busybox chmod 0755 "$init_escape"
+/bin/busybox mv /mnt/veyra-user/sbin/init "$init_backup"
+/bin/busybox ln -s ../../../../tmp/.veyra-stage1-init-escape \
+    /mnt/veyra-user/sbin/init
+if output=$(/host-supervisor start 2>&1); then
+    fail 'manager resolved /sbin/init outside the user rootfs'
+fi
+case "$output" in
+    *'rootfs does not contain an executable /sbin/init'*) ;;
+    *) fail "unexpected init-escape probe result: $output" ;;
+esac
+/bin/busybox rm /mnt/veyra-user/sbin/init
+/bin/busybox mv "$init_backup" /mnt/veyra-user/sbin/init
+/bin/busybox rm -f "$init_escape"
+echo 'VEYRA_STAGE1_ROOTFS_REJECT_INIT_ESCAPE'
+
 first=$(/host-supervisor start)
 case "$first" in RUNNING\ pid=*\ count=*) ;; *) fail "first start failed: $first" ;; esac
 status=$(/host-supervisor status)
