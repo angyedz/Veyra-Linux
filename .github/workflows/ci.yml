@@ -404,3 +404,14 @@ jobs:
             echo 'Overwrote an existing patched initramfs image' >&2
             exit 1
           fi
+
+  veyra-init-selector-mount:
+    name: Early-root filesystem-neutral mount and persistent state
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ext4, mount and filesystem tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq e2fsprogs util-linux rsync
+      - name: Execute actual root and home/Nix bind selection in mount namespace
+        run: sudo unshare --mount --propagation private sh tests/test-veyra-init-selector.sh
