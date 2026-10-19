@@ -84,3 +84,28 @@ jobs:
           cat /tmp/veyra-signed-appcenter.log
           grep -q 'VEYRA_QML_READY' /tmp/veyra-signed-appcenter.log
           test "$result" -eq 124 || test "$result" -eq 143
+
+  glenv-musl:
+    name: glenv compatibility build (musl)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    container:
+      image: golang:1.23-alpine
+    steps:
+      - name: Check out pinned glenv source
+        uses: actions/checkout@v4
+        with:
+          repository: angyedz/veyra-glenv
+          ref: 77492038be20ccb0f4369f2660bdeab9a36124d2
+          path: glenv
+          persist-credentials: false
+      - name: Verify glenv Go packages under musl
+        working-directory: glenv
+        run: go test -count=1 ./...
+      - name: Build glenv native tool
+        working-directory: glenv
+        run: go build -trimpath -o /tmp/glenv ./cmd/glenv
+      - name: Check native binary and CLI
+        run: |
+          /tmp/glenv version
+          /tmp/glenv inspect /bin/busybox
