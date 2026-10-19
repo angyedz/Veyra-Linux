@@ -363,3 +363,19 @@ jobs:
           sudo apt-get install -y -qq btrfs-progs util-linux
       - name: Stage isolated Plasma system A/B and verify rollback source
         run: sudo sh tests/test-deployment-btrfs.sh
+
+  vpkg-go:
+    name: Veyra package manager policy and backend tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: false
+      - name: Test vpkg native engine selection and atomic write guard
+        working-directory: vpkg
+        run: |
+          go test -count=1 ./...
+          go vet ./...
