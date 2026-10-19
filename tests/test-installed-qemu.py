@@ -146,6 +146,7 @@ def upload_script(child, content, remote_path):
             "/usr/local/lib/veyra/veyra-initramfs-select.sh",
             "/usr/local/lib/veyra/build-veyra-init.sh",
             "/usr/local/lib/veyra/veyra-bootctl.py",
+            "/usr/local/lib/veyra/veyra-boot-confirm.initd",
         }
     ):
         raise ValueError("Unexpected remote script path")
