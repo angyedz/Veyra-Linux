@@ -32,7 +32,7 @@ case "$pin" in
 esac
 
 # Fail closed: boot-pin verifies that the signed/selected host deployment ID
-# matches the pair in the glenv version store. Authenticating the deployment
+# matches an immutable per-deployment pair in the glenv version store. Authenticating the deployment
 # ID itself is an external responsibility of Veyra's future boot coordinator.
-"$glenv_bin" release --store "$store" boot-pin "$deployment" "$pin"
+"$glenv_bin" release --store "$store" boot-pair-pin "$deployment" "$pin"
 printf 'Pinned glenv for Veyra deployment %s at %s\n' "$deployment" "$pin"
