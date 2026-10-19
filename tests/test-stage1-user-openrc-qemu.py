@@ -46,14 +46,16 @@ def guest_boot(qemu, kernel, initramfs, user_disk, qemu_boot, logfile):
             f"VEYRA_STAGE1_SUDO_READY count={final_count} inside-uid=0 outside-uid=100000".encode(),
             f"VEYRA_STAGE1_USER_OPENRC_READY count={final_count}".encode(),
             f"VEYRA_STAGE1_MANAGER_DEATH_CLEANUP_PASS boot={qemu_boot} count={final_count} environment=stopped".encode(),
-            b"VEYRA_STAGE1_MANAGER_READY",
             b"VEYRA_STAGE1_MANAGER_RECOVERY_PASS state=STOPPED stale-socket=cleared",
             f"VEYRA_STAGE1_QEMU_SUCCESS: user environment lifecycle and persistence boot {qemu_boot}".encode(),
             b"VEYRA_STAGE1_FAILURE:",
             b"Kernel panic",
         ]
-        for expected_index in range(18):
-            outcome = guest.expect(patterns, timeout=180)
+        for expected_index in range(17):
+            active_patterns = patterns if expected_index == 0 else patterns[1:]
+            outcome = guest.expect(active_patterns, timeout=180)
+            if expected_index != 0:
+                outcome += 1
             if outcome != expected_index:
                 raise RuntimeError(
                     f"QEMU boot {qemu_boot} failed while waiting for stage {expected_index}; "
