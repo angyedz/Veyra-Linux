@@ -8,7 +8,7 @@ engine="$project/dist/vpkg-engine/vpkg-engine"
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT HUP INT TERM
 root="$tmp/target"
-mkdir -p "$root/etc/apk/keys" "$root/etc/apk" "$root/lib/apk/db"
+mkdir -p "$root/etc/apk/keys" "$root/etc/apk" "$root/lib/apk/db" "$root/var/cache/apk"
 cp /etc/apk/keys/*.pub "$root/etc/apk/keys/"
 # apk-tools 2.14 requires a preinitialized world + installed database for
 # ordinary add operations; creating them is safe in this disposable root.
