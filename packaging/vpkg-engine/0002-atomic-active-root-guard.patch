@@ -1,7 +1,7 @@
 diff --git a/src/apk.c b/src/apk.c
 --- a/src/apk.c
 +++ b/src/apk.c
-@@ -569,1 +569,33 @@ int main(int argc, char **argv)
+@@ -569,1 +569,36 @@ int main(int argc, char **argv)
 -	r = apk_db_open(&db, &dbopts);
 +	/*
 +	 * Veyra's atomic host must never have its active root altered by the
@@ -28,10 +28,12 @@ diff --git a/src/apk.c b/src/apk.c
 +			}
 +			if (invalid) {
 +				apk_error("Veyra atomic policy rejects modifications of the active system root");
++				r = -EPERM;
 +				goto err;
 +			}
 +		} else if (errno != ENOENT) {
 +			apk_error("Could not read Veyra system policy");
++			r = -EPERM;
 +			goto err;
 +		}
 +	}
