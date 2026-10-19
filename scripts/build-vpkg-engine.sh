@@ -32,6 +32,7 @@ actual=$(git -C "$src" rev-parse HEAD)
 git -C "$src" reset --hard "$upstream_sha"
 git -C "$src" clean -fdx
 patch -d "$src" -p1 --fuzz=0 < "$project/packaging/vpkg-engine/0001-veyra-identity.patch"
+patch -d "$src" -p1 --fuzz=0 < "$project/packaging/vpkg-engine/0002-atomic-active-root-guard.patch"
 
 # Keep the upstream library/solver/signature verification implementation.
 # Do not shadow /sbin/apk on the live host until package ABI integration is
