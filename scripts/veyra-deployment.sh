@@ -129,6 +129,14 @@ case "$action" in
             "$source/" "$temp/"; then
             die "staging copy failed; inspect $temp before cleanup"
         fi
+        # --exclude=/run/*** drops the directory itself. A staged B needs
+        # fresh empty mountpoints to boot OpenRC, regardless of filesystem.
+        for runtime_dir in dev proc sys run tmp media mnt; do
+            [ ! -L "$temp/$runtime_dir" ] ||
+                die "symlinked staged runtime mountpoint: $runtime_dir"
+            mkdir -p "$temp/$runtime_dir"
+        done
+        chmod 1777 "$temp/tmp"
         [ ! -L "$temp/etc/veyra/deployment-id" ] ||
             die 'staged deployment ID symlink rejected'
         printf '%s\n' "$4" > "$temp/etc/veyra/deployment-id"
