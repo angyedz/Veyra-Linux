@@ -36,14 +36,11 @@ patch -d "$src" -p1 --fuzz=0 < "$project/packaging/vpkg-engine/0001-veyra-identi
 # Keep the upstream library/solver/signature verification implementation.
 # Do not shadow /sbin/apk on the live host until package ABI integration is
 # tested, including mkinitfs, Calamares, abuild and clean bootstrap.
-meson setup "$src/output" "$src" \
-    --auto-features=disabled \
-    -Ddocs=disabled -Dhelp=disabled -Dlua=disabled \
-    -Dpython=disabled -Dtests=disabled -Dzstd=disabled \
-    -Ddefault_library=static
-ninja -C "$src/output" src/apk
-
-install -m 0755 "$src/output/src/apk" "$dest/vpkg-engine"
+# apk-tools 2.14.x uses its legacy Makefile (Meson was added in 3.x).
+# Build its self-contained static APK engine so vpkg does not depend on
+# Alpine's separately installed libapk.so.
+make -C "$src" LUA=no STATIC=y -j2 compile
+install -m 0755 "$src/src/apk.static" "$dest/vpkg-engine"
 cp "$src/LICENSE" "$dest/LICENSE.apk-tools"
 printf '%s\n' "$upstream_sha" > "$dest/UPSTREAM_COMMIT"
 "$dest/vpkg-engine" --version
