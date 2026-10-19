@@ -100,7 +100,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: angyedz/veyra-glenv
-          ref: aab7625ea5ab8674f693c7b0afd54adfb66001a5
+          ref: 0c11ec128e9eebd50ec926f2c5387d9d9aaf69fa
           path: glenv
           persist-credentials: false
       - name: Verify glenv Go packages under musl
@@ -210,7 +210,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: angyedz/veyra-glenv
-          ref: aab7625ea5ab8674f693c7b0afd54adfb66001a5
+          ref: 0c11ec128e9eebd50ec926f2c5387d9d9aaf69fa
           path: glenv
           persist-credentials: false
       - name: Build glenv without outside dependencies
@@ -305,7 +305,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: angyedz/veyra-glenv
-          ref: aab7625ea5ab8674f693c7b0afd54adfb66001a5
+          ref: 0c11ec128e9eebd50ec926f2c5387d9d9aaf69fa
           path: glenv
           persist-credentials: false
       - uses: actions/setup-go@v5
