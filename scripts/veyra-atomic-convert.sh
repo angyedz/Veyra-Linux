@@ -71,6 +71,10 @@ for script in veyra-deployment.sh veyra-initramfs-select.sh \
     install -m755 "$scriptdir/$script" "$root/usr/local/lib/veyra/$script"
 done
 install -m755 "$scriptdir/veyra-bootctl.py" "$root/usr/local/sbin/veyra-bootctl"
+# Confirm newly booted A/B roots only after the normal OpenRC runlevel starts.
+mkdir -p "$root/etc/init.d" "$root/etc/runlevels/default"
+install -m755 "$scriptdir/veyra-boot-confirm.initd" "$root/etc/init.d/veyra-boot-confirm"
+ln -s /etc/init.d/veyra-boot-confirm "$root/etc/runlevels/default/veyra-boot-confirm"
 
 # Build a real initramfs using the selected deployment's kernel modules.
 # The Alpine-provided init remains untouched; -i selects a patched copy.
