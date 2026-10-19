@@ -1,0 +1,41 @@
+# Pinned KDE-first system deployment package goals for the future atomic
+# Plasma edition. This is NOT a package installation script and deliberately
+# does not affect the conventional Veyra Live ISO or current Calamares path.
+# Exact versions are resolved together from signed Alpine/Veyra repositories.
+alpine-base
+linux-lts
+plasma-desktop
+plasma-workspace
+kwin
+plasma-nm
+plasma-pa
+breeze
+breeze-icons
+sddm
+sddm-openrc
+sddm-breeze
+polkit-kde-agent-1
+xorg-server
+xwayland
+qt6-qtwayland
+mesa-dri-gallium
+mesa-egl
+mesa-gbm
+mesa-vulkan-swrast
+dbus
+dbus-openrc
+elogind
+polkit
+networkmanager
+networkmanager-wifi
+eudev
+eudev-openrc
+udisks2
+upower
+pipewire
+pipewire-pulse
+wireplumber
+pipewire-alsa
+xdg-desktop-portal
+xdg-desktop-portal-kde
+ca-certificates
