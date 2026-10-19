@@ -115,7 +115,7 @@ def main():
         ])
         print("Booting B from its own Alpine+Plasma system tree", flush=True)
         guest_cycle(qemu, disk, args.log_dir, "B", [
-            "test "$(cat /home/e2euser/atomic-data.txt)" = 'data created in A'",
+            """test "$(cat /home/e2euser/atomic-data.txt)" = 'data created in A'""",
             "echo 'data updated in B' > /home/e2euser/atomic-data.txt",
             "printf 'only-B\\n' > /etc/veyra/slot-specific.txt",
             "test ! -e /var/lib/veyra/store/deployments/A/etc/veyra/slot-specific.txt",
@@ -124,7 +124,7 @@ def main():
         ])
         print("Booting rolled-back A and checking durable user data", flush=True)
         guest_cycle(qemu, disk, args.log_dir, "A", [
-            "test "$(cat /home/e2euser/atomic-data.txt)" = 'data updated in B'",
+            """test "$(cat /home/e2euser/atomic-data.txt)" = 'data updated in B'""",
             "test ! -e /etc/veyra/slot-specific.txt",
             "/usr/local/sbin/veyra-bootctl --store /var/lib/veyra/store status",
         ])
