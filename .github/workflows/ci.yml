@@ -100,7 +100,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: angyedz/veyra-glenv
-          ref: 31c018a67512331a7a6f58e23c81781675fcb8aa
+          ref: aab7625ea5ab8674f693c7b0afd54adfb66001a5
           path: glenv
           persist-credentials: false
       - name: Verify glenv Go packages under musl
@@ -210,7 +210,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: angyedz/veyra-glenv
-          ref: 4285e54c6203809ce59947d4cbbe38ff493e32a7
+          ref: aab7625ea5ab8674f693c7b0afd54adfb66001a5
           path: glenv
           persist-credentials: false
       - name: Build glenv without outside dependencies
@@ -228,7 +228,7 @@ jobs:
           /tmp/glenv release inventory "$root" signed-v1 > "$root/glenv-manifest.json"
           (cd glenv && go run ./tests/signfixture "$root" "$pub")
           /tmp/glenv release verify-signed "$root" "$pub"
-          /tmp/glenv release --store "$store" stage "$root" signed-v1
+          /tmp/glenv release --store "$store" stage-signed "$root" signed-v1 "$pub"
           /tmp/glenv release --store "$store" pair-host veyra-signed signed-v1
           printf 'veyra-signed\n' > /tmp/veyra-ci-deployment-id
 
@@ -258,12 +258,26 @@ jobs:
           sh scripts/glenv-boot-pin.sh
           test "$(basename "$(readlink "$VEYRA_GLENV_PIN")")" = signed-v1
 
+          export VEYRA_GLENV_SELECTED="$VEYRA_GLENV_PIN"
+          export VEYRA_GLENV_RUNTIME_MOUNT=/tmp/veyra-ci-mount/host-runtime
+          export VEYRA_GLENV_USER_ROOT=/tmp/veyra-ci-mount/userroot
+          mkdir -p "$VEYRA_GLENV_USER_ROOT"
+          sh scripts/glenv-boot-mount.sh --check
+          if VEYRA_GLENV_TRUST_KEY=/tmp/nonexistent-glenv-key sh scripts/glenv-boot-mount.sh --check; then
+            echo 'Pre-mount verification accepted a missing trust key' >&2
+            exit 1
+          fi
+
           printf 'tampered' > "$store/versions/signed-v1/sysroot/libc.so.6"
           if VEYRA_GLENV_PIN=/tmp/veyra-ci-boot/tampered sh scripts/glenv-boot-pin.sh; then
             echo 'Signed boot accepted a modified runtime' >&2
             exit 1
           fi
           test ! -e /tmp/veyra-ci-boot/tampered
+          if sh scripts/glenv-boot-mount.sh --check; then
+            echo 'Pre-mount verification accepted tampered signed runtime' >&2
+            exit 1
+          fi
 
           unsigned=/tmp/veyra-ci-unsigned-release
           mkdir -p "$unsigned/sysroot"
