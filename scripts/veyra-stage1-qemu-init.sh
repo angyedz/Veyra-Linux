@@ -5,7 +5,7 @@ set -eu
 /bin/busybox mount -t proc proc /proc
 /bin/busybox mount -t sysfs sysfs /sys
 /bin/busybox mount -t devtmpfs devtmpfs /dev
-/bin/busybox mkdir -p /dev/pts /run /tmp /mnt/veyra-user
+/bin/busybox mkdir -p /dev/pts /run /tmp /mnt/veyra-user /mnt/veyra-stage1-bootstrap
 /bin/busybox mount -t devpts devpts /dev/pts
 /bin/busybox mount -t tmpfs tmpfs /run
 /bin/busybox mount -t tmpfs tmpfs /tmp
