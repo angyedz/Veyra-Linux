@@ -1,6 +1,6 @@
 # Veyra Recovery Environment (VRE) — design v0
 
-Status: **architecture proposal only; not implemented or security reviewed**.
+Status: **experimental serial recovery prototype and opt-in initramfs builder added** (`scripts/veyra-recovery-init.sh`, `scripts/build-veyra-recovery.sh`). Not yet boot-tested in QEMU, integrated into GRUB, or security reviewed. No graphical UI or automated update application exists.
 
 ## Android-inspired design, not an Android port
 
@@ -48,7 +48,7 @@ No GRUB-only graphical animation should be mistaken for actual progress. VRE sho
 
 ## Implementation sequence
 
-1. Make existing QEMU A -> B -> A pass with real Alpine.
+1. Make existing QEMU A -> B -> A pass with real Alpine (still pending confirmation).
 2. Add read-only VRE boot artifact, serial-mode diagnostics, and a manual GRUB entry; test independent boot.
 3. Implement verified transaction metadata and limited trial boots with forced-failure QEMU coverage.
 4. Add update worker for inactive generation and signed manifest verification.
