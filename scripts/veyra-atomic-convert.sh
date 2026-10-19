@@ -69,6 +69,14 @@ done
 
 mkdir -p "$root/etc/veyra" "$root/usr/local/lib/veyra" "$root/usr/local/sbin" \
     "$root/home" "$root/nix" "$root/var/lib/veyra/shared" "$root/var/lib/veyra/store"
+# --exclude=/run/*** and similar rsync filters remove the directories as
+# well as volatile contents. OpenRC requires a real /run before boot.
+# Every generation must provide empty Linux mountpoint placeholders.
+for runtime_dir in dev proc sys run tmp media mnt; do
+    [ ! -L "$root/$runtime_dir" ] || die "symlinked runtime mountpoint: $runtime_dir"
+    mkdir -p "$root/$runtime_dir"
+done
+chmod 1777 "$root/tmp"
 printf '%s\n' A > "$root/etc/veyra/deployment-id"
 printf '%s\n' atomic-v1 > "$root/etc/veyra/deployment-mode"
 for script in veyra-deployment.sh veyra-initramfs-select.sh \
