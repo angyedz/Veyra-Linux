@@ -32,7 +32,10 @@ test -s "$root/etc/apk/world"
 test ! -e /etc/veyra/deployment-mode
 mkdir -p /etc/veyra
 printf 'atomic-v1\n' > /etc/veyra/deployment-mode
+# Confirm that this is the newly patched native executable, not system apk.
+strings "$engine" | grep -q "Veyra atomic policy rejects"
 if "$engine" --root / --no-network add busybox > "$tmp/atomic-refusal.log" 2>&1; then
+    cat "$tmp/atomic-refusal.log" >&2
     echo 'Native engine allowed in-place package changes in atomic mode' >&2
     exit 1
 fi
