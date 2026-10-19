@@ -1,0 +1,213 @@
+# Veyra Linux development roadmap
+
+**Last reviewed:** 2026-10-19  
+**Status:** engineering plan, not a claim that any unfinished component ships.  
+**Target:** an installed KDE-only, filesystem-neutral, atomic Veyra with **two independently administered Linux environments on one kernel**, plus separately bootable Recovery.
+
+This plan is ordered by **dependencies and acceptance gates**, not by calendar estimates.
+Parallel tracks are intentional; avoid turning prototypes on in the normal boot path until their gates pass. Decisions live in [Architecture](ARCHITECTURE.md), [Dual Environment](DUAL-ENVIRONMENT.md), [Recovery](VEYRA-RECOVERY.md), and this roadmap. Existing installed/Live paths remain supported during migration.
+
+## Immutable design rules
+
+1. **System environment:** Alpine/musl/OpenRC owns boot, the Linux kernel, physical devices/network, KDE Plasma **packages and matched versions**, system services, the A/B generations and hardware controls.
+2. **Persistent user environment:** its own rootfs, packaging state, OpenRC and PID 1 **inside a separate PID namespace**, mount/user/network/IPC namespaces, normal user account, isolated root via `sudo`, services and applications. Default login is directly in this environment, never a manual container entry or `--user` flag. Both environments share one kernel.
+3. **KDE-only desktop:** KDE, KWin, Frameworks, Qt, `plasmashell`, KRunner and plugins are a **version-coherent system-owned deployment**. `plasmashell` and KRunner processes execute in the **user environment** from a read-only system-paired KDE runtime; Alt+F2 and all user app launch paths stay user-side.
+4. **No arbitrary package bans:** a user may install another kernel or DE package inside their environment without replacing the active system kernel or supported KDE session. Enforce this at privilege/mount/device/namespace boundaries, not by matching package names, `sudo` rules, or command exceptions.
+5. **VPN only for user traffic:** user VPN, routing, DNS and kill switches operate in the user network namespace. System updates and system services continue using the independent host network.
+6. **Filesystem-independent A/B:** distinct directory trees, generation-specific package database and kernel/initramfs, independently persistent user state; ext4, XFS, F2FS and Btrfs without required snapshots, reflinks, CoW or A/B partitions.
+7. **Two different recovery scopes:** user-environment repair when the system boots; independent Veyra Recovery Environment (VRE) when the system does not. VRE has its own kernel/initramfs and runs *instead of* the main installation.
+8. **No untested product claims:** source, scripts, probes, QEMU boot and production readiness are different milestones. Default enablement requires reproducible tests.
+
+## Verified code baseline versus unfinished features
+
+| Area | Baseline in main / PR | Still missing |
+| --- | --- | --- |
+| Alpine 3.22, OpenRC, KDE Live ISO | Existing conventional image and installer tests | Final dual-environment installed runtime |
+| Desktop installer | Experimental shell/QEMU install/reboot path | KDE-only Calamares install into separate system/user roots and real graphical click-through |
+| Atomic boot | Offline FS-neutral staging, GRUB/initramfs selectors and QEMU automation | Passing and reviewed full A -> B -> A; authenticated, power-loss-safe updates |
+| Dual environments | Experimental launchers, design and namespace probes in draft PR #8 | Supervised user init/rootfs, multi-UID mappings, real privileged-boundary proofs |
+| VPN isolation | Design | veth/network policy, DNS, user VPN and kill-switch tests |
+| KDE cross-boundary launch | Design and experimental KRunner preflight in PR #8 | System-selected read-only KDE runtime, user session, safe Alt+F2, D-Bus/Wayland integration |
+| vpkg | APK-derived prototype plus early Go frontend | Final installed-engine replacement, user root integration, inactive-generation updater |
+| glenv/Nix | Signed runtime pairing and Nix prototypes | Full lifecycle/integration in user root and system generations |
+| VRE | Separate console Recovery boot in diskless QEMU | Manual GRUB entry, authenticated artifacts, actual repair UI and automatic recovery |
+
+**Caution:** the presence of a test workflow does not mean its latest run passed.
+Record relevant commit IDs, CI runs, guest serial logs and failure modes for each gate.
+
+## Stage 0 — Audit experimental PR #8 and establish gates
+
+**Priority:** immediate. **Status:** under review; do not merge until gates complete.
+
+- [x] Review old namespace, KRunner and UID-map scripts; label single-UID/bootstrap-only constraints.
+- [x] Add conservative canonical rootfs, ownership and submount preflight; add `--check` without launching namespaces.
+- [x] Fail closed if KRunner's namespace, private D-Bus or provisional read-only KDE runtime preflight is missing.
+- [x] Separate namespace-support **SKIP (77)** from a failed invariant after entering namespaces.
+- [ ] Pass rootless negative tests and shellcheck in GitHub Actions; inspect run logs.
+- [ ] Validate real unprivileged namespace probe where runner policy allows it; mark SKIP explicitly if blocked.
+- [ ] Review threat-model gaps (host file descriptors, mount subtrees, inherited capabilities, runtime origin).
+- [ ] Merge PR #8 only after review, with no live ISO/installed boot path changes.
+
+**Gate:** repeatable syntax, static, preflight and negative tests in CI; clear limitations. These tests alone **do not prove isolation**.
+
+## Stage 1 — Persistent user Linux environment
+
+**Depends on:** Stage 0.
+
+- [ ] Decide persistent rootfs/state layout outside system A/B; preserve user package DB, services, `/home` and `/nix` across system rollback.
+- [ ] Build a clean Alpine rootfs with its own init/service configuration and suitable `/dev`, `/run`, `/proc`, `/sys` exposure.
+- [ ] Implement **multi-ID UID/GID mappings** and ordinary user accounts plus a working inner `sudo`. Rootless `--map-root-user` by itself cannot provide this.
+- [ ] Supervise the user's own init in a PID namespace; explicitly verify the intended OpenRC init arrangement rather than assuming Alpine's `/sbin/init` is OpenRC.
+- [ ] Auto-enter user context on login; add clean startup, shutdown, crash reporting and reboot lifetime management.
+
+**Gate:** disposable QEMU boots both system and user init, sees correct PID 1 per namespace, supports ordinary login and reboot with persistent user state.
+
+## Stage 2 — Enforced system/user privilege boundary
+
+**Depends on:** Stage 1.
+
+- [ ] Separate mounts, users/capabilities, IPC, process visibility, devices, system bus and network by **kernel** primitives and narrowly designed host services.
+- [ ] No writable mount of host root, A/B store, boot files, EFI, host network state or host-only service sockets inside the user environment.
+- [ ] Audit inherited file descriptors, proc/sysfs interfaces, mount propagation, device nodes, namespace transitions and seccomp/LSM/cgroups where applicable.
+- [ ] Resource quotas/limits protect system services from user process floods, memory exhaustion and fork bombs.
+- [ ] Explicit threat model for kernel vulnerabilities and shared-kernel attacks.
+
+**Gate:** under inner `sudo`, attempts to modify host kernel state, mounts, packages, boot, devices, host processes and privileged IPC fail; normal inner administration still succeeds.
+
+## Stage 3 — User networking and VPN
+
+**Depends on:** Stages 1–2.
+
+- [ ] System retains physical Wi-Fi/Ethernet and host DNS/routing/firewall; user environment gets its own network namespace via a controlled virtual link.
+- [ ] Provide scoped TUN/WireGuard support and CAP_NET_ADMIN only inside the user namespace/network scope.
+- [ ] Use a private user DNS configuration and test IPv4, IPv6, split tunnels, reconnection and fail-closed VPN kill switches.
+- [ ] Plasma network UI may request limited physical Wi-Fi management through an authenticated host bridge; no direct host NetworkManager control from user root.
+
+**Gate:** OpenVPN/WireGuard and a kill switch affect user traffic only; host updates still use host networking with no DNS or route changes.
+
+## Stage 4 — System-owned KDE runtime, user-side processes
+
+**Depends on:** Stages 1–2; aligns with Stages 7–8.
+
+- [ ] Define the read-only system-KDE runtime layout, loader/library/Qt plugin/QML search isolation and per-generation provenance.
+- [ ] Keep the supported KWin/compositor/host graphics platform system-managed while `plasmashell`, KRunner and user applications execute under user namespace privileges.
+- [ ] Integrate Wayland sockets, input, graphics access, PipeWire, portals, notifications, D-Bus/polkit via constrained bridges only.
+- [ ] Ensure no independent user-owned KDE packages are used to supply the supported system Plasma session; user applications can still be installed freely.
+
+**Gate:** Veyra's KDE session launches correctly from a matched system runtime, with no host administration capability in user-side components.
+
+## Stage 5 — Alt+F2 and ALL application launch entry points
+
+**Depends on:** Stage 4.
+
+- [ ] Route system shortcut recognition to a *show-only* request for user KRunner; no host execution of search text.
+- [ ] Audit private D-Bus `org.kde.krunner` activation, runner plugins, terminals, application menus, `.desktop` Exec actions, file openers and portals.
+- [ ] Ensure user-invoked commands have user-environment PID/mount/user/network namespaces; `sudo` stays inner.
+- [ ] If user init/bus/KRunner is broken, **fail closed** and display independent system recovery controls, never host fallback.
+
+**Gate:** automated negative tests from each launch path cannot run host commands; GUI control remains serviceable for repair.
+
+## Stage 6 — vpkg, glenv, Nix and package independence
+
+**Depends on:** Stage 1; integrates with Stage 7.
+
+- [ ] Finish the independent source-derived `vpkg` engine, preserving APK dependency solver, format, signatures and licenses, without requiring the installed `apk` executable.
+- [ ] Make normal `vpkg install/remove/upgrade` affect only the persistent **user** rootfs by default, with no environment-selection flags.
+- [ ] Implement separate privileged host A/B transactions for system packages; no in-place change to active deployment.
+- [ ] Integrate signed glenv runtime pairing and Nix profiles without opening host privilege boundaries.
+- [ ] Preserve package database integrity across failures and reboots.
+
+**Gate:** ordinary user/sudo installs, removes and upgrades arbitrary packages safely in the user rootfs; system A/B files unchanged.
+
+## Stage 7 — Production-capable filesystem-neutral A/B
+
+**Can proceed in parallel with Stages 1–6.**
+
+- [ ] Prove full installed QEMU A -> stage B -> boot B -> rollback A -> boot A on ext4 (then XFS/F2FS/Btrfs compatibility).
+- [ ] Implement verified inactive-generation package staging with an independent package database; never mutate active A.
+- [ ] Authenticate generation metadata, kernel/initramfs and update artifacts. Add limited trial boots and durable boot-success confirmation.
+- [ ] Guarantee fallback across interrupted writes, kernel panic, missing root, hangs and power loss; test actual bad deployments.
+- [ ] Preserve independent `/home`, `/nix` and persistent user rootfs across rollback without irreversible data migrations.
+
+**Gate:** scripted fail-injection and power-cut QEMU tests recover the last confirmed generation without data loss.
+
+## Stage 8 — Coherent KDE upgrades and rollback
+
+**Depends on:** Stages 4 and 7.
+
+- [ ] Stage **all** version-matched Qt/KDE Frameworks, KWin, Plasma, `plasmashell`, KRunner, plugins and portal dependencies together.
+- [ ] Select the active generation's immutable KDE runtime at boot, then launch fresh user-side KDE processes from that *same* version set.
+- [ ] Reject mixed generations in executable/loader/QML/plugin search paths; do not hot-swap live KDE runtimes.
+- [ ] Roll back KDE and system boot together, while preserving user applications and settings.
+
+**Gate:** GUI works after A -> B -> A, with recorded binary and loaded-library provenance for each generation.
+
+## Stage 9 — Two recovery scopes
+
+**Depends on:** Stages 1–2 and 7.
+
+- [ ] Add user-environment repair/recreate/restore workflows without requiring a working user `plasmashell`.
+- [ ] Preserve data and the old damaged rootfs where possible; `/home` cannot be restored without a prior backup.
+- [ ] Integrate independent VRE into GRUB with authenticated kernel/initramfs and a usable text-first interface.
+- [ ] Implement real system rollback/repair, reliable logs, offline update status and optional later framebuffer GUI using official `branding/veyra-logo.svg`.
+- [ ] Never erase disks or reset user state without explicit authorization.
+
+**Gate:** intentional user-root damage and system-generation failure can be recovered independently in disposable QEMU guests.
+
+## Stage 10 — KDE-only two-environment installer
+
+**Depends on:** proven Stages 1–9 for default enablement.
+
+- [ ] Update Calamares/TUI to create system deployment trees and independent persistent user rootfs while retaining user's ext4/XFS/F2FS/Btrfs choice.
+- [ ] Replace *legacy experimental* GNOME/Xfce/LXQt installer choices with fixed KDE-only installed-session policy **after** the new path is validated.
+- [ ] Provision identity mappings, separate package databases, signed repositories, boot state, recovery entry and system-KDE runtime.
+- [ ] Keep Live bootstrap simple and functional; avoid forcing installation-related changes into it.
+
+**Gate:** unattended and graphical install on clean disposable disk, reboot, login, KDE, package install, VPN, update, rollback and repair succeed.
+
+## Stage 11 — Adversarial security, reliability and hardware QA
+
+**Can run continuously; required again before release.**
+
+- [ ] Verify `sudo`, host kernel and device boundaries; install alternate kernel/DE packages as ordinary files without activating them at host level.
+- [ ] Fuzz D-Bus/Wayland/portal boundaries and check inherited socket/FD leakage; simulate hostile user root.
+- [ ] Stress resource isolation, network failures, interrupted updates, disk full, power cuts, package signature failures and broken init.
+- [ ] Test multiple GPUs/drivers, firmware, BIOS/UEFI, filesystem matrix and physical hardware after VM checks.
+- [ ] Review and triage identified escape risks and reproducible logs.
+
+**Gate:** release-blocking failures addressed and independent tests reproducible in CI.
+
+## Stage 12 — Integration, delivery and release readiness
+
+**Depends on:** all release-blocking gates.
+
+- [ ] Reproducible signed ISO and package repositories, provenance/manifest verification and supported update delivery.
+- [ ] Stable `vpkg` UX, KDE-only desktop polish, glenv/Nix integration, KDE networking, VRE/boot UX and documentation.
+- [ ] Keep branding Glacier / Ice Blue, using the authentic `branding/veyra-logo.svg`.
+- [ ] Publish user/admin troubleshooting, limitations, recovery and upgrade instructions.
+- [ ] Run full clean-install, normal boot, broken-boot and rollback release qualification.
+
+**Gate:** reviewed release candidate with evidenced boot, isolation, update, rollback and recovery behavior on supported setups.
+
+## Immediate execution order
+
+1. Stage 0: finish PR #8 audit, CI gates and review.
+2. Stage 1: boot separate user init with a persistent rootfs and **multi-ID** user mapping in disposable QEMU.
+3. Stage 2: prove `sudo` cannot escape the environment.
+4. Stage 3: controlled user internet and VPN while host network stays independent.
+5. In parallel, Stage 7: complete the real A -> B -> A QEMU cycle.
+6. Stages 4–5: pair KDE runtime and route all application launch paths.
+7. Stages 6 and 8: stabilize user package management and paired system KDE upgrades.
+8. Stages 9–12: recovery, installer, security qualification and release.
+
+## First integrated alpha acceptance gate
+
+A **Dual Environment Alpha** is eligible only when a clean QEMU install:
+boots system + user init, starts system-owned KDE with user-side
+`plasmashell` and KRunner, confines `sudo`, installs normal user packages,
+runs a user VPN without touching host networking, persists user rootfs across
+reboot and successfully rolls back system A/B independently. A broken user
+environment must not prevent the system's maintenance/recovery path.
+
+No checklist item may be marked complete solely because a script or a
+GitHub Actions workflow exists; attach actual test evidence.

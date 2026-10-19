@@ -10,6 +10,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Check scripts and image overlay
         run: sh tests/static.sh
+      - name: Audit rootless user-environment preflight and negative paths
+        run: sh tests/test-user-env-prototype.sh
       - name: Test ISO artifact integrity verifier
         run: sh tests/test-iso-artifact.sh
       - name: Validate recovery builder safety preflight
@@ -60,6 +62,31 @@ jobs:
           apk add --simulate linux-firmware-nvidia mesa-vulkan-nouveau
       - name: Verify native Nix package availability
         run: apk add --no-cache nix nix-openrc && nix --version
+
+  dual-environment-prototype:
+    name: Rootless dual-environment prototype checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify safe preflight and negative cases (no privileged operations)
+        run: sh tests/test-user-env-prototype.sh
+      - name: Check kernel namespace prerequisites (informational only)
+        shell: bash
+        run: |
+          set +e
+          sh tests/probe-dual-environment.sh
+          result=$?
+          set -e
+          if [ "$result" -eq 77 ]; then
+            echo 'SKIPPED: runner policy prevents unprivileged namespaces. Isolation NOT validated.' | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if [ "$result" -ne 0 ]; then
+            echo 'FAILED: namespace invariants did not hold after entry.' | tee -a "$GITHUB_STEP_SUMMARY"
+            exit "$result"
+          fi
+          echo 'PASSED: namespace prerequisites only; no security/boot claim.' | tee -a "$GITHUB_STEP_SUMMARY"
 
   signed-pkgrepo:
     name: Install signed Veyra packages on clean Alpine

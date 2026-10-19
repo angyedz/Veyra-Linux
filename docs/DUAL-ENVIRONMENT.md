@@ -2,6 +2,7 @@
 
 **Status:** architecture contract and experimental probes only. The installed
 Veyra ISO does **not** yet launch the user environment described here.
+See the [Development Roadmap](ROADMAP.md) for milestones and evidence gates.
 
 This document complements ARCHITECTURE.md; it does not change the existing
 Calamares/TUI installation or A/B boot process.
@@ -183,6 +184,14 @@ The installed system's vpkg must be independent of an installed apk
 binary or libapk. Nix integration may invoke standalone Nix. System
 deployment updates are a separate host-authorized transaction against
 an inactive A/B generation, never implicit from user sudo.
+
+## Current prototype limits and CI evidence
+
+- `scripts/veyra-user-env-prototype.sh --check ROOTFS` checks only a canonical, unprivileged-owned rootfs layout. It refuses nested mounts. Its actual `unshare` launch uses **one UID mapping only** (inner UID 0 to outer nonroot UID), so it cannot provide an ordinary account plus `sudo` yet. It also does not set up the required OpenRC devices, networking or desktop. The host filesystem must never be treated as safely isolated based solely on this prototype.
+- `tests/test-user-env-prototype.sh` exercises syntax and fail-closed negative cases plus non-destructive rootfs preflight on nonroot runners; it is not a QEMU boot test.
+- `tests/probe-dual-environment.sh` returns **77 (SKIP)** when the runner blocks namespace creation and **1 (FAIL)** if invariants fail after namespace entry. CI reports a SKIP explicitly and must not interpret it as proof of a working user environment.
+- `scripts/veyra-user-krunner.sh` is not integrated into KDE. It checks for an isolated session bus and a provisional read-only system runtime, but cannot authenticate the runtime origin or prevent the user from overmounting their own view. Real system-controlled mount composition, loader/plugin pairing, privilege isolation and host-side launch policy remain open work.
+- The real init arrangement (Alpine BusyBox init versus dedicated OpenRC init), multi-ID UID/GID mappings, inherited file descriptor cleanup, controlled host devices/services, runtime pairing and guest tests still require implementation.
 
 ## Implementation gates (none assumed complete)
 
