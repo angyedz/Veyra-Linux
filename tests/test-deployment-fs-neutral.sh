@@ -25,11 +25,36 @@ for fs in ext4 xfs; do
     mkdir -p "$top/deployments/A/etc/veyra" "$top/deployments/A/etc/apk"
     printf 'A\n' > "$top/deployments/A/etc/veyra/deployment-id"
     printf 'alpine-base\nplasma-desktop\nkwin\n' > "$top/deployments/A/etc/apk/world"
+    # Unit fixture: each deployment has its own kernel/initramfs and can be
+    # selected by GRUB. These are NOT kernel images; QEMU boot tests are separate.
+    mkdir -p "$top/deployments/A/boot" "$top/boot/grub"
+    printf 'A kernel fixture\n' > "$top/deployments/A/boot/vmlinuz-lts"
+    printf 'A initramfs fixture\n' > "$top/deployments/A/boot/initramfs-lts"
     printf 'home unchanged\n' > "$top/persistent/home/user.txt"
     printf 'nix unchanged\n' > "$top/persistent/nix/profile.txt"
     sh "$root/scripts/veyra-deployment.sh" verify "$top" A
     sh "$root/scripts/veyra-deployment.sh" stage "$top" A B
     sh "$root/scripts/veyra-deployment.sh" verify "$top" B
+    uuid=$(blkid -s UUID -o value "$image")
+    python3 "$root/scripts/veyra-bootctl.py" --store "$top" init \
+        --uuid "$uuid" --fstype "$fs" --default A
+    python3 "$root/scripts/veyra-bootctl.py" --store "$top" status
+    grep -q "veyra_deployment=A" "$top/boot/grub/grub.cfg"
+    grep -q "veyra_deployment=B" "$top/boot/grub/grub.cfg"
+    grep -q "rootfstype=$fs" "$top/boot/grub/grub.cfg"
+    grub-script-check "$top/boot/grub/grub.cfg"
+    python3 "$root/scripts/veyra-bootctl.py" --store "$top" activate B
+    grep -qx '# VEYRA_DEFAULT=B' "$top/boot/grub/grub.cfg"
+    grep -q "^set default='veyra-B'$" "$top/boot/grub/grub.cfg"
+    python3 "$root/scripts/veyra-bootctl.py" --store "$top" rollback A
+    grep -q "^set default='veyra-A'$" "$top/boot/grub/grub.cfg"
+    if python3 "$root/scripts/veyra-bootctl.py" --store "$top" activate '../evil'; then
+        echo 'bootctl accepted traversal ID' >&2; exit 1
+    fi
+    if python3 "$root/scripts/veyra-bootctl.py" --store "$top" activate absent; then
+        echo 'bootctl accepted missing root' >&2; exit 1
+    fi
+    grub-script-check "$top/boot/grub/grub.cfg"
     grep -qx kwin "$top/deployments/B/etc/apk/world"
     printf 'only in B\n' >> "$top/deployments/B/etc/apk/world"
     if grep -q 'only in B' "$top/deployments/A/etc/apk/world"; then
