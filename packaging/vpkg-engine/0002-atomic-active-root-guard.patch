@@ -1,10 +1,8 @@
 diff --git a/src/apk.c b/src/apk.c
 --- a/src/apk.c
 +++ b/src/apk.c
-@@ -565,4 +565,36 @@ int main(int argc, char **argv)
- 	apk_flags |= APK_SIMULATE;
- 	apk_flags &= ~APK_INTERACTIVE;
- #endif
+@@ -569,1 +569,33 @@ int main(int argc, char **argv)
+-	r = apk_db_open(&db, &dbopts);
 +	/*
 +	 * Veyra's atomic host must never have its active root altered by the
 +	 * package engine itself, even if callers bypass the Go vpkg frontend.
@@ -37,4 +35,4 @@ diff --git a/src/apk.c b/src/apk.c
 +			goto err;
 +		}
 +	}
- 	r = apk_db_open(&db, &dbopts);
++	r = apk_db_open(&db, &dbopts);
