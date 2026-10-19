@@ -387,6 +387,30 @@ static void proof_user_sudo(void) {
     if (waitpid(pid, &status, 0) != pid || !WIFEXITED(status) ||
         WEXITSTATUS(status) != 0) die("inner sudo privilege elevation failed");
 }
+static int directory_identity_matches(int validated_fd, const char *path) {
+    struct stat validated_st, candidate_st;
+    if (fstat(validated_fd, &validated_st) < 0 || stat(path, &candidate_st) < 0)
+        return -1;
+    return validated_st.st_dev == candidate_st.st_dev &&
+           validated_st.st_ino == candidate_st.st_ino;
+}
+static int test_directory_identity_guard(void) {
+    if (geteuid() != 0) {
+        fprintf(stderr, "rootfs inode guard test requires system-side UID 0\n");
+        return 2;
+    }
+    int rootfd = open(ROOT_PATH, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    if (rootfd < 0) { perror("open validated rootfs for inode guard test"); return 2; }
+    int same = directory_identity_matches(rootfd, ROOT_PATH);
+    int different = directory_identity_matches(rootfd, "/run");
+    close(rootfd);
+    if (same != 1 || different != 0) {
+        fprintf(stderr, "VEYRA_STAGE1_FAILURE: rootfs inode identity guard self-test failed\n");
+        return 1;
+    }
+    puts("VEYRA_STAGE1_ROOTFS_INODE_GUARD_PASS");
+    return 0;
+}
 static void inner_pid_one(int root_fd, int ready_fd) {
     /* The launcher waits for this acknowledgment before reporting the PID.
      * If the launcher dies before this signal is armed, the pipe is closed
@@ -409,10 +433,12 @@ static void inner_pid_one(int root_fd, int ready_fd) {
     if (mkdir(newroot, 0700) < 0) die("create temporary newroot");
     if (mount(ROOT_PATH, newroot, NULL, MS_BIND, NULL) < 0)
         die("bind persistent user rootfs");
-    struct stat source_st, bound_st;
-    if (fstat(root_fd, &source_st) < 0 || stat(newroot, &bound_st) < 0 ||
-        source_st.st_dev != bound_st.st_dev || source_st.st_ino != bound_st.st_ino)
+    int identity_matches = directory_identity_matches(root_fd, newroot);
+    if (identity_matches != 1) {
+        if (identity_matches < 0) die("inspect bound user rootfs identity");
+        errno = ESTALE;
         die("bound user rootfs is not the validated directory inode");
+    }
     close(root_fd);
     if (mkdir(oldroot, 0700) < 0 && errno != EEXIST) die("create oldroot directory");
     if (chroot(bootstrap) < 0 || chdir("/") < 0) die("enter intermediate root");
@@ -812,6 +838,8 @@ static int manager_client(const char *command) {
     return !strncmp(response, "ERROR", 5) ? 1 : 0;
 }
 int main(int argc, char **argv) {
+    if (argc == 2 && !strcmp(argv[1], "test-inode-guard"))
+        return test_directory_identity_guard();
     if (argc == 3 && !strcmp(argv[1], "serve") &&
         !strcmp(argv[2], ROOT_PATH)) {
         if (manager_service() < 0) die("system-side user manager failed");
