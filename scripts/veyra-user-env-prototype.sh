@@ -13,8 +13,9 @@ esac
 case "$requested_root" in /*) : ;; *) die 'rootfs must be absolute' ;; esac
 [ "$requested_root" != / ] || die 'refusing host root'
 [ "$(id -u)" -ne 0 ] || die 'must run as an ordinary host user'
-[ -d "$requested_root" ] && [ ! -L "$requested_root" ] ||
+if [ ! -d "$requested_root" ] || [ -L "$requested_root" ]; then
     die 'rootfs must be a real directory'
+fi
 root=$(CDPATH='' cd -P "$requested_root" && pwd -P) || die 'cannot resolve rootfs'
 [ "$root" = "$requested_root" ] ||
     die 'rootfs must have a canonical physical path, no symlink ancestors'
@@ -26,11 +27,13 @@ command -v findmnt >/dev/null 2>&1 || die 'missing findmnt'
 if findmnt -rn -o TARGET -R "$root" 2>/dev/null | grep -q .; then
     die 'mounted rootfs or submount found; unsupported in this prototype'
 fi
-[ ! -e "$root/.veyra-old-root" ] && [ ! -L "$root/.veyra-old-root" ] ||
+if [ -e "$root/.veyra-old-root" ] || [ -L "$root/.veyra-old-root" ]; then
     die 'stale or hostile pivot_root directory'
+fi
 for d in etc etc/init.d etc/runlevels sbin dev proc sys run tmp; do
-    [ -d "$root/$d" ] && [ ! -L "$root/$d" ] ||
+    if [ ! -d "$root/$d" ] || [ -L "$root/$d" ]; then
         die "missing real rootfs directory: $d"
+    fi
 done
 [ -x "$root/sbin/init" ] || die 'missing executable rootfs /sbin/init'
 for tool in unshare mount pivot_root umount env; do
