@@ -100,7 +100,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: angyedz/veyra-glenv
-          ref: 233afda12e51a53a5e1a0d1e3ae0b855b2c37235
+          ref: 6509a968129abd3668da771991406925e32d2332
           path: glenv
           persist-credentials: false
       - name: Verify glenv Go packages under musl
@@ -116,9 +116,12 @@ jobs:
       - name: Exercise Veyra A/B boot-to-glenv matching
         run: |
           set -eu
-          mkdir -p /tmp/veyra-glenv-fixture/sysroot
-          printf 'generation B' > /tmp/veyra-glenv-fixture/sysroot/libc.so
-          /tmp/glenv release inventory /tmp/veyra-glenv-fixture ci-runtime > /tmp/veyra-glenv-fixture/glenv-manifest.json
+          mkdir -p /tmp/veyra-glenv-original/sysroot /tmp/veyra-glenv-original/lib
+          printf 'generation B' > /tmp/veyra-glenv-original/sysroot/libc.so
+          printf 'existing Wayland shim fixture' > /tmp/veyra-glenv-original/lib/glenv-wayland-filter.so
+          /tmp/glenv release prepare-copy /tmp/veyra-glenv-original /tmp/veyra-glenv-fixture ci-runtime
+          test -f /tmp/veyra-glenv-original/lib/glenv-wayland-filter.so
+          test -f /tmp/veyra-glenv-fixture/lib/glenv-wayland-filter.so
           /tmp/glenv release --store /tmp/veyra-glenv-store stage /tmp/veyra-glenv-fixture ci-runtime
           mkdir -p /tmp/veyra-glenv-previous/sysroot
           printf 'generation A' > /tmp/veyra-glenv-previous/sysroot/libc.so
