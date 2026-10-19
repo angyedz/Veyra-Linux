@@ -54,6 +54,8 @@ Record relevant commit IDs, CI runs, guest serial logs and failure modes for eac
 
 **Depends on:** Stage 0.
 
+**Prototype milestone (verified in QEMU, not the finished stage):** a disposable Alpine 3.22 user rootfs booted through its own BusyBox PID 1 and OpenRC on the same guest kernel, with separate user/PID/mount/network/IPC/UTS namespaces, mapped inner root/normal UIDs, namespace-local `sudo` and persistent boot-count over two VM boots. [QEMU evidence](https://github.com/angyedz/Veyra-Linux/actions/runs/39308988112) · [test specification](STAGE1-USER-ROOTFS.md). This does **not** satisfy production login, host boundary audit, A/B integration, KDE or recovery gates below.
+
 - [ ] Decide persistent rootfs/state layout outside system A/B; preserve user package DB, services, `/home` and `/nix` across system rollback.
 - [ ] Build a clean Alpine rootfs with its own init/service configuration and suitable `/dev`, `/run`, `/proc`, `/sys` exposure.
 - [ ] Implement **multi-ID UID/GID mappings** and ordinary user accounts plus a working inner `sudo`. Rootless `--map-root-user` by itself cannot provide this.

@@ -1,6 +1,15 @@
 name: Veyra Stage 1 user OpenRC and rootfs QEMU
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/veyra-stage1-qemu-init.sh'
+      - 'tests/stage1-user-supervisor.c'
+      - 'tests/test-stage1-user-openrc-qemu.py'
+      - 'tests/fixtures/stage1-user-inittab'
+      - 'tests/fixtures/stage1-user-openrc.initd'
+      - '.github/workflows/stage1-user-openrc-qemu.yml'
   pull_request:
     paths:
       - 'scripts/veyra-stage1-qemu-init.sh'

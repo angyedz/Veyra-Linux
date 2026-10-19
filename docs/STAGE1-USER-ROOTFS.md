@@ -1,6 +1,6 @@
 # Stage 1: persistent user rootfs and independent init — QEMU prototype
 
-**Status:** QEMU-only prototype with passing two-boot and mapped-sudo proof; **not enabled** by installed Veyra or Live ISO. Evidence: [GitHub Actions #39308745394](https://github.com/angyedz/Veyra-Linux/actions/runs/39308745394).
+**Status:** QEMU-only prototype with passing **explicit two-boot and inner-sudo serial assertions**; **not enabled** by installed Veyra or Live ISO. Evidence: [GitHub Actions #39308745394](https://github.com/angyedz/Veyra-Linux/actions/runs/39308988112).
 This prototype is stacked on [Stage 0](DUAL-ENVIRONMENT.md) in PR #8.
 Track product requirements and future steps in [ROADMAP.md](ROADMAP.md).
 
@@ -67,7 +67,7 @@ binary acting as the literal PID 1. The system still has its own init.
 - [x] A normal inner UID 1000 uses setuid `sudo` to obtain inner UID **0**; a root-owned proof file is mapped to outside UID **100000**, never outside UID 0. Authorized system-side GID mapping keeps inner `setgroups()` functional.
 - [x] CI retains serial evidence for the QEMU test.
 
-**Test evidence:** [successful QEMU Stage 1 OpenRC and sudo run](https://github.com/angyedz/Veyra-Linux/actions/runs/39308745394) recorded both boot counts and the mapped sudo proof. This validates the disposable prototype only.
+**Test evidence:** [successful QEMU Stage 1 OpenRC and sudo run](https://github.com/angyedz/Veyra-Linux/actions/runs/39308988112) recorded both boot counts and the mapped sudo proof. This validates the disposable prototype only.
 
 None of these prove **production** host security. The prototype is only the first runnable milestone in Stage 1 of the full [roadmap](ROADMAP.md).
 
