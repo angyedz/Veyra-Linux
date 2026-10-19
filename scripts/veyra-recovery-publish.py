@@ -128,6 +128,44 @@ def publish(boot, identifier, kernel, initramfs, logo=LOGO):
         return target
 
 
+def verify_published(boot, identifier):
+    """Check published bytes against UNSIGNED corruption-detection manifest."""
+    if not ID.fullmatch(identifier) or ".." in identifier:
+        raise RecoveryError("unsafe recovery image identifier")
+    safe_directory(boot)
+    container = boot / "veyra-recovery"
+    safe_directory(container)
+    published = container / identifier
+    safe_directory(published)
+    metadata_file = published / "manifest.json"
+    if metadata_file.is_symlink() or not metadata_file.is_file():
+        raise RecoveryError("missing or symlinked recovery manifest")
+    try:
+        manifest = json.loads(metadata_file.read_text())
+    except (ValueError, UnicodeDecodeError) as error:
+        raise RecoveryError("invalid recovery manifest JSON") from error
+    if (manifest.get("format") != 1 or manifest.get("id") != identifier
+            or manifest.get("authentication") != "unsigned-experimental"):
+        raise RecoveryError("invalid or unsupported recovery manifest")
+    hashes = manifest.get("sha256")
+    if not isinstance(hashes, dict):
+        raise RecoveryError("recovery hashes missing")
+    for name in ("vmlinuz", "initramfs", "veyra-logo.svg"):
+        candidate = published / name
+        if candidate.is_symlink() or not candidate.is_file() or candidate.stat().st_size == 0:
+            raise RecoveryError(f"missing recovery file: {name}")
+        expected = hashes.get(name)
+        if not isinstance(expected, str) or not re.fullmatch(r"[0-9a-f]{64}", expected):
+            raise RecoveryError(f"invalid recovery digest: {name}")
+        digest = hashlib.sha256()
+        with candidate.open("rb") as reader:
+            for data in iter(lambda: reader.read(1024 * 1024), b""):
+                digest.update(data)
+        if digest.hexdigest() != expected:
+            raise RecoveryError(f"recovery artifact integrity failure: {name}")
+    return published
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--store", type=Path, required=True)
