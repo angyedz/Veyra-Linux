@@ -35,7 +35,9 @@ binary acting as the literal PID 1. The system still has its own init.
   namespace launcher. Its local start, status and stop commands use a
   root-owned Unix socket under system /run; it validates the persistent mount
   before each start, waits for OpenRC readiness, reaps the launcher to detect
-  PID 1 crashes, and stops only that nested PID 1. It creates separate
+  PID 1 crashes, and stops only that nested PID 1. On an unexpected manager
+  exit, `PR_SET_PDEATHSIG` terminates the launcher; nested PID 1 also arms
+  that signal against launcher exit. It creates separate
   user/mount/PID/network/IPC/UTS namespaces and maps inner IDs 0..65535 to
   outer IDs 100000..165535. The unprivileged launcher creates its own user
   namespace before the system-side process installs the UID/GID maps. The
@@ -49,8 +51,9 @@ binary acting as the literal PID 1. The system still has its own init.
   EINVAL.
 - tests/test-stage1-user-openrc-qemu.py — boots the same disk image twice;
   in each guest boot it tests invalid rootfs ownership and extra setuid
-  rejection, start/status/stop/restart, and forced PID 1 crash detection. Two
-  nested starts per guest boot leave persistent counts 2 then 4.
+  rejection, start/status/stop/restart, forced PID 1 crash detection, and
+  cleanup after killing the system-side manager. Three nested starts per
+  guest boot leave persistent counts 3 then 6.
 - .github/workflows/stage1-user-openrc-qemu.yml — builds a disposable Alpine
   3.22 rootfs on an ext4 raw file, assigns the ext4 root inode to mapped UID/GID
   100000, then boots an Alpine LTS kernel and dedicated initramfs. No host disk
@@ -71,6 +74,12 @@ OpenRC boot counter plus normal-user and mapped-sudo proofs. Status reports
 the manager's current state. Stop sends SIGTERM to nested PID 1, then uses
 SIGKILL after a bounded wait. The manager polls and reaps its launcher; an
 unexpected exit becomes FAILED and remains visible until another start.
+The follow-up change arms `PR_SET_PDEATHSIG` against an unexpected manager
+exit, and nested PID 1 arms it against launcher exit. Terminating PID 1 in a
+PID namespace terminates the remaining processes in that namespace. The
+follow-up QEMU case kills the manager while a user environment is running,
+checks that PID 1 exits, then restarts the manager and expects STOPPED. This
+does not replace production service cgroup ownership or full crash recovery.
 These commands are a QEMU-only management interface, not an installed service
 or public API.
 
@@ -88,8 +97,10 @@ The QEMU harness injects an initial-namespace-root-owned file, an unexpected
 setuid file, a nested tmpfs mount and a block device, and requires each start
 to fail before launching user init. It then exercises start, status, stop,
 restart and a forced nested PID 1 crash on each of two guest boots using the
-same ext4 disk. The [passing QEMU run](https://github.com/angyedz/Veyra-Linux/actions/runs/39312323358)
-asserts final boot counts 2 then 4.
+same ext4 disk. The follow-up manager-death check starts a third environment
+and kills the manager to verify cleanup. The [PR #10 QEMU run](https://github.com/angyedz/Veyra-Linux/actions/runs/39312323358)
+asserts counts 2 then 4 before this additional check; a new CI run must verify
+persistent counts 3 then 6 including manager-death cleanup.
 
 These checks are structural startup checks, not cryptographic authentication
 of user data. The marker can be changed by anyone who can write the rootfs;
@@ -109,10 +120,13 @@ and [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/3931232
       the nested user environment in QEMU.
 - [x] Detect a forced nested PID 1 crash and report FAILED from the system
       side.
+- [ ] Terminate the system-side manager unexpectedly and verify its launcher
+      and nested PID 1 stop; restart the manager and recover STOPPED.
 - [x] Reject an unmapped initial-namespace-root-owned file, unexpected
       setuid file, nested mountpoint and block device before launching user PID 1.
-- [x] Preserve the same disk across two QEMU guest boots; the two nested starts
-      per guest boot must leave boot counts 2 then 4.
+- [ ] Preserve the same disk across two QEMU guest boots; the three nested
+      starts per guest boot leave counts 3 then 6, including manager-death
+      cleanup.
 - [x] Keep the existing inner UID 1000 and sudo proof mapped to outside UIDs
       101000 and 100000 respectively.
 - [x] Retain serial evidence for the manager and rootfs validation checks.
@@ -151,3 +165,4 @@ This prototype deliberately has the following gaps:
 **Product rule:** never route the system KDE, physical networking, system
 updates or boot control through user `sudo`. The nested user environment
 must be independently recoverable.
+
