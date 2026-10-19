@@ -43,12 +43,12 @@ Record relevant commit IDs, CI runs, guest serial logs and failure modes for eac
 - [x] Add conservative canonical rootfs, ownership and submount preflight; add `--check` without launching namespaces.
 - [x] Fail closed if KRunner's namespace, private D-Bus or provisional read-only KDE runtime preflight is missing.
 - [x] Separate namespace-support **SKIP (77)** from a failed invariant after entering namespaces.
-- [ ] Pass rootless negative tests and shellcheck in GitHub Actions; inspect run logs.
-- [ ] Validate real unprivileged namespace probe where runner policy allows it; mark SKIP explicitly if blocked.
+- [x] Pass rootless negative tests and shellcheck in GitHub Actions; inspect run logs. Evidence: [integration CI success, 2026-10-19](https://github.com/angyedz/Veyra-Linux/actions/runs/39301689918).
+- [x] Report **SKIP (77)** explicitly when the GitHub runner prohibits unprivileged namespaces. In addition, run a **real disposable, networkless QEMU kernel test**: a nonroot guest process creates a user namespace, a trusted guest supervisor installs UID/GID mappings, and the nested process proves PID 1, mount/network/IPC isolation and inability to read a root-only guest file. Evidence: [QEMU namespace smoke test, 2026-10-19](https://github.com/angyedz/Veyra-Linux/actions/runs/39301689815).
 - [ ] Review threat-model gaps (host file descriptors, mount subtrees, inherited capabilities, runtime origin).
 - [ ] Merge PR #8 only after review, with no live ISO/installed boot path changes.
 
-**Gate:** repeatable syntax, static, preflight and negative tests in CI; clear limitations. These tests alone **do not prove isolation**.
+**Gate:** repeatable syntax, static, preflight and negative tests in CI; a real namespace primitive smoke test in QEMU; documented limitations. **Passed as a test baseline, not an isolation sign-off.** The remaining manual PR review, security threat-model review and production launcher are not complete.
 
 ## Stage 1 — Persistent user Linux environment
 

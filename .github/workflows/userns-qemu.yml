@@ -1,8 +1,18 @@
 name: Veyra rootless user namespaces in QEMU
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/veyra-user-env-prototype.sh'
+      - 'tests/userns-qemu-check.c'
+      - 'scripts/veyra-userns-qemu-init.sh'
+      - 'tests/test-userns-qemu.py'
+      - 'tests/probe-dual-environment.sh'
+      - '.github/workflows/userns-qemu.yml'
   pull_request:
     paths:
+      - 'scripts/veyra-user-env-prototype.sh'
       - 'tests/userns-qemu-check.c'
       - 'scripts/veyra-userns-qemu-init.sh'
       - 'tests/test-userns-qemu.py'
