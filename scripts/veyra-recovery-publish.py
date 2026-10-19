@@ -78,6 +78,11 @@ def sync_directory(path):
 def publish(boot, identifier, kernel, initramfs, logo=LOGO):
     if not ID.fullmatch(identifier) or ".." in identifier:
         raise RecoveryError("unsafe recovery image identifier")
+    # Validate all sources before allocating any temporary generation.
+    # copy_hashed performs the same checks again at the point of use.
+    for source in (kernel, initramfs, logo):
+        if source.is_symlink() or not source.is_file() or source.stat().st_size == 0:
+            raise RecoveryError(f"invalid source artifact: {source}")
     safe_directory(boot)
     container = boot / "veyra-recovery"
     if not container.exists():
