@@ -6,8 +6,10 @@ kernel and initramfs live under its boot/ directory. The root partition,
 whatever supported filesystem it uses, is mounted by Alpine initramfs;
 veyra_deployment=<ID> selects that system tree before switch_root.
 
-This implementation does NOT sign GRUB/kernel metadata or offer automatic
-watchdog rollback. A bootable previous entry remains visible at all times.
+This implementation does NOT sign GRUB/kernel metadata. Before booting a
+candidate, the initramfs arms a previous-known-good GRUB fallback for the
+next reboot; OpenRC confirms the candidate after startup. Failure before the
+initramfs reaches the fallback hook still needs manual GRUB recovery.
 Never use on production installations before signed boot integration.
 """
 import argparse
@@ -16,7 +18,6 @@ import json
 import os
 from pathlib import Path
 import re
-import subprocess
 import sys
 import tempfile
 
@@ -194,6 +195,41 @@ def selected(store):
     return validate_id(matches[0])
 
 
+def pending_state(store):
+    path = store / "boot-state" / "pending"
+    if not path.exists() and not path.is_symlink():
+        return None
+    safe_file(path)
+    words = path.read_text().strip().split()
+    if len(words) != 2:
+        raise VeyraError("invalid A/B boot pending metadata")
+    return (validate_id(words[0]), validate_id(words[1]))
+
+
+def live_deployment():
+    try:
+        tokens = Path("/proc/cmdline").read_text().split()
+    except OSError as error:
+        raise VeyraError("cannot read currently booted deployment") from error
+    ids = [token.partition("=")[2] for token in tokens
+           if token.startswith("veyra_deployment=")]
+    if len(ids) != 1:
+        raise VeyraError("current kernel was not booted with Veyra deployment selection")
+    return validate_id(ids[0])
+
+
+def durable_remove(path):
+    if path.is_symlink():
+        raise VeyraError(f"symlinked pending marker: {path}")
+    if path.exists():
+        path.unlink()
+        dirfd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(dirfd)
+        finally:
+            os.close(dirfd)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--store", type=Path, required=True)
@@ -211,6 +247,8 @@ def main():
     rollback = sub.add_parser("rollback", help="select a known-good generation explicitly")
     rollback.add_argument("id")
     sub.add_parser("status")
+    confirm = sub.add_parser("confirm", help="acknowledge a candidate after successful OpenRC boot")
+    confirm.add_argument("--booted-id", help="CI-only override; requires root")
     args = parser.parse_args()
 
     store = args.store
@@ -246,14 +284,51 @@ def main():
             atomic_write(grub / "grub.cfg", grub_text(config, args.default, slots(store), recovery))
         else:
             config = read_config(store)
+            pending = pending_state(store)
             if args.action == "status":
+                suffix = f" pending={pending[0]} fallback={pending[1]}" if pending else ""
                 print(f"Veyra selected={selected(store)} filesystem={config['fstype']}"
-                      f" uuid={config['uuid']} generations={','.join(slots(store))}")
+                      f" uuid={config['uuid']} generations={','.join(slots(store))}{suffix}")
+                return
+            recovery = (store / "boot" / "vmlinuz-lts").is_file() and (store / "boot" / "initramfs-lts").is_file()
+            if args.action == "confirm":
+                if not pending:
+                    print("Veyra boot confirmed (no pending update)")
+                    return
+                if os.geteuid() != 0:
+                    raise VeyraError("boot confirmation requires root")
+                booted = validate_id(args.booted_id) if args.booted_id else live_deployment()
+                if booted != pending[0]:
+                    raise VeyraError(f"booted {booted}, pending candidate {pending[0]}")
+                verify_slot(store, booted)
+                atomic_write(grub / "grub.cfg",
+                             grub_text(config, booted, slots(store), recovery))
+                durable_remove(state / "pending")
+                print(f"Veyra confirmed boot: {booted}")
                 return
             verify_slot(store, args.id)
-            # Replace only the small bootloader config; never rewrite a running root.
-            recovery = (store / "boot" / "vmlinuz-lts").is_file() and (store / "boot" / "initramfs-lts").is_file()
-            atomic_write(grub / "grub.cfg", grub_text(config, args.id, slots(store), recovery))
+            if args.action == "activate":
+                if pending:
+                    raise VeyraError("candidate already pending; confirm or rollback first")
+                fallback = selected(store)
+                if args.id == fallback:
+                    print(f"Veyra already selected: {fallback}")
+                    return
+                verify_slot(store, fallback)
+                # Durable fallback and pending intent PRECEDE the boot switch.
+                atomic_write(state / "fallback-grub.cfg",
+                             grub_text(config, fallback, slots(store), recovery))
+                atomic_write(state / "pending", f"{args.id} {fallback}\n")
+                atomic_write(grub / "grub.cfg",
+                             grub_text(config, args.id, slots(store), recovery))
+            elif args.action == "rollback":
+                # Explicit rollback selects a known-good root and cancels the
+                # candidate transaction in a repeatable order.
+                atomic_write(grub / "grub.cfg",
+                             grub_text(config, args.id, slots(store), recovery))
+                durable_remove(state / "pending")
+            else:
+                raise VeyraError("unsupported boot operation")
         print(f"Veyra {args.action}: boot selection={selected(store)} (next boot)")
 
 
