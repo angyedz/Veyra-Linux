@@ -1,6 +1,6 @@
 # Stage 1: persistent user rootfs and independent init — QEMU prototype
 
-**Status:** QEMU-only prototype; the lifecycle manager, structural rootfs validation and their new two-boot tests are the next incremental milestone. **Not enabled** by installed Veyra or Live ISO. The earlier separate-init and inner-sudo baseline passed in [GitHub Actions](https://github.com/angyedz/Veyra-Linux/actions/runs/39308988112).
+**Status:** the QEMU lifecycle and rootfs-validation milestone passed in [PR #10 QEMU CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39312323358) and [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39312323395). **Not enabled** by installed Veyra or Live ISO; this remains a disposable prototype, not production security validation.
 This prototype is stacked on [Stage 0](DUAL-ENVIRONMENT.md) in PR #8.
 Track product requirements and future steps in [ROADMAP.md](ROADMAP.md).
 
@@ -84,11 +84,12 @@ mapped-root-owned /usr/bin/sudo. It also requires the Stage 1 format marker
 and resolves /sbin/init and sudo inside the rootfs with openat2 root
 resolution.
 
-The QEMU harness injects an initial-namespace-root-owned file and an unexpected
-setuid file, and requires both starts to fail before launching the user init.
-It also injects a nested tmpfs mount and a block device. It then exercises
-start, status, stop, restart and a forced nested PID 1 crash on each of two
-guest boots using the same ext4 disk.
+The QEMU harness injects an initial-namespace-root-owned file, an unexpected
+setuid file, a nested tmpfs mount and a block device, and requires each start
+to fail before launching user init. It then exercises start, status, stop,
+restart and a forced nested PID 1 crash on each of two guest boots using the
+same ext4 disk. The [passing QEMU run](https://github.com/angyedz/Veyra-Linux/actions/runs/39312323358)
+asserts final boot counts 2 then 4.
 
 These checks are structural startup checks, not cryptographic authentication
 of user data. The marker can be changed by anyone who can write the rootfs;
@@ -100,21 +101,21 @@ namespace-local sudo rule is NOPASSWD only in this disposable fixture.
 
 The earlier PR #9 baseline passed a static C build and QEMU checks for
 separate PID 1, mapped UIDs, namespace-local sudo and persistent state. The
-new manager and rootfs validator are not marked complete until their dedicated
-workflow runs pass.
+PR #10 manager and rootfs checks passed in [QEMU CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39312323358)
+and [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39312323395).
 
-- [ ] Build the system-side manager statically with -Werror.
-- [ ] Start, report running status, stop, report stopped status and restart
+- [x] Build the system-side manager statically with -Werror.
+- [x] Start, report running status, stop, report stopped status and restart
       the nested user environment in QEMU.
-- [ ] Detect a forced nested PID 1 crash and report FAILED from the system
+- [x] Detect a forced nested PID 1 crash and report FAILED from the system
       side.
-- [ ] Reject an unmapped initial-namespace-root-owned rootfs entry and an
-      unexpected setuid file before launching user PID 1.
-- [ ] Preserve the same disk across two QEMU guest boots; the two nested starts
+- [x] Reject an unmapped initial-namespace-root-owned file, unexpected
+      setuid file, nested mountpoint and block device before launching user PID 1.
+- [x] Preserve the same disk across two QEMU guest boots; the two nested starts
       per guest boot must leave boot counts 2 then 4.
-- [ ] Keep the existing inner UID 1000 and sudo proof mapped to outside UIDs
+- [x] Keep the existing inner UID 1000 and sudo proof mapped to outside UIDs
       101000 and 100000 respectively.
-- [ ] Retain serial evidence for the manager and rootfs validation checks.
+- [x] Retain serial evidence for the manager and rootfs validation checks.
 
 None of these prove **production** host security. This remains a disposable
 prototype in Stage 1 of the full [roadmap](ROADMAP.md).
