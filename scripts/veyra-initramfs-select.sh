@@ -1,3 +1,4 @@
+# shellcheck disable=SC2015 # Deliberate fail-closed conjunctions
 # This is SOURCED into Alpine's initramfs /init by build-veyra-init.sh.
 # It executes ONLY when kernel cmdline contains veyra_deployment=<ID>.
 # Alpine has already mounted root=UUID=<STORE> on "$sysroot".
