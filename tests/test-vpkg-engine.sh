@@ -10,13 +10,17 @@ trap 'rm -rf "$tmp"' EXIT HUP INT TERM
 root="$tmp/target"
 mkdir -p "$root/etc/apk/keys" "$root/etc/apk" "$root/lib/apk/db"
 cp /etc/apk/keys/*.pub "$root/etc/apk/keys/"
+# apk-tools 2.14 requires a preinitialized world + installed database for
+# ordinary add operations; creating them is safe in this disposable root.
+: > "$root/etc/apk/world"
+: > "$root/lib/apk/db/installed"
 cat > "$root/etc/apk/repositories" <<'REPOS'
 https://dl-cdn.alpinelinux.org/alpine/v3.22/main
 https://dl-cdn.alpinelinux.org/alpine/v3.22/community
 REPOS
 # All writes go to a fresh disposable target. Signatures are REQUIRED:
 # --allow-untrusted is deliberately not used.
-"$engine" --root "$root" --initdb --no-cache add busybox
+"$engine" --root "$root" --no-cache add busybox
 "$engine" --root "$root" info -e busybox
 test -x "$root/bin/busybox"
 test -s "$root/lib/apk/db/installed"
