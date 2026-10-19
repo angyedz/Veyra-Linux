@@ -23,4 +23,4 @@ Use `-display vnc=:1` in headless environments and connect a VNC viewer on the h
 
 ## Installing
 
-The live image build pipeline compiles and bundles a native Qt6 Calamares package with Veyra's installation configuration. The **disk installation workflow is experimental and has not passed a complete installed-system reboot test yet**. Only test it using disposable blank virtual disks.
+The live image build pipeline compiles and bundles a native Qt6 Calamares package with Veyra's installation configuration. The **disk installation workflow remains experimental**, but the installer shell scripts completed a full blank-disk installation and reboot test in [GitHub Actions on October 19, 2026](https://github.com/angyedz/Veyra-Linux/actions/runs/39202330852). The graphical Calamares click-through, real hardware and additional desktops are not yet validated. Only test it using disposable blank virtual disks.
