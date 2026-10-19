@@ -38,3 +38,15 @@ To roll back **both** components, first select the previous Veyra boot deploymen
 4. Actual Wayland/KWin, graphics acceleration, sound, portal screen-sharing, glibc app and QEMU reboot/rollback tests.
 
 The current CI checks the Go CLI and a synthetic host/runtime pairing on Alpine/musl; it does **not** establish that these production requirements are met.
+
+## Opt-in boot helper
+
+`scripts/glenv-boot-pin.sh` is a fail-closed early-boot **preparation** helper. It reads the deployment ID from `/etc/veyra/deployment-id`, requires root, and invokes the versioned glenv manager to pin the matching runtime at `/run/glenv/runtime`:
+
+```sh
+sh scripts/glenv-boot-pin.sh
+```
+
+The actual `/etc/veyra/deployment-id` and trusted boot deployment selection **do not yet exist** in Veyra's experimental ISO. Consequently the helper is **not enabled as an OpenRC service** and will refuse to run on current systems without an explicitly provisioned ID and runtime store. For CI, `VEYRA_DEPLOYMENT_ID_FILE`, `VEYRA_GLENV_STORE`, `VEYRA_GLENV_PIN` and `VEYRA_GLENV_BIN` override test paths. These overrides must not be exposed to untrusted users in a privileged production boot service.
+
+The helper only pins a symlink. It does **not** mount the runtime into an isolated user environment, verify Veyra host signatures, or install glibc compatibility libraries.
