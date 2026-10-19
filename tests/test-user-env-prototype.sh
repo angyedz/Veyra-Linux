@@ -9,7 +9,7 @@ for script in "$launcher" "$krunner" "$probe"; do sh -n "$script"; done
 for token in 'id -u' 'unshare --user --map-root-user --mount --pid --ipc --net' \
     'mount --make-rprivate /' 'pivot_root . .veyra-old-root' \
     'umount -l /.veyra-old-root' 'mount -t proc proc /proc' \
-    'exec /sbin/init' 'env -i' 'findmnt -rn -o TARGET -R'; do
+    'exec /sbin/init' 'env -i' 'findmnt -rn -o TARGET'; do
     grep -Fq "$token" "$launcher" || { echo "Missing gate: $token" >&2; exit 1; }
 done
 grep -Fq '/proc/self/uid_map' "$krunner"
@@ -46,6 +46,19 @@ if [ "$(id -u)" -ne 0 ]; then
     mkdir "$work/incomplete"
     if sh "$launcher" --check "$work/incomplete" >/dev/null 2>&1; then
         echo 'Incomplete rootfs accepted' >&2; exit 1
+    fi
+    # Simulate a child mount below an otherwise ordinary rootfs directory:
+    # -R alone misses this case because the parent is not a mountpoint.
+    mkdir -p "$work/mock-bin"
+    cat > "$work/mock-bin/findmnt" <<'MOCK'
+#!/bin/sh
+printf '%s\n' "$VEYRA_MOCK_MOUNT"
+MOCK
+    chmod 755 "$work/mock-bin/findmnt"
+    if VEYRA_MOCK_MOUNT="$work/userroot/dev" \
+       PATH="$work/mock-bin:$PATH" \
+       sh "$launcher" --check "$work/userroot" >/dev/null 2>&1; then
+        echo 'Nested mountpoint in rootfs accepted' >&2; exit 1
     fi
 fi
 echo 'PASS: experimental launcher and KRunner negative/preflight tests'
