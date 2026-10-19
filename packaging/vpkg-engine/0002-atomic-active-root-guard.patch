@@ -1,7 +1,7 @@
 diff --git a/src/apk.c b/src/apk.c
 --- a/src/apk.c
 +++ b/src/apk.c
-@@ -566,6 +566,38 @@ int main(int argc, char **argv)
+@@ -565,4 +565,36 @@ int main(int argc, char **argv)
  	apk_flags |= APK_SIMULATE;
  	apk_flags &= ~APK_INTERACTIVE;
  #endif
