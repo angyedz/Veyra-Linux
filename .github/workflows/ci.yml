@@ -176,3 +176,12 @@ jobs:
             echo 'glenv mount accepted foreign release' >&2
             exit 1
           fi
+          mkdir -p /tmp/veyra-symlink-target
+          ln -s /tmp/veyra-symlink-target /tmp/veyra-symlink-mount
+          if VEYRA_GLENV_STORE=/tmp/veyra-glenv-store \
+             VEYRA_GLENV_SELECTED=/tmp/veyra-boot/selected \
+             VEYRA_GLENV_RUNTIME_MOUNT=/tmp/veyra-symlink-mount/runtime \
+             sh scripts/glenv-boot-mount.sh --check; then
+            echo 'glenv mount accepted a symlinked mountpoint parent' >&2
+            exit 1
+          fi
