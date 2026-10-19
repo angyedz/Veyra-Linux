@@ -379,3 +379,28 @@ jobs:
         run: |
           go test -count=1 ./...
           go vet ./...
+
+  veyra-initramfs:
+    name: Build filesystem-neutral Alpine A/B initramfs selector
+    runs-on: ubuntu-24.04
+    container:
+      image: alpine:3.22
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install real Alpine mkinitfs and initramfs dependencies
+        run: apk add --no-cache mkinitfs shellcheck
+      - name: Patch upstream initramfs into a separate Veyra init
+        run: |
+          sh scripts/build-veyra-init.sh /tmp/veyra-init
+          sh -n /tmp/veyra-init
+          grep -q 'Veyra: booting deployment' /tmp/veyra-init
+          grep -q 'veyra_deployment' /tmp/veyra-init
+          sh -n scripts/veyra-initramfs-select.sh
+          shellcheck -s sh scripts/build-veyra-init.sh
+          test -x /tmp/veyra-init
+          test -f /usr/share/mkinitfs/initramfs-init
+          if sh scripts/build-veyra-init.sh /tmp/veyra-init; then
+            echo 'Overwrote an existing patched initramfs image' >&2
+            exit 1
+          fi
