@@ -96,7 +96,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: angyedz/veyra-glenv
-          ref: 77492038be20ccb0f4369f2660bdeab9a36124d2
+          ref: 784c855dea37283850c316cdc44871afdd784562
           path: glenv
           persist-credentials: false
       - name: Verify glenv Go packages under musl
@@ -109,3 +109,17 @@ jobs:
         run: |
           /tmp/glenv version
           /tmp/glenv inspect /bin/busybox
+      - name: Exercise Veyra/glenv atomic boot binding
+        run: |
+          set -eu
+          mkdir -p /tmp/veyra-glenv-fixture/sysroot
+          printf 'fixture' > /tmp/veyra-glenv-fixture/sysroot/libc.so
+          /tmp/glenv release inventory /tmp/veyra-glenv-fixture ci-runtime > /tmp/veyra-glenv-fixture/glenv-manifest.json
+          /tmp/glenv release --store /tmp/veyra-glenv-store stage /tmp/veyra-glenv-fixture ci-runtime
+          /tmp/glenv release --store /tmp/veyra-glenv-store bind-host veyra-ci ci-runtime
+          if /tmp/glenv release --store /tmp/veyra-glenv-store boot-pin foreign-host /tmp/veyra-boot/glenv; then
+            echo 'Boot binding accepted the wrong Veyra deployment' >&2
+            exit 1
+          fi
+          /tmp/glenv release --store /tmp/veyra-glenv-store boot-pin veyra-ci /tmp/veyra-boot/glenv
+          test "$(basename "$(readlink /tmp/veyra-boot/glenv)")" = ci-runtime
