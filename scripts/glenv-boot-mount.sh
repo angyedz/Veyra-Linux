@@ -70,7 +70,7 @@ case "${VEYRA_GLENV_REQUIRE_SIGNATURE:-0}" in
     0) : ;; # Legacy opt-in test mode only
     1)
         trusted_key=${VEYRA_GLENV_TRUST_KEY:-/etc/veyra/trust/glenv-ed25519.pub}
-        glenv_bin=${VEYRA_GLENV_BIN:-glenv}
+        glenv_bin=${VEYRA_GLENV_BIN:-/usr/local/lib/veyra/glenv-manager}
         absolute "$trusted_key" || fail 'trusted glenv public key path must be absolute'
         no_symlink_components "$trusted_key"
         [ -f "$trusted_key" ] || fail "trusted glenv public key is missing: $trusted_key"
