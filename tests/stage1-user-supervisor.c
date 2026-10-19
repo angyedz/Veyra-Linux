@@ -79,13 +79,26 @@ static void inner_pid_one(const char *root) {
     if (sethostname("veyra-user", 10) < 0) die("namespace hostname");
     if (mount(NULL, "/", NULL, MS_REC | MS_PRIVATE, NULL) < 0)
         die("private propagation");
-    if (mount(root, root, NULL, MS_BIND, NULL) < 0)
-        die("bind user rootfs");
-    if (chdir(root) < 0) die("enter user rootfs");
-    if (mkdir(".veyra-stage1-oldroot", 0700) < 0 && errno != EEXIST)
-        die("prepare old root");
-    if (syscall(SYS_pivot_root, ".", ".veyra-stage1-oldroot") < 0)
-        die("pivot root");
+    /* The outer QEMU /init is on initramfs rootfs; pivot_root directly
+     * from that special rootfs mount returns EINVAL. Establish a private
+     * temporary tmpfs root inside the user mount namespace first.
+     * The staging mountpoint is created by the system /init, not by the
+     * unprivileged user process on host filesystems.
+     */
+    const char *bootstrap = "/mnt/veyra-stage1-bootstrap";
+    const char *newroot = "/mnt/veyra-stage1-bootstrap/root";
+    const char *oldroot = "/mnt/veyra-stage1-bootstrap/root/.veyra-stage1-oldroot";
+    if (mount("tmpfs", bootstrap, "tmpfs", MS_NOSUID | MS_NODEV,
+              "mode=0700") < 0) die("mount private intermediate tmpfs root");
+    if (mkdir(newroot, 0700) < 0) die("prepare temporary newroot directory");
+    if (mount(root, newroot, NULL, MS_BIND, NULL) < 0)
+        die("bind user rootfs into temporary mount");
+    if (mkdir(oldroot, 0700) < 0 && errno != EEXIST)
+        die("prepare oldroot below user root");
+    if (chroot(bootstrap) < 0 || chdir("/") < 0)
+        die("enter private intermediate root");
+    if (syscall(SYS_pivot_root, "/root", "/root/.veyra-stage1-oldroot") < 0)
+        die("pivot from tmpfs into separate user rootfs");
     if (chdir("/") < 0) die("chdir /");
     if (umount2("/.veyra-stage1-oldroot", MNT_DETACH) < 0)
         die("detach system mount tree");
