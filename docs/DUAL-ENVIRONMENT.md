@@ -71,9 +71,49 @@ user `sudo` or `vpkg` acting inside the user environment.
 **Runtime boundary:** `plasmashell`, KRunner (`krunner`) and all
 ordinary desktop command launchers execute inside the **user environment**
 with its user namespace, filesystem, processes, session bus and network.
-They may use a system-managed, **read-only** KDE runtime version paired
-to the active system deployment; read-only availability of KDE libraries
-does not mean user-side processes get host privileges.
+These processes **must execute system-owned KDE binaries and plugins**
+from a system-managed, **read-only** KDE runtime paired to the active
+A/B system deployment. Read-only availability of KDE libraries and
+executables does not grant the process host privileges. There must be
+**no independent user-environment copy of Plasma, plasmashell, KRunner,
+KDE Frameworks or desktop plugins** used by the supported Veyra session.
+
+### Coherent KDE updates across the execution boundary
+
+* A KDE update is a **system-deployment update**. Stage the complete
+  compatible KDE desktop stack in the inactive A/B generation, including
+  KWin, plasmashell, KRunner, KDE Frameworks, relevant Qt libraries,
+  display integration, portals and system-managed plugins. Do not stage
+  a new KWin with the previous generation's plasmashell.
+* The system selects **exactly one KDE runtime for a booted system
+  generation**. Mount this runtime read-only into the user environment.
+  The user session launches its plasmashell, KRunner and desktop
+  components from that selected runtime, **never from independently
+  upgraded user-owned packages**.
+* Pair plugin/module lookup, library search paths and D-Bus service
+  activation with that exact runtime. Simply mounting a binary from the
+  new generation while it loads incompatible libraries or plugins from
+  mutable user `/usr` is **not acceptable**. An implementation must
+  validate loader, Qt plugin and QML import paths for the whole session.
+* A/B activation and rollback take effect at a **reboot** and spawn
+  **fresh user session processes** from the new or restored system KDE
+  runtime. Do not live-switch a runtime underneath an existing session.
+  No stale KDE processes from the previous generation may be carried
+  across a generation switch.
+* User packages may provide **ordinary applications** (and optional,
+  explicitly isolated user customizations), but user `sudo` cannot
+  mutate the selected KDE runtime or change the supported session's
+  system-owned binaries. No package-name bans: protection comes from
+  the mounts, namespace and trusted launch policy. If a user installs
+  another plasmashell into their own rootfs, it does not become the
+  system-managed Veyra session.
+* KDE runtime layout, mount composition, version-matching, rollback and
+  plugin isolation are **not implemented yet**. Never enable default
+  user-session startup until tests prove them.
+
+The precise read-only runtime mountpoint is not yet finalized; any
+provisional launcher path must not be treated as the ABI or security
+contract.
 
 For clarity: KDE Plasma is **not installed as user-owned packages**.
 Damage to the user environment does not delete the system KDE
@@ -151,6 +191,7 @@ an inactive A/B generation, never implicit from user sudo.
 - [ ] Prove user sudo cannot write host root, A/B store, /boot or host sockets.
 - [ ] Prove host networking stays unchanged under user VPN and kill switch.
 - [ ] Prove system-owned KDE integration with user-executed plasmashell and private user D-Bus.
+- [ ] Prove KDE A/B upgrade and rollback atomically switch the entire version-matched runtime (KWin, plasmashell, KRunner, Frameworks, Qt, plugins) with no stale binaries, modules or user-owned substitutes.
 - [ ] Prove Alt+F2/KRunner, menu, desktop entries and all app launches never execute commands on the host; prove fail-closed behavior when user session is down.
 - [ ] Prove arbitrary package installation changes only the user rootfs.
 - [ ] Prove reboot and A/B rollback preserve user rootfs and services.
