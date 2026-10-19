@@ -54,3 +54,7 @@ The helper only pins a symlink. It does **not** mount the runtime into an isolat
 ## Manifest integrity limitations
 
 New glenv releases use **format 3** inventories that include file SHA-256, directory/file Unix modes, and Debian symlink targets. Legacy format 2 is readable but cannot detect permission changes. All manifest checks are local integrity checks, **not signed upstream provenance**. The source prefix must be offline or otherwise quiescent. A later authenticated Veyra OTA layer must ensure read-only immutable storage, trusted boot-selected host IDs, and a cryptographic signature chain for both the host and glenv generations before enabling automatic updates.
+
+### Original-prefix safety
+
+The glenv release manager's `stage` operation moves an already prepared staging tree, but refuses to move the installed original `/opt/glibc-env` and directories carrying glenv's `.glenv-prefix` installer ownership marker. First run `prepare-copy` against an **offline** original prefix. The new staged copy intentionally excludes this administrative marker (which could otherwise confuse the original uninstaller), while retaining the Debian sysroot, the original Wayland filter and the runtime libraries. The original directory and its ownership marker remain unchanged.
