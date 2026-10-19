@@ -185,3 +185,12 @@ jobs:
             echo 'glenv mount accepted a symlinked mountpoint parent' >&2
             exit 1
           fi
+
+  glenv-mount:
+    name: glenv host/user read-only bind mount
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test real read-only bind mounts in an isolated namespace
+        run: sudo unshare --mount --propagation private sh tests/test-glenv-mount.sh
