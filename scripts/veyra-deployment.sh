@@ -84,6 +84,18 @@ case "$action" in
             (set -C; printf '%s\n' VEYRA-DEPLOYMENT-STORE-v1 > "$top/.veyra-deployment-store") ||
                 die 'could not create deployment store marker'
         fi
+        # User data and shared state belong to independent subvolumes.
+        # This does not mount them into a running system or update fstab.
+        for shared in @home @nix @shared @boot; do
+            dir="$top/$shared"
+            if [ -e "$dir" ] || [ -L "$dir" ]; then
+                [ ! -L "$dir" ] || die "symlinked persistent subvolume: $shared"
+                btrfs subvolume show "$dir" >/dev/null ||
+                    die "persistent path is not a subvolume: $shared"
+            else
+                btrfs subvolume create "$dir"
+            fi
+        done
         echo 'Veyra Btrfs deployment store initialized (no boot configuration changed)'
         ;;
     verify)
