@@ -74,7 +74,7 @@ def main():
                     "setup-pkgrepo.sh",
                     "veyra-deployment.sh", "veyra-initramfs-select.sh",
                     "build-veyra-init.sh", "veyra-atomic-convert.sh",
-                    "veyra-bootctl.py",
+                    "veyra-bootctl.py", "veyra-boot-confirm.initd",
                 ):
                     installed.upload_script(
                         child, (PROJECT / "scripts" / name).read_bytes(),
@@ -119,6 +119,7 @@ def main():
         print("Booting B from its own Alpine+Plasma system tree", flush=True)
         guest_cycle(qemu, disk, args.log_dir, "B", [
             """test "$(cat /home/e2euser/atomic-data.txt)" = 'data created in A'""",
+            "grep -q '# VEYRA_DEFAULT=B' /var/lib/veyra/store/boot/grub/grub.cfg",
             "echo 'data updated in B' > /home/e2euser/atomic-data.txt",
             "printf 'only-B\\n' > /etc/veyra/slot-specific.txt",
             "test ! -e /var/lib/veyra/store/deployments/A/etc/veyra/slot-specific.txt",
