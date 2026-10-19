@@ -160,3 +160,19 @@ jobs:
           VEYRA_GLENV_BIN=/tmp/glenv \
             sh scripts/glenv-boot-pin.sh
           test "$(basename "$(readlink /tmp/veyra-boot/glenv)")" = ci-runtime
+          # Validate future read-only runtime exposure without mounting in CI.
+          /tmp/glenv release --store /tmp/veyra-glenv-store boot-pair-pin veyra-ci /tmp/veyra-boot/selected
+          mkdir -p /tmp/veyra-user-root
+          VEYRA_GLENV_STORE=/tmp/veyra-glenv-store \
+          VEYRA_GLENV_SELECTED=/tmp/veyra-boot/selected \
+          VEYRA_GLENV_RUNTIME_MOUNT=/tmp/veyra-host-runtime \
+          VEYRA_GLENV_USER_ROOT=/tmp/veyra-user-root \
+            sh scripts/glenv-boot-mount.sh --check
+          ln -s /tmp/foreign-runtime /tmp/veyra-boot/foreign
+          if VEYRA_GLENV_STORE=/tmp/veyra-glenv-store \
+             VEYRA_GLENV_SELECTED=/tmp/veyra-boot/foreign \
+             VEYRA_GLENV_RUNTIME_MOUNT=/tmp/veyra-host-runtime \
+             sh scripts/glenv-boot-mount.sh --check; then
+            echo 'glenv mount accepted foreign release' >&2
+            exit 1
+          fi
