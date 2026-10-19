@@ -68,6 +68,8 @@ if [ "$manager_ready" -ne 1 ] || [ "$manager_status" != "STOPPED" ]; then
     fail 'system-side manager did not enter STOPPED state'
 fi
 
+/host-supervisor test-inode-guard || fail 'rootfs inode identity guard self-test failed'
+
 # Require a distinct persistent mount with no user-controlled nested mounts.
 bad_mount=/mnt/veyra-user/.veyra-invalid-mount-probe
 /bin/busybox mkdir -p "$bad_mount"
@@ -227,4 +229,3 @@ echo 'VEYRA_STAGE1_MANAGER_RECOVERY_PASS state=STOPPED stale-socket=cleared'
 echo "VEYRA_STAGE1_QEMU_SUCCESS: user environment lifecycle and persistence boot $expected"
 /bin/busybox sync
 /bin/busybox poweroff -f
-
