@@ -59,7 +59,7 @@ runtime=/run/veyra/system-kde
 command -v mountpoint >/dev/null 2>&1 || die 'mountpoint tool unavailable'
 command -v findmnt >/dev/null 2>&1 || die 'findmnt tool unavailable'
 mountpoint -q "$runtime" || die 'system KDE runtime is not mounted'
-findmnt -n -o OPTIONS -M "$runtime" | tr ',' '\\n' | grep -qx ro ||
+findmnt -n -o OPTIONS -M "$runtime" | grep -Eq '(^|,)ro(,|$)' ||
     die 'system KDE runtime mount is not read-only'
 [ -x "$runtime/bin/krunner" ] || die 'system KDE KRunner unavailable'
 # This is only a preliminary check. A production session must separately
