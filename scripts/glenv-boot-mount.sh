@@ -22,8 +22,8 @@ absolute "$store" || fail 'store must be absolute'
 absolute "$selected" || fail 'selected path must be absolute'
 absolute "$runtime" || fail 'runtime mountpoint must be absolute'
 [ -L "$selected" ] || fail "no verified boot-pinned selector: $selected"
-[ -d "$store" ] && [ ! -L "$store" ] || fail "invalid store root: $store"
-[ -d "$store/versions" ] && [ ! -L "$store/versions" ] || fail 'versions directory is not real'
+if [ ! -d "$store" ] || [ -L "$store" ]; then fail "invalid store root: $store"; fi
+if [ ! -d "$store/versions" ] || [ -L "$store/versions" ]; then fail 'versions directory is not real'; fi
 
 # The pin was produced by glenv boot-pair-pin, which verified the release.
 # Check path containment a second time before any privileged mount. Caller
@@ -35,7 +35,7 @@ case "$source" in
     *) fail "selector escapes trusted version store: $source" ;;
 esac
 [ "$(dirname "$source")" = "$versions" ] || fail 'selector must name one release directory'
-[ -d "$source" ] && [ ! -L "$source" ] || fail "invalid release directory: $source"
+if [ ! -d "$source" ] || [ -L "$source" ]; then fail "invalid release directory: $source"; fi
 [ -f "$source/glenv-manifest.json" ] || fail 'release has no verified inventory'
 case "$runtime" in
     "$store"|"$store"/*) fail 'runtime mountpoint overlaps the store' ;;
@@ -45,7 +45,7 @@ esac
 
 if [ -n "$userroot" ]; then
     absolute "$userroot" || fail 'user environment root must be absolute'
-    [ -d "$userroot" ] && [ ! -L "$userroot" ] || fail 'user environment root must be a real directory'
+    if [ ! -d "$userroot" ] || [ -L "$userroot" ]; then fail 'user environment root must be a real directory'; fi
     case "$userroot" in
         /|"$store"|"$store"/*) fail 'unsafe user environment root' ;;
     esac
