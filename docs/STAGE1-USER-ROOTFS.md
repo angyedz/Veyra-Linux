@@ -1,6 +1,6 @@
 # Stage 1: persistent user rootfs and independent init — QEMU prototype
 
-**Status:** the QEMU lifecycle and rootfs-validation milestone passed in [PR #10 QEMU CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39312323358) and [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39312323395). **Not enabled** by installed Veyra or Live ISO; this remains a disposable prototype, not production security validation.
+**Status:** the QEMU lifecycle and rootfs-validation milestone passed in [PR #10 QEMU CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39312323358) and [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39312323395). The [PR #11 manager-exit cleanup follow-up](https://github.com/angyedz/Veyra-Linux/pull/11) also passed [QEMU](https://github.com/angyedz/Veyra-Linux/actions/runs/39318056661) and [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39318056566). **Not enabled** by installed Veyra or Live ISO; this remains a disposable prototype, not production security validation.
 This prototype is stacked on [Stage 0](DUAL-ENVIRONMENT.md) in PR #8.
 Track product requirements and future steps in [ROADMAP.md](ROADMAP.md).
 
@@ -97,10 +97,11 @@ The QEMU harness injects an initial-namespace-root-owned file, an unexpected
 setuid file, a nested tmpfs mount and a block device, and requires each start
 to fail before launching user init. It then exercises start, status, stop,
 restart and a forced nested PID 1 crash on each of two guest boots using the
-same ext4 disk. The follow-up manager-death check starts a third environment
-and kills the manager to verify cleanup. The [PR #10 QEMU run](https://github.com/angyedz/Veyra-Linux/actions/runs/39312323358)
-asserts counts 2 then 4 before this additional check; a new CI run must verify
-persistent counts 3 then 6 including manager-death cleanup.
+same ext4 disk. The manager-death check starts a third environment and kills
+the manager to verify cleanup, then restarts it and checks stale-socket
+recovery. The [PR #10 QEMU run](https://github.com/angyedz/Veyra-Linux/actions/runs/39312323358)
+asserts counts 2 then 4 for the baseline. The [PR #11 QEMU run](https://github.com/angyedz/Veyra-Linux/actions/runs/39318056661)
+asserts persistent counts 3 then 6, including manager-death cleanup.
 
 These checks are structural startup checks, not cryptographic authentication
 of user data. The marker can be changed by anyone who can write the rootfs;
@@ -113,18 +114,19 @@ namespace-local sudo rule is NOPASSWD only in this disposable fixture.
 The earlier PR #9 baseline passed a static C build and QEMU checks for
 separate PID 1, mapped UIDs, namespace-local sudo and persistent state. The
 PR #10 manager and rootfs checks passed in [QEMU CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39312323358)
-and [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39312323395).
+and [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39312323395). The PR #11 manager-exit cleanup follow-up passed [QEMU CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39318056661)
+and [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39318056566).
 
 - [x] Build the system-side manager statically with -Werror.
 - [x] Start, report running status, stop, report stopped status and restart
       the nested user environment in QEMU.
 - [x] Detect a forced nested PID 1 crash and report FAILED from the system
       side.
-- [ ] Terminate the system-side manager unexpectedly and verify its launcher
+- [x] Terminate the system-side manager unexpectedly and verify its launcher
       and nested PID 1 stop; restart the manager and recover STOPPED.
 - [x] Reject an unmapped initial-namespace-root-owned file, unexpected
       setuid file, nested mountpoint and block device before launching user PID 1.
-- [ ] Preserve the same disk across two QEMU guest boots; the three nested
+- [x] Preserve the same disk across two QEMU guest boots; the three nested
       starts per guest boot leave counts 3 then 6, including manager-death
       cleanup.
 - [x] Keep the existing inner UID 1000 and sudo proof mapped to outside UIDs
