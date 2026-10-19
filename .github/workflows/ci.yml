@@ -92,6 +92,10 @@ jobs:
     container:
       image: golang:1.23-alpine
     steps:
+      - name: Check out Veyra integration scripts
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Check out pinned glenv source
         uses: actions/checkout@v4
         with:
