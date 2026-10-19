@@ -593,7 +593,8 @@ static int start_environment(char *response, size_t response_size) {
                 close(checkfd);
                 boot_count = count;
                 state = STATE_RUNNING;
-                puts("VEYRA_STAGE1_SUDO_READY inside-uid=0 outside-uid=100000");
+                printf("VEYRA_STAGE1_SUDO_READY count=%d inside-uid=0 outside-uid=100000\n",
+                       boot_count);
                 printf("VEYRA_STAGE1_USER_OPENRC_READY count=%d\n", boot_count);
                 fflush(stdout);
                 snprintf(response, response_size, "RUNNING pid=%ld count=%d",
