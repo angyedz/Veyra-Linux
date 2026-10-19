@@ -19,6 +19,11 @@ mkfs.btrfs -q -f "$temp/disposable.img"
 mkdir -p "$top"
 mount -o loop,subvolid=5 "$temp/disposable.img" "$top"
 sh "$root/scripts/veyra-deployment.sh" init "$top"
+for shared in @home @nix @shared @boot; do
+    btrfs subvolume show "$top/$shared" >/dev/null
+done
+printf 'persistent user document\n' > "$top/@home/keep.txt"
+printf 'persistent Nix profile\n' > "$top/@nix/keep.txt"
 btrfs subvolume create "$top/@deploy-veyra-A"
 mkdir -p "$top/@deploy-veyra-A/etc/veyra" "$top/@deploy-veyra-A/etc/apk"
 printf 'veyra-A\n' > "$top/@deploy-veyra-A/etc/veyra/deployment-id"
@@ -28,6 +33,9 @@ sh "$root/scripts/veyra-deployment.sh" stage "$top" veyra-A veyra-B
 test "$(cat "$top/@deploy-veyra-A/etc/veyra/deployment-id")" = veyra-A
 test "$(cat "$top/@deploy-veyra-B/etc/veyra/deployment-id")" = veyra-B
 grep -qx kwin "$top/@deploy-veyra-B/etc/apk/world"
+test "$(cat "$top/@home/keep.txt")" = 'persistent user document'
+test "$(cat "$top/@nix/keep.txt")" = 'persistent Nix profile'
+test ! -e "$top/@deploy-veyra-B/home/keep.txt"
 
 # A and B have independent writable copy-on-write files and APK databases.
 printf 'new-kde-generation\n' >> "$top/@deploy-veyra-B/etc/apk/world"
