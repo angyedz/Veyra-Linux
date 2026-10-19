@@ -38,7 +38,7 @@ ESP (if UEFI)                            # separately managed as required
 
 An inactive system deployment can be created using a **verified file copy**, with full filesystem metadata preservation, on any supported filesystem. On Btrfs an optimized backend may eventually use snapshots, but only as an optional performance optimization and never as a requirement. The source must be offline/quiescent and cannot include active /proc, /sys, /dev, /run, persistent /home or /nix mountpoints.
 
-The filesystem-neutral staging prototype currently **does not perform boot switching or installed-root atomic updates**. Full atomicity additionally requires durable staging and verification, independently bootable A/B roots, authenticated kernel/initramfs/boot entries, recovery after power loss and a validated fallback. A simple directory rename alone is **not sufficient** to claim atomic boot, and a read-only mount alone does not prevent privileged changes to the underlying source.
+The filesystem-neutral prototype now includes a GRUB boot-config selector and an opt-in initramfs root-directory selector, but **does not yet implement safe full-system OTA updates or automatic recovery from failed boots**. Full atomicity additionally requires durable staging and verification, independently bootable A/B roots, authenticated kernel/initramfs/boot entries, recovery after power loss and a validated fallback. A simple directory rename alone is **not sufficient** to claim atomic boot, and a read-only mount alone does not prevent privileged changes to the underlying source.
 
 The installer must permit users to keep choosing ext4, Btrfs, XFS or F2FS. It must not reformat, force Btrfs, or silently migrate an existing filesystem. A complete QEMU A → B → rollback A boot test on **at least ext4** is required before production activation; other supported filesystems need compatibility coverage too.
 
@@ -48,9 +48,9 @@ The installer must permit users to keep choosing ext4, Btrfs, XFS or F2FS. It mu
 - [x] Experimental signed glenv per-host release pairing and read-only mounts.
 - [x] Native apk-tools-derived vpkg engine prototype, tested in an isolated root.
 - [x] Filesystem-neutral **offline staging** implementation with independent APK world databases and persistent data directories.
-- [ ] Verify ext4 and XFS staging in GitHub Actions on fresh disposable loop disks.
+- [x] Verify ext4 and XFS staging and A/B GRUB config activation in GitHub Actions on fresh disposable loop disks.
 - [ ] Production-quality vpkg replacing apk inside installed system, while Live bootstrap remains conventional.
-- [ ] Filesystem-neutral installed-system boot coordination, verified kernel and initramfs.
+- [x] Experimental filesystem-neutral GRUB selection and actual early-root bind mounts; validated on ext4 in isolated Linux namespace.\n- [ ] Full production boot metadata authentication and verified kernel/initramfs provenance.
 - [ ] Complete QEMU installed ext4 root A → stage B → boot B → rollback A → boot A.
 - [ ] Equivalent compatibility coverage of XFS, F2FS and Btrfs without making any mandatory.
 - [ ] Authenticated full-system metadata, unattended recovery and physical hardware tests.
@@ -62,3 +62,15 @@ The installer must permit users to keep choosing ext4, Btrfs, XFS or F2FS. It mu
 `tests/test-deployment-fs-neutral.sh` exercises staging, independent world files, persistent data and rejection of invalid deployment IDs on freshly created disposable ext4 and XFS loop filesystems. The older Btrfs-specific snapshot design is **abandoned** as the Veyra deployment architecture.
 
 **Current Calamares and TUI installers remain conventional and filesystem-selectable.** They must keep working until the filesystem-neutral atomic design has passed complete QEMU boot, rollback and power-loss tests.
+
+## Experimental boot coordinator and QEMU gates
+
+The bootloader now loads a kernel and initramfs from the selected directory, for example `/deployments/A/boot/`, on the **user-selected filesystem**. The kernel command line contains `root=UUID=<STORE-UUID> rootfstype=<USER-FS> rootflags=rw veyra_deployment=A`. Veyra injects a validated `veyra_deployment` parser and early-root selector into a **copy** of Alpine's packaged init script via `scripts/build-veyra-init.sh`. It does not overwrite Alpine's `mkinitfs` installation. Before OpenRC starts, the initramfs mounts the selected system tree at `/`, along with independent persistent `/home`, `/nix` and shared data. This mechanism uses Linux bind mounts and ordinary directories; **no snapshots, subvolumes or CoW operations are involved**.
+
+`scripts/veyra-bootctl.py --store STORE init --uuid UUID --fstype ext4 --default A` generates a GRUB config in the *outer* `STORE/boot/grub/` directory. `activate ID` and `rollback ID` only replace a verified config via same-directory atomic rename and fsync. A boot coordinator can adopt and back up a conventional GRUB config with the **explicit** `--adopt-legacy-grub` option, retaining a menu entry for the original Alpine installation as manual recovery. GRUB/kernel/EFI signatures and unattended watchdog fallback are **not yet guaranteed**.
+
+`scripts/veyra-atomic-convert.sh` is an **opt-in, disposable-VM-only** conversion helper for an already installed, offline conventional Alpine root. It duplicates the OS into deployment A, copies persistent data separately, builds A's own initramfs and configures the GRUB entry. The original root remains as a legacy recovery option. It has **not** been enabled as the default Calamares or TUI installation path. The experimental `tests/test-atomic-qemu.py` and `.github/workflows/atomic-e2e.yml` test real boot A, boot B and rollback A via a temporary QEMU qcow2 disk. A passing boot test does not establish power-loss atomicity, secure boot, unattended recovery or hardware support.
+
+The upstream `vpkg` source offers atomic-mode `deployments`, `activate`, and `rollback` commands routed to `veyra-bootctl`. In-place system installation/upgrade remains blocked on atomic roots, because the new isolated-root package transaction engine is **not production-complete**. The signed `vpkg` package in the repository must be rebuilt and validated before adopting atomic mode on real machines.
+
+**Filesystem commitment:** ext4, XFS, F2FS and Btrfs remain choices of the end user. The root design must not depend on any particular filesystem's snapshot, reflink or rename extensions. All existing conventional installations remain usable until explicit migration is tested and supported.
