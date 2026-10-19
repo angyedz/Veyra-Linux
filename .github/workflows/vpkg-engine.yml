@@ -30,8 +30,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install native source-build dependencies
         run: |
-          apk add --no-cache git patch meson ninja pkgconf build-base \
-            linux-headers openssl-dev zlib-dev
+          apk add --no-cache git patch pkgconf build-base \
+            linux-headers openssl-dev openssl-libs-static zlib-dev zlib-static
       - name: Build patched engine with upstream source pinned by commit
         run: sh scripts/build-vpkg-engine.sh
       - name: Exercise APK compatibility in isolated target root
