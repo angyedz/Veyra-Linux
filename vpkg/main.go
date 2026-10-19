@@ -1,14 +1,15 @@
-// vpkg: minimal Veyra CLI frontend; transactions remain with APK and Nix.
+// vpkg: Veyra frontend. Atomic hosts must never modify their active root.
 package main
 
 import (
+ "errors"
  "fmt"
  "os"
  "os/exec"
  "strings"
 )
 
-const version = "0.1.0"
+const version = "0.2.0-dev"
 
 func usage() {
  fmt.Print(`vpkg `+version+` - Veyra package manager
@@ -54,17 +55,45 @@ func run(name string,args ...string) error {
  return nil
 }
 
+// Atomic mode is fail-closed; missing marker denotes a conventional Live ISO
+// or an existing non-atomic Alpine-based Veyra installation.
+var markerFile = "/etc/veyra/deployment-mode"
+
+func atomicSystem()(bool,error){
+ data,err:=os.ReadFile(markerFile)
+ if errors.Is(err,os.ErrNotExist){return false,nil}
+ if err!=nil{return false,fmt.Errorf("cannot read Veyra system policy: %w",err)}
+ switch strings.TrimSpace(string(data)){
+ case "legacy":return false,nil
+ case "atomic-v1":return true,nil
+ default:return false,fmt.Errorf("unknown Veyra system mode: %q",strings.TrimSpace(string(data)))
+ }
+}
+
+func systemEngine()string{
+ if _,err:=exec.LookPath("vpkg-engine");err==nil{return "vpkg-engine"}
+ return "apk" // Live ISO/legacy installations only
+}
+
 func dispatch(action,source string,packages []string) error {
  need:=func()error{if len(packages)==0{return fmt.Errorf("%s requires a package name",action)};return nil}
  if source=="alpine" {
+  atomic,err:=atomicSystem()
+  if err!=nil{return err}
   switch action {
-  case "install":if e:=need();e!=nil{return e};return run("apk",append([]string{"add"},packages...)...)
-  case "remove":if e:=need();e!=nil{return e};return run("apk",append([]string{"del"},packages...)...)
-  case "search":if e:=need();e!=nil{return e};return run("apk",append([]string{"search"},packages...)...)
-  case "info":if e:=need();e!=nil{return e};return run("apk",append([]string{"info","-a"},packages...)...)
-  case "list":return run("apk","info")
-  case "update":return run("apk","update")
-  case "upgrade":return run("apk","upgrade")
+  case "install","remove","update","upgrade":
+   if atomic{return fmt.Errorf("atomic Veyra forbids in-place system changes; update an inactive deployment instead")}
+  }
+  engine:=systemEngine()
+  if atomic&&engine=="apk"{return fmt.Errorf("atomic Veyra requires native vpkg-engine; upstream APK fallback is forbidden")}
+  switch action {
+  case "install":if e:=need();e!=nil{return e};return run(engine,append([]string{"add"},packages...)...)
+  case "remove":if e:=need();e!=nil{return e};return run(engine,append([]string{"del"},packages...)...)
+  case "search":if e:=need();e!=nil{return e};return run(engine,append([]string{"search"},packages...)...)
+  case "info":if e:=need();e!=nil{return e};return run(engine,append([]string{"info","-a"},packages...)...)
+  case "list":return run(engine,"info")
+  case "update":return run(engine,"update")
+  case "upgrade":return run(engine,"upgrade")
   }
  } else {
   switch action {
