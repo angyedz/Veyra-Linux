@@ -20,7 +20,12 @@ https://dl-cdn.alpinelinux.org/alpine/v3.22/community
 REPOS
 # All writes go to a fresh disposable target. Signatures are REQUIRED:
 # --allow-untrusted is deliberately not used.
-"$engine" --root "$root" --no-cache add busybox
+if ! strace -f -e trace=file -o "$tmp/vpkg.trace" \
+    "$engine" --root "$root" --no-cache add busybox; then
+    echo 'vpkg file access failures (disposable test root):' >&2
+    grep 'ENOENT' "$tmp/vpkg.trace" | tail -35 >&2 || true
+    exit 1
+fi
 "$engine" --root "$root" info -e busybox
 test -x "$root/bin/busybox"
 test -s "$root/lib/apk/db/installed"
