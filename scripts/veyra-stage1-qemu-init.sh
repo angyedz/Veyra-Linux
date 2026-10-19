@@ -137,6 +137,7 @@ init_escape=/tmp/.veyra-stage1-init-escape
 /bin/busybox mv /mnt/veyra-user/sbin/init "$init_backup"
 /bin/busybox ln -s ../../../../tmp/.veyra-stage1-init-escape \
     /mnt/veyra-user/sbin/init
+/bin/busybox chown -h 100000:100000 /mnt/veyra-user/sbin/init
 if output=$(/host-supervisor start 2>&1); then
     fail 'manager resolved /sbin/init outside the user rootfs'
 fi
