@@ -17,6 +17,13 @@ userroot=${VEYRA_GLENV_USER_ROOT:-}
 
 fail() { echo "glenv boot mount: $*" >&2; exit 1; }
 absolute() { case "$1" in /*) return 0;; *) return 1;; esac; }
+no_symlink_components() {
+    component=$1
+    while [ "$component" != / ]; do
+        [ ! -L "$component" ] || fail "symlinked mount path component: $component"
+        component=$(dirname "$component")
+    done
+}
 
 absolute "$store" || fail 'store must be absolute'
 absolute "$selected" || fail 'selected path must be absolute'
@@ -40,15 +47,16 @@ if [ ! -d "$source" ] || [ -L "$source" ]; then fail "invalid release directory:
 case "$runtime" in
     "$store"|"$store"/*) fail 'runtime mountpoint overlaps the store' ;;
 esac
-[ ! -L "$runtime" ] || fail 'runtime mountpoint is a symlink'
+no_symlink_components "$runtime"
 [ ! -e "$runtime" ] || [ -d "$runtime" ] || fail 'runtime mountpoint is not a directory'
 
 if [ -n "$userroot" ]; then
     absolute "$userroot" || fail 'user environment root must be absolute'
     if [ ! -d "$userroot" ] || [ -L "$userroot" ]; then fail 'user environment root must be a real directory'; fi
     case "$userroot" in
-        /|"$store"|"$store"/*) fail 'unsafe user environment root' ;;
+        /|"$store"|"$store"/*|"$runtime"|"$runtime"/*) fail 'unsafe user environment root' ;;
     esac
+    no_symlink_components "$userroot"
     # Reject redirection of mountpoints through user-environment symlinks.
     for candidate in "$userroot/run" "$userroot/run/glenv" "$userroot/run/glenv/runtime"; do
         [ ! -L "$candidate" ] || fail "symlinked user mountpoint component: $candidate"
