@@ -1,6 +1,6 @@
 # Stage 1: persistent user rootfs and independent init — QEMU prototype
 
-**Status:** draft, **QEMU-only**, not enabled by the installed Veyra or Live ISO.
+**Status:** QEMU-only prototype with passing two-boot and mapped-sudo proof; **not enabled** by installed Veyra or Live ISO. Evidence: [GitHub Actions #39308745394](https://github.com/angyedz/Veyra-Linux/actions/runs/39308745394).
 This prototype is stacked on [Stage 0](DUAL-ENVIRONMENT.md) in PR #8.
 Track product requirements and future steps in [ROADMAP.md](ROADMAP.md).
 
@@ -20,6 +20,7 @@ QEMU VM kernel (one kernel)
              +-- /sbin/openrc sysinit / boot / default
                   +-- test-only OpenRC service increments persistent boot-count
         +-- ordinary inner UID 1000 writes a home file
+        +-- inner sudo elevates to namespace UID 0, outer UID **100000**
 ```
 
 **Important distinction:** Alpine's default PID 1 is **BusyBox init**, which
@@ -34,12 +35,18 @@ binary acting as the literal PID 1. The system still has its own init.
   supervisor launched within a disposable QEMU guest; creates user/mount/PID/
   network/IPC/UTS namespaces, writes multi-ID UID/GID mappings, pivots into
   the disk-backed rootfs and starts its independent init. The outside root UID
-  mapping is intentionally **100000**, never host UID 0.
+  mapping is intentionally **100000**, never host UID 0. The unprivileged
+  launcher first drops to outside UID 100000, creates a user namespace,
+  receives the system supervisor's authorized 65536-ID UID/GID mappings,
+  then starts its own PID 1. Unlike self-mapping, this privileged setup does
+  not deny `setgroups`, so namespace-local sudo may change group vectors.
 - `scripts/veyra-stage1-qemu-init.sh` — disposable VM initial init that
   mounts the test rootfs and invokes the system-side supervisor.
 - `tests/fixtures/stage1-user-inittab` and
   `tests/fixtures/stage1-user-openrc.initd` — minimal BusyBox PID 1 runlevels
-  and a test service writing a durable boot counter.
+  and a test service writing a durable boot counter. A private intermediate
+  tmpfs root is used because `pivot_root` directly from initramfs `rootfs`
+  returns EINVAL.
 - `tests/test-stage1-user-openrc-qemu.py` — boots the *same disk image*
   twice, expects count 1 then 2 and checks inner UID 1000 file ownership.
 - `.github/workflows/stage1-user-openrc-qemu.yml` — assembles disposable
@@ -48,19 +55,21 @@ binary acting as the literal PID 1. The system still has its own init.
 
 ## Acceptance gates for this prototype
 
-- [ ] Standalone C supervisor builds statically with `-Werror`.
-- [ ] First QEMU boot loads its user disk and launches BusyBox PID 1 within the
+- [x] Standalone C supervisor builds statically with `-Werror`.
+- [x] First QEMU boot loads its user disk and launches BusyBox PID 1 within the
       user PID namespace, with independent OpenRC runlevels.
-- [ ] Inside UID 0 is mapped to outside **100000**; inside UID 1000 to
+- [x] Inside UID 0 is mapped to outside **100000**; inside UID 1000 to
       outside **101000**, and the inner user successfully writes to `/home`.
-- [ ] The OpenRC test service writes boot-count 1, syncs, and the outer system
+- [x] The OpenRC test service writes boot-count 1, syncs, and the outer system
       reports readiness with an isolated rootfs.
-- [ ] A second QEMU boot of the same raw disk reports boot-count **2** and
+- [x] A second QEMU boot of the same raw disk reports boot-count **2** and
       preserves the normal user's home file.
-- [ ] CI retains serial evidence for the QEMU test.
+- [x] A normal inner UID 1000 uses setuid `sudo` to obtain inner UID **0**; a root-owned proof file is mapped to outside UID **100000**, never outside UID 0. Authorized system-side GID mapping keeps inner `setgroups()` functional.
+- [x] CI retains serial evidence for the QEMU test.
 
-None of these prove **production** host security. A successful prototype is
-only the first runnable milestone in Stage 1 of the full [roadmap](ROADMAP.md).
+**Test evidence:** [successful QEMU Stage 1 OpenRC and sudo run](https://github.com/angyedz/Veyra-Linux/actions/runs/39308745394) recorded both boot counts and the mapped sudo proof. This validates the disposable prototype only.
+
+None of these prove **production** host security. The prototype is only the first runnable milestone in Stage 1 of the full [roadmap](ROADMAP.md).
 
 ## Known limitations and security risks
 
@@ -77,9 +86,7 @@ This prototype deliberately has the following gaps:
    only narrowly reviewed communication endpoints.
 4. The rootfs, UID mappings, storage permissions and mountpoint lifecycle
    must be made race-safe and non-escapable. Existing code is experimental.
-5. **Normal user login, password policy, `sudo`, vpkg and KDE** are *not*
-   integrated. The ordinary UID 1000 file write is a scope/mapping check,
-   not a sudo capability test.
+5. **Normal interactive user login, password policy, vpkg and KDE** are *not* integrated. `sudo` is validated **only inside this controlled disposable guest**, with an explicit temporary NOPASSWD test rule. This is not a production sudo privilege policy or proof that user root cannot exploit a kernel vulnerability.
 6. System-owned Plasma/KWin and user-side plasmashell/KRunner, session bus,
    graphics access, VPN traffic and A/B integration are separate future
    milestones. This demonstration has no physical network, no user VPN and
