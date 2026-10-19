@@ -8,12 +8,17 @@ kernel=$1
 output=$2
 case "$kernel" in ''|*[!a-zA-Z0-9._-]*) echo 'invalid kernel version' >&2; exit 2;; esac
 case "$output" in /*) :;; *) echo 'output must be absolute' >&2; exit 2;; esac
-[ ! -e "$output" ] && [ ! -L "$output" ] ||
-    { echo 'refusing to overwrite existing recovery artifact' >&2; exit 1; }
+if [ -e "$output" ] || [ -L "$output" ]; then
+    echo 'refusing to overwrite existing recovery artifact' >&2
+    exit 1
+fi
 command -v mkinitfs >/dev/null 2>&1 || { echo 'mkinitfs required' >&2; exit 1; }
 scriptdir=$(CDPATH='' cd "$(dirname "$0")" && pwd)
 init="$scriptdir/veyra-recovery-init.sh"
-[ -f "$init" ] && [ ! -L "$init" ] || { echo 'missing recovery init' >&2; exit 1; }
+if [ ! -f "$init" ] || [ -L "$init" ]; then
+    echo 'missing recovery init' >&2
+    exit 1
+fi
 sh -n "$init"
 [ -d "/lib/modules/$kernel" ] || { echo 'kernel modules not installed' >&2; exit 1; }
 mkdir -p "$(dirname "$output")"
