@@ -31,7 +31,7 @@ awk -v snippet="$inject" '
       close(snippet)
       anchor++
   }
-  index($0, "if [ \"$DIR\" != \"/\" ] && [ \"$DIR\" != \"$sysroot\" ] && [ \"$DIR\" != \"$sysroot/usr\" ] && [ -d \"$DIR\" ]; then") {
+  index($0, "if [ \"$DIR\" != \"/\" ") && index($0, "\"$sysroot/usr\"") {
       print "\t\tcase \"$DIR\" in \"$sysroot\"/*) continue ;; esac"
       mount_guard++
   }
