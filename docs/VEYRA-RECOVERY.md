@@ -1,6 +1,6 @@
 # Veyra Recovery Environment (VRE) — design v0
 
-Status: **experimental serial recovery prototype and opt-in initramfs builder added** (`scripts/veyra-recovery-init.sh`, `scripts/build-veyra-recovery.sh`). Not yet boot-tested in QEMU, integrated into GRUB, or security reviewed. No graphical UI or automated update application exists.
+Status: **independent Alpine LTS recovery kernel + initramfs successfully boot-tested in diskless QEMU** (`scripts/veyra-recovery-init.sh`, `scripts/build-veyra-recovery.sh`, `tests/test-recovery-qemu.py`, `.github/workflows/recovery-e2e.yml`). Serial diagnostics work. This is not yet integrated into GRUB or security reviewed; no graphical UI or automated update application exists.
 
 ## Android-inspired design, not an Android port
 
