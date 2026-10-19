@@ -18,6 +18,8 @@ jobs:
         run: python3 -m py_compile tests/test-atomic-qemu.py tests/test-installed-qemu.py
       - name: Verify GRUB generation-selection policies
         run: python3 tests/test-bootctl-config.py
+      - name: Verify recovery artifact hashes and immutable publication
+        run: python3 tests/test-recovery-publish.py
   alpine-smoke:
     runs-on: ubuntu-latest
     container: alpine:3.22
