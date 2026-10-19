@@ -350,3 +350,16 @@ jobs:
             VEYRA_GLENV_REQUIRE_SIGNATURE=1 \
             VEYRA_GLENV_TRUST_KEY="$public_key" \
             sh tests/test-glenv-signed-mount.sh
+
+  btrfs-deployment:
+    name: Real Veyra A/B root snapshots on disposable Btrfs loop disk
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Btrfs test tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq btrfs-progs util-linux
+      - name: Stage isolated Plasma system A/B and verify rollback source
+        run: sudo sh tests/test-deployment-btrfs.sh
