@@ -142,7 +142,7 @@ second=$(/host-supervisor start)
 case "$second" in RUNNING\ pid=*\ count=*) ;; *) fail "restart failed: $second" ;; esac
 user_pid=$(/bin/busybox printf '%s\n' "$second" | /bin/busybox cut -d' ' -f2 | /bin/busybox cut -d= -f2)
 second_count=$(/bin/busybox printf '%s\n' "$second" | /bin/busybox cut -d' ' -f3 | /bin/busybox cut -d= -f2)
-expected_count=$((expected * 2))
+expected_count=$((expected * 3 - 1))
 if [ "$second_count" -ne "$expected_count" ]; then
     fail "persistent boot counter was $second_count, expected $expected_count"
 fi
