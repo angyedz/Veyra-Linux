@@ -259,7 +259,7 @@ static int validate_rootfs(int *rootfd_out, char *error, size_t error_size) {
         return -1;
     }
     if (root_st.st_dev == parent_st.st_dev ||
-        fs.f_type == TMPFS_MAGIC || fs.f_type == RAMFS_MAGIC || fs.f_type == ROOTFS_MAGIC) {
+        fs.f_type == TMPFS_MAGIC || fs.f_type == RAMFS_MAGIC) {
         close(rootfd);
         set_error(error, error_size, "user rootfs is not on a separate persistent filesystem");
         return -1;
