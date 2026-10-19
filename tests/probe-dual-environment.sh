@@ -20,6 +20,9 @@ netns=$(readlink /proc/self/ns/net)
 ipcns=$(readlink /proc/self/ns/ipc)
 host_uid=$(id -u)
 # A successful namespace entry followed by a failed invariant is a real FAIL.
+# Intentional: $1..$6 and command substitutions are expanded inside sh -c,
+# not by the caller; this is a nested shell script, not literal prose.
+# shellcheck disable=SC2016
 if ! unshare --user --map-root-user --mount --pid --ipc --net \
     --propagation private --fork --mount-proc -- sh -eu -c '
         [ "$(id -u)" -eq 0 ] || exit 10
@@ -29,10 +32,10 @@ if ! unshare --user --map-root-user --mount --pid --ipc --net \
         [ "$(readlink /proc/self/ns/pid)" != "$3" ] || exit 14
         [ "$(readlink /proc/self/ns/net)" != "$4" ] || exit 15
         [ "$(readlink /proc/self/ns/ipc)" != "$5" ] || exit 16
-        awk -v outer_uid="$6" '"'"'
-            $1 == 0 { if ($2 != outer_uid) exit 1; found=1 }
+        awk -v outer_uid="$6" "
+            \$1 == 0 { if (\$2 != outer_uid) exit 1; found=1 }
             END { if (!found) exit 1 }
-        '"'"' /proc/self/uid_map
+        " /proc/self/uid_map
     ' sh "$userns" "$mountns" "$pidns" "$netns" "$ipcns" "$host_uid"; then
     fail 'namespace creation succeeded but PID/UID/namespace invariant failed'
 fi
