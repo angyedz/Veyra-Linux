@@ -44,19 +44,35 @@ static void wait_ok(pid_t child) {
     if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
         die("child exited without success");
 }
-static void rootless(const char *user, const char *mnt, const char *net,
+/* Only PID 1 of the THROWAWAY QEMU guest (not an installed Veyra host)
+ * may write the child's mapping. The unprivileged process creates its own
+ * user namespace and cannot mutate the initial user namespace.
+ */
+static void write_child_map(pid_t child, const char *name, const char *data) {
+    char path[128];
+    if (snprintf(path, sizeof(path), "/proc/%ld/%s", (long)child, name)
+            >= (int)sizeof(path))
+        die("child map path too long");
+    write_map(path, data);
+}
+static void rootless(int ready_fd, int go_fd,
+                     const char *user, const char *mnt, const char *net,
                      const char *ipc, const char *pidns) {
     if (setgroups(0, NULL) || setgid(1000) || setuid(1000))
         die("drop guest root");
     if (geteuid() != 1000) die("expected nonroot outside userns");
     if (unshare(CLONE_NEWUSER) < 0) die("unprivileged user namespace");
-    /* Map namespace UID 0 first: before uid_map is populated, opening
-     * procfs setgroups may fail with EACCES because the process owner is
-     * unmapped. setgroups must still be set to "deny" before gid_map.
+    /* A trusted supervisor in the parent namespace installs UID/GID maps.
+     * Self-writes to /proc/self/{uid_map,setgroups} on the initramfs's
+     * ancestor-mounted procfs return EACCES for this nonroot guest user.
+     * Mapping inner UID 0 -> outer UID 1000 is still strictly unprivileged.
      */
-    write_map("/proc/self/uid_map", "0 1000 1\n");
-    write_map("/proc/self/setgroups", "deny\n");
-    write_map("/proc/self/gid_map", "0 1000 1\n");
+    if (write(ready_fd, "R", 1) != 1) die("notify namespace supervisor");
+    close(ready_fd);
+    char started;
+    if (read(go_fd, &started, 1) != 1 || started != 'G')
+        die("namespace mapping supervisor failed");
+    close(go_fd);
     if (geteuid() != 0 || getegid() != 0) die("inner root mapping");
     assert_other_ns("user", user);
 
@@ -91,12 +107,27 @@ int main(void) {
     ns_link("net", net, sizeof(net));
     ns_link("ipc", ipc, sizeof(ipc));
     ns_link("pid", pidns, sizeof(pidns));
+    int ready[2], go[2];
+    if (pipe(ready) != 0 || pipe(go) != 0) die("namespace sync pipes");
     pid_t child = fork();
     if (child < 0) die("fork rootless user");
     if (!child) {
-        rootless(user, mnt, net, ipc, pidns);
+        close(ready[0]);
+        close(go[1]);
+        rootless(ready[1], go[0], user, mnt, net, ipc, pidns);
         _exit(0);
     }
+    close(ready[1]);
+    close(go[0]);
+    char signal;
+    if (read(ready[0], &signal, 1) != 1 || signal != 'R')
+        die("rootless child failed before mapping");
+    close(ready[0]);
+    write_child_map(child, "uid_map", "0 1000 1\n");
+    write_child_map(child, "setgroups", "deny\n");
+    write_child_map(child, "gid_map", "0 1000 1\n");
+    if (write(go[1], "G", 1) != 1) die("allow mapped user to continue");
+    close(go[1]);
     wait_ok(child);
     puts("VEYRA_USERNS_QEMU_PRIMITIVES_PASS");
     fflush(stdout);
