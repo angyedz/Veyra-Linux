@@ -89,6 +89,8 @@ jobs:
       - name: Verify glenv manager artifact before ISO packaging
         run: |
           set -eu
+          # Downloaded Actions artifacts do not retain executable modes.
+          chmod 755 dist/glenv-manager/glenv-manager
           test -x dist/glenv-manager/glenv-manager
           (cd dist/glenv-manager && sha256sum -c glenv-manager.sha256)
           dist/glenv-manager/glenv-manager version
