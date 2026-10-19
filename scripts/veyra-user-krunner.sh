@@ -24,12 +24,14 @@ case "$XDG_RUNTIME_DIR" in
 esac
 [ "${XDG_RUNTIME_DIR##*/}" = "$(id -u)" ] ||
     die 'runtime directory does not match session uid'
-[ -d "$XDG_RUNTIME_DIR" ] && [ ! -L "$XDG_RUNTIME_DIR" ] ||
+if [ ! -d "$XDG_RUNTIME_DIR" ] || [ -L "$XDG_RUNTIME_DIR" ]; then
     die 'runtime directory missing or symlinked'
+fi
 [ "$(stat -c '%u' "$XDG_RUNTIME_DIR")" = "$(id -u)" ] ||
     die 'runtime directory belongs to another user'
-[ -S "$XDG_RUNTIME_DIR/bus" ] && [ ! -L "$XDG_RUNTIME_DIR/bus" ] ||
+if [ ! -S "$XDG_RUNTIME_DIR/bus" ] || [ -L "$XDG_RUNTIME_DIR/bus" ]; then
     die 'isolated session bus missing or symlinked'
+fi
 DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
 export DBUS_SESSION_BUS_ADDRESS
 # Provisional readonly system-generation runtime mount; not yet implemented.
