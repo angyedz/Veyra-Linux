@@ -231,8 +231,13 @@ int main(int argc, char **argv) {
         die("unprivileged child failed before namespace mapping");
     close(ready[0]);
     /* Only VM system root configures namespace UID/GID ranges. */
+    /* This parent is privileged guest system root with CAP_SETGID in
+     * the parent namespace and authorizes the COMPLETE subordinate range.
+     * Do NOT write "deny" to /proc/PID/setgroups: that would permanently
+     * prevent legitimate user-namespace sudo from setting group vectors.
+     * Untrusted/rootless self-mapping has different restrictions.
+     */
     install_map(launcher, "uid_map", "0 100000 65536\n");
-    install_map(launcher, "setgroups", "deny\n");
     install_map(launcher, "gid_map", "0 100000 65536\n");
     write_text(proceed[1], "G");
     close(proceed[1]);
