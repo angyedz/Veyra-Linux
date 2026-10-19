@@ -46,6 +46,14 @@ for fs in ext4 xfs; do
     python3 "$root/scripts/veyra-bootctl.py" --store "$top" activate B
     grep -qx '# VEYRA_DEFAULT=B' "$top/boot/grub/grub.cfg"
     grep -q "^set default='veyra-B'$" "$top/boot/grub/grub.cfg"
+    test "$(cat "$top/boot-state/pending")" = 'B A'
+    grep -qx '# VEYRA_DEFAULT=A' "$top/boot-state/fallback-grub.cfg"
+    if python3 "$root/scripts/veyra-bootctl.py" --store "$top" activate A; then
+        echo 'Allowed conflicting active A/B transaction' >&2; exit 1
+    fi
+    python3 "$root/scripts/veyra-bootctl.py" --store "$top" confirm --booted-id B
+    test ! -e "$top/boot-state/pending"
+    grep -qx '# VEYRA_DEFAULT=B' "$top/boot/grub/grub.cfg"
     python3 "$root/scripts/veyra-bootctl.py" --store "$top" rollback A
     grep -q "^set default='veyra-A'$" "$top/boot/grub/grub.cfg"
     if python3 "$root/scripts/veyra-bootctl.py" --store "$top" activate '../evil'; then
