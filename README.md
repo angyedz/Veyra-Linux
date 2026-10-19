@@ -15,7 +15,7 @@ Veyra Linux is an experimental Linux distribution built on Alpine Linux. It comb
 
 ## Get started
 
-Veyra is in **early development**. Automated ISO builds are experimental and have not yet completed end-to-end installation testing.
+Veyra is in **early development**. The experimental ISO passed a full **QEMU Live boot → installation onto a blank virtual disk → installed-system reboot** in [GitHub Actions](https://github.com/angyedz/Veyra-Linux/actions/runs/39202330852) on October 19, 2026. This automated test exercises the installer shell scripts, not graphical Calamares clicks; real hardware compatibility is still unverified.
 
 Try the integration in an Alpine Linux x86_64 virtual machine:
 
