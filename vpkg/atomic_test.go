@@ -57,7 +57,7 @@ func TestNativeEnginePreferred(t *testing.T){
  log:=filepath.Join(dir,"log")
  t.Setenv("VPKG_TEST_LOG",log)
  for _,name:=range []string{"apk","vpkg-engine"}{
-  script:="#!/bin/sh\nprintf '%s\\n' '"+name+" $*' >> \"$VPKG_TEST_LOG\"\n"
+  script:="#!/bin/sh\nprintf '%s\\n' \""+name+" $*\" >> \"$VPKG_TEST_LOG\"\n"
   if err:=os.WriteFile(filepath.Join(dir,name),[]byte(script),0755);err!=nil{t.Fatal(err)}
  }
  t.Setenv("PATH",dir+":"+os.Getenv("PATH"))
