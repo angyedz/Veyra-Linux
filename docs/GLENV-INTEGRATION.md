@@ -85,3 +85,19 @@ The safe, opt-in test workflow signs the format-3 release manifest **outside** t
 The [signed boot regression test](https://github.com/angyedz/Veyra-Linux/actions/runs/39212056804) passed on Alpine/musl. A separate [privileged namespace test](https://github.com/angyedz/Veyra-Linux/actions/runs/39212313713) mounted the **signed** release in both host/user views and verified that both binds were read-only and the signature remained verifiable.
 
 **Not production OTA yet:** Veyra's current ISO does not ship an authenticated host deployment ID, established glenv trust key, signed bootloader chain or protected immutable release store. The helpers are not enabled at boot. Environment-variable overrides are for CI and controlled development, not a source of production trust. Root-owned key files and read-only bind mounts do not prevent a privileged writer from modifying the underlying release store or guarantee an atomic system-wide update.
+
+## Verified Debian Trixie compatibility (October 2026)
+
+The Go manager now has a separate integration test against a **real exported Debian Trixie glibc 2.41 sysroot running on Alpine 3.22/musl**, not a fake libc fixture. The test installs and resolves real libstdc++, Mesa GLVND/EGL/OpenGL, libwayland-client, GTK 3, PipeWire and NSS; compiles the unchanged original `glenv-wayland-filter.so` and loads it through the Debian dynamic linker. It also exercises a real Debian Wayland client and GTK 3 window on Alpine's Weston headless compositor, and Debian `pw-cli` against Alpine's PipeWire service. The manager automatically resolves Debian SPA, PipeWire, GIO, pixbuf, GSettings, icon-theme, and XDG data paths without using incompatible musl plugin directories.
+
+[Verified real Debian + Alpine CI run](https://github.com/angyedz/veyra-glenv/actions/runs/39223530458).
+
+This proves core ABI, client/server IPC and a GTK window in a headless CI compositor; **not** accelerated KWin/Plasma GPU rendering, hardware audio playback, full screen sharing, or physical machine support. The original glenv shim is reused without editing the upstream repository. The Debian sysroot is **not** required for native Alpine/musl programs.
+
+### Experimental manager in Veyra Live ISO
+
+The ISO pipeline now builds the Go manager from a pinned glenv commit in a separate Alpine/musl CI job, verifies its checksum and bundles it under `/usr/local/lib/veyra/glenv-manager`. The separate opt-in boot preparation and read-only mount helpers are bundled under `/usr/local/lib/veyra/`; the original `glenv` installation and executable are not replaced. None of the compatibility helpers are enabled at startup.
+
+The Debian sysroot itself remains a **separate**, versioned runtime (for example under `/var/lib/veyra/glenv/versions/`), to avoid expanding the RAM-backed KDE live image with an entire Debian userspace. The independent [Trixie runtime bundle CI](https://github.com/angyedz/veyra-glenv/actions/workflows/trixie-bundle.yml) produces an **unsigned development archive** and SHA-256 checksum; this is not a production update or authenticated release. Production installation must start from a separately signed version-3 manifest and an independently trusted public key. An offline Debian source or its matching licensing notices should be retained for redistribution.
+
+The graphical and audio feature tests still run independently of the experimental ISO. A validated running Veyra guest, authenticated host A/B boot selection, version store immutability, GUI/KWin integration and trusted OTA are still required before enabling anything automatically.
