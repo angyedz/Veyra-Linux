@@ -103,7 +103,8 @@ def main():
                     "test -s /mnt/veyra-e2e/deployments/B/boot/initramfs-lts && "
                     "test -f /mnt/veyra-e2e/boot-state/legacy-grub.cfg && "
                     "grep -q 'veyra_deployment=A' /mnt/veyra-e2e/boot/grub/grub.cfg && "
-                    "grep -q '^# VEYRA_DEFAULT=A
+                    "grep -Fq '# VEYRA_DEFAULT=A' /mnt/veyra-e2e/boot/grub/grub.cfg && "
+                    "! grep -q 'veyra_deployment=B' /mnt/veyra-e2e/boot/grub/grub.cfg",
                     timeout=45)
                 installed.run_command(child, "sync", 30)
             finally:
