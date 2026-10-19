@@ -101,6 +101,10 @@ def main():
                     child,
                     "test -s /mnt/veyra-e2e/deployments/A/boot/initramfs-lts && "
                     "test -s /mnt/veyra-e2e/deployments/B/boot/initramfs-lts && "
+                    "test -d /mnt/veyra-e2e/deployments/A/run && "
+                    "test -d /mnt/veyra-e2e/deployments/B/run && "
+                    "test -d /mnt/veyra-e2e/deployments/A/tmp && "
+                    "test -d /mnt/veyra-e2e/deployments/B/tmp && "
                     "test -f /mnt/veyra-e2e/boot-state/legacy-grub.cfg && "
                     "grep -q 'veyra_deployment=A' /mnt/veyra-e2e/boot/grub/grub.cfg && "
                     "grep -Fq '# VEYRA_DEFAULT=A' /mnt/veyra-e2e/boot/grub/grub.cfg && "
