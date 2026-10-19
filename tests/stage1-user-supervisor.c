@@ -17,12 +17,16 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-#define STACK_SIZE (1024 * 1024)
 #define OUTER_ROOT_UID 100000
 #define INNER_NORMAL_UID 1000
 #define OUTER_NORMAL_UID (OUTER_ROOT_UID + INNER_NORMAL_UID)
 
-struct child_args { int read_fd; int write_fd; const char *root; };
+struct child_args {
+    int ready_write;
+    int proceed_read;
+    int pid_write;
+    const char *root;
+};
 
 static void die(const char *message) {
     fprintf(stderr, "VEYRA_STAGE1_FAILURE: %s (errno=%d: %s)\n",
@@ -68,21 +72,15 @@ static void proof_ordinary_user(void) {
         !WIFEXITED(status) || WEXITSTATUS(status) != 0)
         die("ordinary user proof child failed");
 }
-static int inner_init(void *opaque) {
-    struct child_args *ctx = opaque;
-    char signal = 0;
-    close(ctx->write_fd);
-    if (read(ctx->read_fd, &signal, 1) != 1 || signal != 'G')
-        die("trusted guest supervisor did not install mappings");
-    close(ctx->read_fd);
+static void inner_pid_one(const char *root) {
     if (geteuid() != 0 || getegid() != 0 || getpid() != 1)
         die("inner uid/gid or PID1 mismatch");
     if (sethostname("veyra-user", 10) < 0) die("namespace hostname");
     if (mount(NULL, "/", NULL, MS_REC | MS_PRIVATE, NULL) < 0)
         die("private propagation");
-    if (mount(ctx->root, ctx->root, NULL, MS_BIND, NULL) < 0)
+    if (mount(root, root, NULL, MS_BIND, NULL) < 0)
         die("bind user rootfs");
-    if (chdir(ctx->root) < 0) die("enter user rootfs");
+    if (chdir(root) < 0) die("enter user rootfs");
     if (mkdir(".veyra-stage1-oldroot", 0700) < 0 && errno != EEXIST)
         die("prepare old root");
     if (syscall(SYS_pivot_root, ".", ".veyra-stage1-oldroot") < 0)
@@ -102,7 +100,45 @@ static int inner_init(void *opaque) {
     fflush(stdout);
     execl("/sbin/init", "init", (char *)NULL);
     die("execute user root BusyBox init");
-    return 1;
+}
+/* Launching clone(CLONE_NEWUSER) directly as outer UID 0 leaves the
+ * process outside-UID 0, which is UNMAPPED by 0->100000. We therefore
+ * first create a separate unprivileged launcher (outside UID 100000),
+ * let it create its own user namespace, have the trusted VM system root
+ * install the mapping, then create other namespaces and fork PID1.
+ */
+static void launch_user(const struct child_args *ctx) {
+    if (setgroups(0, NULL) < 0 ||
+        setgid(OUTER_ROOT_UID) < 0 ||
+        setuid(OUTER_ROOT_UID) < 0)
+        die("drop guest system root for unprivileged launcher");
+    if (geteuid() != OUTER_ROOT_UID) die("outside launcher remains privileged");
+    if (unshare(CLONE_NEWUSER) < 0) die("unprivileged user namespace");
+    write_text(ctx->ready_write, "R");
+    close(ctx->ready_write);
+    char signal = 0;
+    if (read(ctx->proceed_read, &signal, 1) != 1 || signal != 'G')
+        die("trusted system guest never installed UID/GID mappings");
+    close(ctx->proceed_read);
+    if (geteuid() != 0 || getegid() != 0)
+        die("namespace root mapping did not become active");
+    if (unshare(CLONE_NEWNS | CLONE_NEWNET | CLONE_NEWIPC |
+                CLONE_NEWUTS | CLONE_NEWPID) < 0)
+        die("scoped mount/network/IPC/UTS/PID namespaces");
+    pid_t pid1 = fork();
+    if (pid1 < 0) die("fork nested PID1");
+    if (pid1 == 0) {
+        close(ctx->pid_write);
+        inner_pid_one(ctx->root);
+    }
+    char child_pid[48];
+    if (snprintf(child_pid, sizeof(child_pid), "%ld\n", (long)pid1)
+            >= (int)sizeof(child_pid)) die("PID string too long");
+    write_text(ctx->pid_write, child_pid);
+    close(ctx->pid_write);
+    int status = 0;
+    if (waitpid(pid1, &status, 0) != pid1) die("reap nested user PID1");
+    _exit(0);
 }
 static int root_boot_count(const char *root) {
     char path[512];
@@ -136,34 +172,55 @@ int main(int argc, char **argv) {
     }
     if (st.st_uid != OUTER_ROOT_UID)
         die("rootfs owner must map to outside UID 100000");
-    int pipe_fd[2];
-    if (pipe(pipe_fd) < 0) die("namespace mapping pipe");
-    void *stack = malloc(STACK_SIZE);
-    if (!stack) die("allocate child stack");
-    struct child_args ctx = {
-        .read_fd = pipe_fd[0], .write_fd = pipe_fd[1], .root = argv[1],
-    };
-    int flags = CLONE_NEWUSER | CLONE_NEWPID | CLONE_NEWNS |
-                CLONE_NEWNET | CLONE_NEWIPC | CLONE_NEWUTS | SIGCHLD;
-    pid_t child = clone(inner_init, (char *)stack + STACK_SIZE, flags, &ctx);
-    if (child < 0) die("clone nested PID1/user namespace");
-    close(pipe_fd[0]);
-    /* The only authority mapping guest user UIDs is guest system root. */
-    install_map(child, "uid_map", "0 100000 65536\n");
-    install_map(child, "setgroups", "deny\n");
-    install_map(child, "gid_map", "0 100000 65536\n");
-    write_text(pipe_fd[1], "G");
-    close(pipe_fd[1]);
+    int ready[2], proceed[2], child_pid_pipe[2];
+    if (pipe(ready) < 0 || pipe(proceed) < 0 ||
+        pipe(child_pid_pipe) < 0) die("namespace synchronization pipes");
+    pid_t launcher = fork();
+    if (launcher < 0) die("create unprivileged namespace launcher");
+    if (launcher == 0) {
+        close(ready[0]);
+        close(proceed[1]);
+        close(child_pid_pipe[0]);
+        struct child_args args = {
+            .ready_write = ready[1], .proceed_read = proceed[0],
+            .pid_write = child_pid_pipe[1], .root = argv[1],
+        };
+        launch_user(&args);
+        _exit(1);
+    }
+    close(ready[1]);
+    close(proceed[0]);
+    close(child_pid_pipe[1]);
+    char ready_byte = 0;
+    if (read(ready[0], &ready_byte, 1) != 1 || ready_byte != 'R')
+        die("unprivileged child failed before namespace mapping");
+    close(ready[0]);
+    /* Only VM system root configures namespace UID/GID ranges. */
+    install_map(launcher, "uid_map", "0 100000 65536\n");
+    install_map(launcher, "setgroups", "deny\n");
+    install_map(launcher, "gid_map", "0 100000 65536\n");
+    write_text(proceed[1], "G");
+    close(proceed[1]);
 
+    char child_pid_text[48] = {0};
+    ssize_t bytes = read(child_pid_pipe[0], child_pid_text,
+                         sizeof(child_pid_text) - 1);
+    close(child_pid_pipe[0]);
+    if (bytes <= 0) die("namespace launcher did not create user PID1");
+    char *parse_end = NULL;
+    long child_pid_number = strtol(child_pid_text, &parse_end, 10);
+    if (parse_end == child_pid_text || child_pid_number <= 0)
+        die("invalid nested PID1 number");
+    pid_t child = (pid_t)child_pid_number;
     int actual = -1;
     for (int tick = 0; tick < 240; tick++) {
         actual = root_boot_count(argv[1]);
         if (actual == expected) break;
         if (actual > expected) die("boot count exceeded expected value");
         int status;
-        pid_t result = waitpid(child, &status, WNOHANG);
-        if (result < 0) die("wait user PID1");
-        if (result == child) die("user PID1 exited before OpenRC startup");
+        pid_t result = waitpid(launcher, &status, WNOHANG);
+        if (result < 0) die("wait namespace launcher");
+        if (result == launcher) die("user PID1 exited before OpenRC startup");
         usleep(250000);
     }
     if (actual != expected) die("OpenRC did not signal expected boot count");
@@ -179,7 +236,7 @@ int main(int argc, char **argv) {
     puts("VEYRA_STAGE1_USER_STATE_SYNCED");
     fflush(stdout);
     if (kill(child, SIGKILL) < 0) die("stop only nested PID1");
-    if (waitpid(child, NULL, 0) != child) die("reap nested PID1");
-    free(stack);
+    if (waitpid(launcher, NULL, 0) != launcher)
+        die("reap namespace launcher");
     return 0;
 }
