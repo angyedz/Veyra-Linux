@@ -1,40 +1,40 @@
 #!/bin/sh
-# Non-destructive prerequisite probe for Veyra's proposed dual environment.
-# This is NOT a container launcher, a security proof, or an installer step.
+# Informational kernel prerequisite test; exit 77 means blocked by runner.
 set -eu
-
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 skip() { printf 'SKIP: %s\n' "$*" >&2; exit 77; }
-
-command -v unshare >/dev/null 2>&1 || skip 'util-linux unshare unavailable'
-command -v readlink >/dev/null 2>&1 || skip 'readlink unavailable'
-[ -r /proc/self/uid_map ] || skip 'user namespaces unavailable'
-
-outer_userns=$(readlink /proc/self/ns/user)
-outer_mountns=$(readlink /proc/self/ns/mnt)
-outer_netns=$(readlink /proc/self/ns/net)
-outer_pidns=$(readlink /proc/self/ns/pid)
-
-# -r maps namespace UID 0 to the invoking non-root host UID.
-# This probe must never run as host root: mapping host root would defeat
-# the very privilege separation we are checking.
-[ "$(id -u)" -ne 0 ] || skip 'run as an ordinary host user, not root'
-
-if ! unshare --user --map-root-user --mount --pid --net --ipc --fork --mount-proc \
-    sh -c '
-        set -eu
+[ "$(id -u)" -ne 0 ] || skip 'run as nonroot user'
+for command_name in unshare readlink awk; do
+    command -v "$command_name" >/dev/null 2>&1 || skip "missing $command_name"
+done
+[ -r /proc/self/uid_map ] || skip '/proc/self/uid_map unavailable'
+unshare --user --map-root-user -- true >/dev/null 2>&1 ||
+    skip 'unprivileged user namespace blocked'
+unshare --user --map-root-user --mount --pid --ipc --net \
+    --propagation private --fork --mount-proc -- true >/dev/null 2>&1 ||
+    skip 'required namespace combination blocked'
+userns=$(readlink /proc/self/ns/user)
+mountns=$(readlink /proc/self/ns/mnt)
+pidns=$(readlink /proc/self/ns/pid)
+netns=$(readlink /proc/self/ns/net)
+ipcns=$(readlink /proc/self/ns/ipc)
+host_uid=$(id -u)
+# A successful namespace entry followed by a failed invariant is a real FAIL.
+if ! unshare --user --map-root-user --mount --pid --ipc --net \
+    --propagation private --fork --mount-proc -- sh -eu -c '
         [ "$(id -u)" -eq 0 ] || exit 10
         [ "$$" -eq 1 ] || exit 11
         [ "$(readlink /proc/self/ns/user)" != "$1" ] || exit 12
         [ "$(readlink /proc/self/ns/mnt)" != "$2" ] || exit 13
-        [ "$(readlink /proc/self/ns/net)" != "$3" ] || exit 14
-        [ "$(readlink /proc/self/ns/pid)" != "$4" ] || exit 15
-        # Namespace root must map to an unprivileged host identity.
-        # The caller checked its own UID before entering.
-        awk "NR==1 { if (\$1 != 0 || \$2 == 0) exit 1 }" /proc/self/uid_map
-    ' sh "$outer_userns" "$outer_mountns" "$outer_netns" "$outer_pidns"; then
-    fail 'namespace prerequisites failed (kernel policy or missing support)'
+        [ "$(readlink /proc/self/ns/pid)" != "$3" ] || exit 14
+        [ "$(readlink /proc/self/ns/net)" != "$4" ] || exit 15
+        [ "$(readlink /proc/self/ns/ipc)" != "$5" ] || exit 16
+        awk -v outer_uid="$6" '"'"'
+            $1 == 0 { if ($2 != outer_uid) exit 1; found=1 }
+            END { if (!found) exit 1 }
+        '"'"' /proc/self/uid_map
+    ' sh "$userns" "$mountns" "$pidns" "$netns" "$ipcns" "$host_uid"; then
+    fail 'namespace creation succeeded but PID/UID/namespace invariant failed'
 fi
-
-printf '%s\n' 'PASS: unprivileged user/mount/PID/network namespace prerequisites'
-printf '%s\n' 'NOTE: no rootfs isolation, OpenRC, sudo, VPN, KDE or host protection has been validated'
+echo 'PASS: rootless user/mount/PID/network/IPC namespaces and single-ID mapping'
+echo 'NOTE: no rootfs, sudo, KDE, VPN or host confinement proven'
