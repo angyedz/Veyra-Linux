@@ -25,6 +25,21 @@ REPOS
 test -x "$root/bin/busybox"
 test -s "$root/lib/apk/db/installed"
 test -s "$root/etc/apk/world"
+
+# Defense in depth: even invoking the underlying native C engine directly
+# must reject accidental mutations of the active atomic Veyra root.
+# This entire test runs in a disposable Alpine CI container.
+test ! -e /etc/veyra/deployment-mode
+mkdir -p /etc/veyra
+printf 'atomic-v1\n' > /etc/veyra/deployment-mode
+if "$engine" --root / --no-network add busybox > "$tmp/atomic-refusal.log" 2>&1; then
+    echo 'Native engine allowed in-place package changes in atomic mode' >&2
+    exit 1
+fi
+grep -q 'Veyra atomic policy rejects' "$tmp/atomic-refusal.log"
+# A separately addressed deployment root is still readable under policy.
+"$engine" --root "$root" info -e busybox
+rm -f /etc/veyra/deployment-mode
 # The engine must not replace or rename the host APK.
 command -v apk
 apk --version
