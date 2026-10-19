@@ -4,14 +4,16 @@
 # No automatic disk writes, update execution, or filesystem formatting.
 set -eu
 export PATH=/sbin:/bin:/usr/sbin:/usr/bin
-mount -t proc proc /proc
-mount -t sysfs sysfs /sys
-mount -t devtmpfs devtmpfs /dev || true
-mkdir -p /dev/pts /run /tmp
-mount -t devpts devpts /dev/pts || true
-mount -t tmpfs tmpfs /run || true
-mount -t tmpfs tmpfs /tmp || true
-[ -e /dev/console ] || mknod /dev/console c 5 1
+# mkinitfs embeds BusyBox, but its applet symlinks are set up by Alpine's
+# stock /init. A custom PID 1 must call those applets explicitly.
+/bin/busybox mount -t proc proc /proc
+/bin/busybox mount -t sysfs sysfs /sys
+/bin/busybox mount -t devtmpfs devtmpfs /dev || true
+/bin/busybox mkdir -p /dev/pts /run /tmp
+/bin/busybox mount -t devpts devpts /dev/pts || true
+/bin/busybox mount -t tmpfs tmpfs /run || true
+/bin/busybox mount -t tmpfs tmpfs /tmp || true
+[ -e /dev/console ] || /bin/busybox mknod /dev/console c 5 1
 exec </dev/console >/dev/console 2>&1
 printf '\033[2J\033[H'
 echo '======================================================'
@@ -28,10 +30,10 @@ while :; do
     printf 'Choice: '
     IFS= read -r choice || choice=3
     case "$choice" in
-        1) cat /proc/partitions ;;
-        2) cat /proc/cmdline ;;
-        3) sync; reboot -f ;;
-        4) sync; poweroff -f ;;
+        1) /bin/busybox cat /proc/partitions ;;
+        2) /bin/busybox cat /proc/cmdline ;;
+        3) /bin/busybox sync; /bin/busybox reboot -f ;;
+        4) /bin/busybox sync; /bin/busybox poweroff -f ;;
         *) echo 'Unknown choice' ;;
     esac
 done
