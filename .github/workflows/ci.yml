@@ -194,3 +194,87 @@ jobs:
       - uses: actions/checkout@v4
       - name: Test real read-only bind mounts in an isolated namespace
         run: sudo unshare --mount --propagation private sh tests/test-glenv-mount.sh
+
+  glenv-signed-boot:
+    name: Signed glenv boot selection (Alpine/musl)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    container:
+      image: golang:1.23-alpine
+    steps:
+      - name: Check out Veyra boot scripts
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Check out tested glenv sources
+        uses: actions/checkout@v4
+        with:
+          repository: angyedz/veyra-glenv
+          ref: 4285e54c6203809ce59947d4cbbe38ff493e32a7
+          path: glenv
+          persist-credentials: false
+      - name: Build glenv without outside dependencies
+        working-directory: glenv
+        run: go build -trimpath -o /tmp/glenv ./cmd/glenv
+      - name: Verify signed boot and fail closed on tampering
+        shell: sh
+        run: |
+          set -eu
+          root=/tmp/veyra-ci-signed-release
+          pub=/tmp/veyra-ci-signed-key.pub
+          store=/tmp/veyra-ci-signed-store
+          mkdir -p "$root/sysroot"
+          printf 'signed runtime fixture' > "$root/sysroot/libc.so.6"
+          /tmp/glenv release inventory "$root" signed-v1 > "$root/glenv-manifest.json"
+          (cd glenv && go run ./tests/signfixture "$root" "$pub")
+          /tmp/glenv release verify-signed "$root" "$pub"
+          /tmp/glenv release --store "$store" stage "$root" signed-v1
+          /tmp/glenv release --store "$store" pair-host veyra-signed signed-v1
+          printf 'veyra-signed\n' > /tmp/veyra-ci-deployment-id
+
+          export VEYRA_DEPLOYMENT_ID_FILE=/tmp/veyra-ci-deployment-id
+          export VEYRA_GLENV_STORE="$store"
+          export VEYRA_GLENV_BIN=/tmp/glenv
+          export VEYRA_GLENV_PIN=/tmp/veyra-ci-boot/selected
+          export VEYRA_GLENV_REQUIRE_SIGNATURE=1
+          export VEYRA_GLENV_TRUST_KEY="$pub"
+
+          if VEYRA_GLENV_TRUST_KEY=/tmp/nonexistent-glenv-key sh scripts/glenv-boot-pin.sh; then
+            echo 'Signed boot fell back when trusted key was missing' >&2
+            exit 1
+          fi
+          chmod 666 "$pub"
+          if sh scripts/glenv-boot-pin.sh; then
+            echo 'Signed boot accepted a world-writable key file' >&2
+            exit 1
+          fi
+          chmod 644 "$pub"
+          ln -s "$pub" /tmp/veyra-ci-key-symlink
+          if VEYRA_GLENV_TRUST_KEY=/tmp/veyra-ci-key-symlink sh scripts/glenv-boot-pin.sh; then
+            echo 'Signed boot accepted a symlinked key file' >&2
+            exit 1
+          fi
+          test ! -e "$VEYRA_GLENV_PIN"
+          sh scripts/glenv-boot-pin.sh
+          test "$(basename "$(readlink "$VEYRA_GLENV_PIN")")" = signed-v1
+
+          printf 'tampered' > "$store/versions/signed-v1/sysroot/libc.so.6"
+          if VEYRA_GLENV_PIN=/tmp/veyra-ci-boot/tampered sh scripts/glenv-boot-pin.sh; then
+            echo 'Signed boot accepted a modified runtime' >&2
+            exit 1
+          fi
+          test ! -e /tmp/veyra-ci-boot/tampered
+
+          unsigned=/tmp/veyra-ci-unsigned-release
+          mkdir -p "$unsigned/sysroot"
+          printf 'unsigned runtime' > "$unsigned/sysroot/libc.so.6"
+          /tmp/glenv release inventory "$unsigned" unsigned-v1 > "$unsigned/glenv-manifest.json"
+          /tmp/glenv release --store "$store" stage "$unsigned" unsigned-v1
+          /tmp/glenv release --store "$store" pair-host veyra-unsigned unsigned-v1
+          printf 'veyra-unsigned\n' > "$VEYRA_DEPLOYMENT_ID_FILE"
+          if VEYRA_GLENV_PIN=/tmp/veyra-ci-boot/unsigned sh scripts/glenv-boot-pin.sh; then
+            echo 'Signed boot accepted an unsigned release' >&2
+            exit 1
+          fi
+          test ! -e /tmp/veyra-ci-boot/unsigned
+          echo 'Signed Veyra/glenv boot integration passed'
