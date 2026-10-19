@@ -200,6 +200,7 @@ done
 if [ "$manager_ready" -ne 1 ] || [ "$manager_status" != "STOPPED" ]; then
     fail "manager did not recover cleanly after crash: $manager_status"
 fi
+echo 'VEYRA_STAGE1_MANAGER_RECOVERY_PASS state=STOPPED stale-socket=cleared'
 echo "VEYRA_STAGE1_QEMU_SUCCESS: user environment lifecycle and persistence boot $expected"
 /bin/busybox sync
 /bin/busybox poweroff -f
