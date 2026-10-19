@@ -39,6 +39,19 @@ cp "$root/scripts/bootstrap.sh" usr/local/lib/veyra/bootstrap.sh
 cp "$root/scripts/setup-pkgrepo.sh" usr/local/lib/veyra/setup-pkgrepo.sh
 cp "$root/scripts/compat.sh" usr/local/lib/veyra/compat.sh
 cp "$root/scripts/smoke.sh" usr/local/lib/veyra/smoke.sh
+# Development-only Go manager is kept separate from the original glenv
+# executable and installer. Neither boot helper is enabled automatically.
+cp "$root/scripts/glenv-boot-pin.sh" usr/local/lib/veyra/glenv-boot-pin.sh
+cp "$root/scripts/glenv-boot-mount.sh" usr/local/lib/veyra/glenv-boot-mount.sh
+manager="$root/dist/glenv-manager/glenv-manager"
+if [ -f "$manager" ]; then
+    [ -x "$manager" ] || { echo "glenv manager artifact is not executable" >&2; exit 1; }
+    cp "$manager" usr/local/lib/veyra/glenv-manager
+    chmod 755 usr/local/lib/veyra/glenv-manager
+elif [ "${VEYRA_REQUIRE_GLENV_MANAGER:-0}" = 1 ]; then
+    echo "Required development glenv manager artifact missing: $manager" >&2
+    exit 1
+fi
 cp "$root/images/veyra-live.initd" etc/init.d/veyra-live
 cp "$root/images/veyra-live-mode.initd" etc/init.d/veyra-live-mode
 cp "$root/images/veyra-live-mode.sh" usr/local/lib/veyra/live-mode.sh
@@ -61,7 +74,8 @@ chmod 755 etc/init.d/veyra-live etc/init.d/veyra-live-mode \
     usr/local/bin/veyra-install usr/local/bin/veyra-install-tui \
     usr/local/lib/veyra/installer-copy.sh usr/local/lib/veyra/installer-prepare.sh \
     usr/local/lib/veyra/installer-desktop.sh usr/local/lib/veyra/installer-hardware.sh \
-    usr/local/lib/veyra/hardware-detect.sh
+    usr/local/lib/veyra/hardware-detect.sh \
+    usr/local/lib/veyra/glenv-boot-pin.sh usr/local/lib/veyra/glenv-boot-mount.sh
 
 cat > usr/local/bin/veyra-setup <<'SETUP'
 #!/bin/sh
