@@ -19,44 +19,46 @@
 * Future system package operations populate **a fresh inactive deployment** with an independent APK database; post-install scripts must not mutate the running host. Validation comes before the bootloader switch.
 * `vpkg` also offers Nix user-profile operations, but these do **not** alter system images.
 
-## Intended Btrfs system layout (not yet installed by Calamares)
+## Filesystem-neutral system deployments
+
+**Filesystem choice belongs to the user.** Atomic system updates must not require Btrfs, snapshots, reflinks, subvolumes, CoW or special filesystem features. Veyra must support its installable Linux root filesystems (ext4, XFS, F2FS, Btrfs) without changing the guarantees for any one of them.
+
+The conceptual storage contract is directories and separately managed persistent data, not Btrfs-specific structures:
 
 ```text
-Btrfs top-level (subvolid=5)
-  @system-A       # one self-contained Alpine+KDE root, /etc and APK database
-  @system-B       # another independent root, kernel and initramfs
-  @home           # persistent /home, not rolled back by OS updates
-  @nix            # optional persistent /nix
-  @shared         # tightly scoped persistent state (not a shared APK database)
-  @boot           # stable, bootloader-owned configurations
-ESP               # independent EFI system partition on UEFI machines
+/mounted-store/                         # conventional mounted filesystem
+  deployments/A/                        # isolated complete OS tree + APK DB
+  deployments/B/                        # another isolated complete OS tree
+  persistent/home/                       # preserved across OS rollbacks
+  persistent/nix/                        # optional persistent Nix state
+  persistent/shared/                     # carefully scoped persistent state
+  boot-state/                            # boot coordinator-owned metadata
+ESP (if UEFI)                            # separately managed as required
 ```
 
-At most one selected deployment is booted as `/`. An inactive deployment is staged and checked before selecting it for the next boot; the previous system remains available for rollback. **Both boot entries must be recoverable**, including after power loss. A/B root subvolumes, bootloader selection and signature metadata must be authenticated together, not merely renamed in userspace. A read-only snapshot is insufficient if a privileged process can still modify its Btrfs source or boot metadata.
+An inactive system deployment can be created using a **verified file copy**, with full filesystem metadata preservation, on any supported filesystem. On Btrfs an optimized backend may eventually use snapshots, but only as an optional performance optimization and never as a requirement. The source must be offline/quiescent and cannot include active /proc, /sys, /dev, /run, persistent /home or /nix mountpoints.
 
-A production installer must verify UEFI and BIOS partition schemes, Btrfs mount semantics, stable rootflags, fstab, kernel/initramfs resolution, filesystem durability, ESP and GRUB updates, power-loss recovery, state migrations, disk space, encryption, and rollback to a *boot-tested* root. Do **not** enable this layout on real machines until a full QEMU disk-install → reboot A → stage B → boot B → rollback A test passes.
+The filesystem-neutral staging prototype currently **does not perform boot switching or installed-root atomic updates**. Full atomicity additionally requires durable staging and verification, independently bootable A/B roots, authenticated kernel/initramfs/boot entries, recovery after power loss and a validated fallback. A simple directory rename alone is **not sufficient** to claim atomic boot, and a read-only mount alone does not prevent privileged changes to the underlying source.
+
+The installer must permit users to keep choosing ext4, Btrfs, XFS or F2FS. It must not reformat, force Btrfs, or silently migrate an existing filesystem. A complete QEMU A → B → rollback A boot test on **at least ext4** is required before production activation; other supported filesystems need compatibility coverage too.
 
 ## Implementation gates
 
-- [x] Non-atomic Live ISO build and QEMU console installation on disposable disk.
-- [x] Experimental glenv signed per-host release pairing and read-only bind tests.
-- [x] Native, static `vpkg-engine` test binary from pinned apk-tools 2.14.12; isolated signed APK installation passes.
-- [ ] Production-ready native engine package replacing Alpine APK throughout the installed image.
-- [x] Opt-in Btrfs `@deploy-<ID>` snapshots and separate `@home`, `@nix`, `@shared`, `@boot` subvolumes exercised on disposable loop disk; no boot switch.
-- [ ] Verified inactive-root package transactions, deployment metadata authentication and separate installed APK package databases.
-- [ ] Calamares **atomic Plasma edition** installer path and verified Btrfs boot layout.
-- [ ] Tested GRUB A/B selection, fallback and power-loss-safe commits.
-- [ ] Persistent user data across A/B and rollback with signed glenv host binding.
-- [ ] Signed full-system release policy, authenticated boot metadata and hardware tests.
+- [x] Non-atomic Live ISO and QEMU console installation into a disposable disk.
+- [x] Experimental signed glenv per-host release pairing and read-only mounts.
+- [x] Native apk-tools-derived vpkg engine prototype, tested in an isolated root.
+- [x] Filesystem-neutral **offline staging** implementation with independent APK world databases and persistent data directories.
+- [ ] Verify ext4 and XFS staging in GitHub Actions on fresh disposable loop disks.
+- [ ] Production-quality vpkg replacing apk inside installed system, while Live bootstrap remains conventional.
+- [ ] Filesystem-neutral installed-system boot coordination, verified kernel and initramfs.
+- [ ] Complete QEMU installed ext4 root A → stage B → boot B → rollback A → boot A.
+- [ ] Equivalent compatibility coverage of XFS, F2FS and Btrfs without making any mandatory.
+- [ ] Authenticated full-system metadata, unattended recovery and physical hardware tests.
 
-Until those gates pass, the existing installed system remains the conventional Alpine install. This document is a target contract, not evidence that unfinished components work.
+## Prototype entrypoints
 
-## Prototype status and test entrypoints
+`scripts/veyra-deployment.sh init MOUNT` initializes a separate **persistent** test mount, `verify MOUNT ID` validates a staged OS tree and `stage MOUNT SOURCE-ID NEW-ID` makes a filesystem-independent `rsync` copy of a quiescent previous deployment. The store marker is `VEYRA-DEPLOYMENT-STORE-v2`, deliberately incompatible with the previous Btrfs-only prototype store; **there is no implicit migration**. No stage operation modifies GRUB, active root, partition tables, fstab, EFI variables or installed-system package state.
 
-- `scripts/veyra-deployment.sh init /mounted/btrfs-top` creates the explicit test-store marker and persistent subvolumes **only on a separately mounted Btrfs top-level (subvolid=5)**; it refuses `/`, foreign mounts and symlink redirects.
-- `scripts/veyra-deployment.sh stage /mounted/btrfs-top SOURCE-ID NEW-ID` creates a copy-on-write, independently named inactive system snapshot, preserving the source, but **does not install packages, seal the runtime, modify GRUB or select it for boot**. `verify` checks the deployment's own ID and independent world database path.
-- `tests/test-deployment-btrfs.sh` creates its **own disposable loopback filesystem** on CI, checks root safety, A/B independence and persistent user/Nix subvolumes, then destroys the scratch image.
-- `scripts/build-vpkg-engine.sh` builds apk-tools-derived `vpkg-engine` separately and `tests/test-vpkg-engine.sh` installs an Alpine signed APK into a disposable target root. The exact upstream revision, downstream patch and license are in [the engine build folder](../packaging/vpkg-engine/README.md).
-- `vpkg` prefers that native engine when present, but in-place package operations refuse to run if `/etc/veyra/deployment-mode` contains `atomic-v1`. **The existing conventional installer does not create that marker.**
+`tests/test-deployment-fs-neutral.sh` exercises staging, independent world files, persistent data and rejection of invalid deployment IDs on freshly created disposable ext4 and XFS loop filesystems. The older Btrfs-specific snapshot design is **abandoned** as the Veyra deployment architecture.
 
-The ISO still boots via the existing Alpine-based live image; the ordinary Calamares/TUI installation remains the only installer path. This avoids claiming an unbootable atomic Plasma OS is ready before a genuine UEFI/BIOS QEMU end-to-end boot and rollback test.
+**Current Calamares and TUI installers remain conventional and filesystem-selectable.** They must keep working until the filesystem-neutral atomic design has passed complete QEMU boot, rollback and power-loss tests.
