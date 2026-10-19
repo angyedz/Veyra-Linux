@@ -23,7 +23,7 @@ glenv release --store /var/lib/veyra/glenv pair-host veyra-host-v1 glenv-v1
 `pair-host` creates an **immutable, host-specific record** identifying the Veyra deployment and its matching glenv generation. The same host ID cannot later be repointed to another glenv version. New Veyra deployments get new IDs and mappings. During an early boot, the coordinator supplies the **actual selected host deployment ID** (not an untrusted environment variable supplied by an application):
 
 ```sh
-glenv release --store /var/lib/veyra/glenv boot-pair-pin veyra-host-v1 /run/glenv/runtime
+glenv release --store /var/lib/veyra/glenv boot-pair-pin veyra-host-v1 /run/glenv/selected
 ```
 
 An unknown host deployment or a missing/invalid pair **fails closed**. Exposing the exact pinned release into the other mount namespace (at the same stable path) is a separate privileged Veyra operation, not performed by this command.
@@ -41,7 +41,7 @@ The current CI checks the Go CLI and synthetic A/B host/runtime mappings on Alpi
 
 ## Opt-in boot helper
 
-`scripts/glenv-boot-pin.sh` is a fail-closed early-boot **preparation** helper. It reads the deployment ID from `/etc/veyra/deployment-id`, requires root, and invokes the versioned glenv manager to pin the matching runtime at `/run/glenv/runtime`:
+`scripts/glenv-boot-pin.sh` is a fail-closed early-boot **preparation** helper. It reads the deployment ID from `/etc/veyra/deployment-id`, requires root, and invokes the versioned glenv manager to pin the matching selected generation at `/run/glenv/selected`:
 
 ```sh
 sh scripts/glenv-boot-pin.sh
@@ -58,3 +58,20 @@ New glenv releases use **format 3** inventories that include file SHA-256, direc
 ### Original-prefix safety
 
 The glenv release manager's `stage` operation moves an already prepared staging tree, but refuses to move the installed original `/opt/glibc-env` and directories carrying glenv's `.glenv-prefix` installer ownership marker. First run `prepare-copy` against an **offline** original prefix. The new staged copy intentionally excludes this administrative marker (which could otherwise confuse the original uninstaller), while retaining the Debian sysroot, the original Wayland filter and the runtime libraries. The original directory and its ownership marker remain unchanged.
+
+## Opt-in read-only mount setup (experimental)
+
+The boot-pinned symlink and the application-visible runtime are now distinct: `/run/glenv/selected` points to a **specific verified release**, while `/run/glenv/runtime` is intended to become a read-only bind mount of that release.
+
+After a future trusted boot manager has provisioned the Veyra deployment ID and a prepared glenv version store, the intended order in a **disposable test guest** is:
+
+```sh
+sh scripts/glenv-boot-pin.sh
+sh scripts/glenv-boot-mount.sh --check
+# WARNING: the following changes mount state and needs root:
+sh scripts/glenv-boot-mount.sh
+```
+
+To prepare a separately rooted user environment **before its mount namespace is created**, the mount helper can also bind the same selected release read-only into `<userroot>/run/glenv/runtime` by setting `VEYRA_GLENV_USER_ROOT`. It refuses symlinked destination components, outside-store selectors and pre-existing mountpoints; failures attempt to unmount partial setup. This does not configure a running user namespace or install an ELF loader entry point.
+
+The runtime mount helper is **not started at boot**, is not included in the ISO's default startup sequence, and has not yet passed a privileged mount-and-QEMU integration test. GitHub Actions currently tests `--check` preflight only. An authenticated host boot deployment and cryptographically trusted glenv manifests remain required before any production activation.
