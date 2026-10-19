@@ -28,6 +28,9 @@ trap 'rm -f "$tmp"' EXIT HUP INT TERM
 # Explicitly keep this out of the GRUB boot path until a real QEMU boot test.
 mkinitfs -i "$init" -o "$tmp" "$kernel"
 [ -s "$tmp" ] || { echo 'empty recovery image' >&2; exit 1; }
+# Alpine mkinitfs produces root-only images by default; the resulting
+# non-secret recovery artifact must also be readable by the QEMU runner.
+chmod 0644 "$tmp"
 mv "$tmp" "$output"
 echo "Built Veyra recovery image: $output"
 echo 'NOT INSTALLED: boot entry and standalone QEMU verification still required'
