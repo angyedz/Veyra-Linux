@@ -40,11 +40,23 @@ A production installer must verify UEFI and BIOS partition schemes, Btrfs mount 
 
 - [x] Non-atomic Live ISO build and QEMU console installation on disposable disk.
 - [x] Experimental glenv signed per-host release pairing and read-only bind tests.
-- [ ] Independent, tested native `vpkg` APK-derived engine.
-- [ ] Versioned deployment metadata, safe inactive-slot preparation and separate APK databases.
+- [x] Native, static `vpkg-engine` test binary from pinned apk-tools 2.14.12; isolated signed APK installation passes.
+- [ ] Production-ready native engine package replacing Alpine APK throughout the installed image.
+- [x] Opt-in Btrfs `@deploy-<ID>` snapshots and separate `@home`, `@nix`, `@shared`, `@boot` subvolumes exercised on disposable loop disk; no boot switch.
+- [ ] Verified inactive-root package transactions, deployment metadata authentication and separate installed APK package databases.
 - [ ] Calamares **atomic Plasma edition** installer path and verified Btrfs boot layout.
 - [ ] Tested GRUB A/B selection, fallback and power-loss-safe commits.
 - [ ] Persistent user data across A/B and rollback with signed glenv host binding.
 - [ ] Signed full-system release policy, authenticated boot metadata and hardware tests.
 
 Until those gates pass, the existing installed system remains the conventional Alpine install. This document is a target contract, not evidence that unfinished components work.
+
+## Prototype status and test entrypoints
+
+- `scripts/veyra-deployment.sh init /mounted/btrfs-top` creates the explicit test-store marker and persistent subvolumes **only on a separately mounted Btrfs top-level (subvolid=5)**; it refuses `/`, foreign mounts and symlink redirects.
+- `scripts/veyra-deployment.sh stage /mounted/btrfs-top SOURCE-ID NEW-ID` creates a copy-on-write, independently named inactive system snapshot, preserving the source, but **does not install packages, seal the runtime, modify GRUB or select it for boot**. `verify` checks the deployment's own ID and independent world database path.
+- `tests/test-deployment-btrfs.sh` creates its **own disposable loopback filesystem** on CI, checks root safety, A/B independence and persistent user/Nix subvolumes, then destroys the scratch image.
+- `scripts/build-vpkg-engine.sh` builds apk-tools-derived `vpkg-engine` separately and `tests/test-vpkg-engine.sh` installs an Alpine signed APK into a disposable target root. The exact upstream revision, downstream patch and license are in [the engine build folder](../packaging/vpkg-engine/README.md).
+- `vpkg` prefers that native engine when present, but in-place package operations refuse to run if `/etc/veyra/deployment-mode` contains `atomic-v1`. **The existing conventional installer does not create that marker.**
+
+The ISO still boots via the existing Alpine-based live image; the ordinary Calamares/TUI installation remains the only installer path. This avoids claiming an unbootable atomic Plasma OS is ready before a genuine UEFI/BIOS QEMU end-to-end boot and rollback test.
