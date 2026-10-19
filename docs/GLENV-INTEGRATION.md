@@ -11,10 +11,10 @@ Veyra's host remains **Alpine/musl**. The new [glenv Go runtime manager](https:/
 
 ## Transaction boundary (prototype commands)
 
-After preparing an offline release tree and creating its `glenv-manifest.json` format-2 inventory:
+Start from a trusted **offline** copy of the original glenv prefix (with its complete Debian `sysroot/` and existing Wayland shim). Create a separate staging tree without moving or rewriting the original:
 
 ```sh
-glenv release inventory /staging/glenv-v1 glenv-v1 > /staging/glenv-v1/glenv-manifest.json
+glenv release prepare-copy /offline/glibc-env /staging/glenv-v1 glenv-v1
 glenv release --store /var/lib/veyra/glenv stage /staging/glenv-v1 glenv-v1
 glenv release --store /var/lib/veyra/glenv verify glenv-v1
 glenv release --store /var/lib/veyra/glenv pair-host veyra-host-v1 glenv-v1
@@ -50,3 +50,7 @@ sh scripts/glenv-boot-pin.sh
 The actual `/etc/veyra/deployment-id` and trusted boot deployment selection **do not yet exist** in Veyra's experimental ISO. Consequently the helper is **not enabled as an OpenRC service** and will refuse to run on current systems without an explicitly provisioned ID and runtime store. For CI, `VEYRA_DEPLOYMENT_ID_FILE`, `VEYRA_GLENV_STORE`, `VEYRA_GLENV_PIN` and `VEYRA_GLENV_BIN` override test paths. These overrides must not be exposed to untrusted users in a privileged production boot service.
 
 The helper only pins a symlink. It does **not** mount the runtime into an isolated user environment, verify Veyra host signatures, or install glibc compatibility libraries.
+
+## Manifest integrity limitations
+
+New glenv releases use **format 3** inventories that include file SHA-256, directory/file Unix modes, and Debian symlink targets. Legacy format 2 is readable but cannot detect permission changes. All manifest checks are local integrity checks, **not signed upstream provenance**. The source prefix must be offline or otherwise quiescent. A later authenticated Veyra OTA layer must ensure read-only immutable storage, trusted boot-selected host IDs, and a cryptographic signature chain for both the host and glenv generations before enabling automatic updates.
