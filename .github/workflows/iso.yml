@@ -57,7 +57,7 @@ jobs:
           CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o dist/glenv-manager ./cmd/glenv
           chmod 755 dist/glenv-manager
           dist/glenv-manager version
-          sha256sum dist/glenv-manager > dist/glenv-manager.sha256
+          (cd dist && sha256sum glenv-manager > glenv-manager.sha256)
       - name: Upload development manager binary
         uses: actions/upload-artifact@v4
         with:
