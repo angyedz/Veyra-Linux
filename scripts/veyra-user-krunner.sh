@@ -51,7 +51,17 @@ export DBUS_SESSION_BUS_ADDRESS
     exit 0
 }
 
-# This binary must be the system-version-paired, read-only KDE runtime
-# exposed *inside* the user environment. It must never be invoked on host.
-[ -x /usr/bin/krunner ] || die 'isolated KDE KRunner executable missing'
-exec /usr/bin/krunner --daemon
+# Provisional read-only mount of the current system generation's KDE runtime.
+# The final mount path and library/plugin activation contract are not finalized.
+# Fail closed rather than silently executing a user-owned /usr/bin/krunner,
+# which could be a different KDE version than the system compositor.
+runtime=/run/veyra/system-kde
+command -v mountpoint >/dev/null 2>&1 || die 'mountpoint tool unavailable'
+command -v findmnt >/dev/null 2>&1 || die 'findmnt tool unavailable'
+mountpoint -q "$runtime" || die 'system KDE runtime is not mounted'
+findmnt -n -o OPTIONS -M "$runtime" | tr ',' '\\n' | grep -qx ro ||
+    die 'system KDE runtime mount is not read-only'
+[ -x "$runtime/bin/krunner" ] || die 'system KDE KRunner unavailable'
+# This is only a preliminary check. A production session must separately
+# verify paired KDE libraries, plugins, loader paths and D-Bus activation.
+exec "$runtime/bin/krunner"
