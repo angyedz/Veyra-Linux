@@ -123,8 +123,19 @@ int main(int argc, char **argv) {
     if (*end || expected < 1 || expected > 10)
         die("expected count must be 1..10");
     struct stat st;
-    if (stat(argv[1], &st) < 0 || !S_ISDIR(st.st_mode) ||
-        st.st_uid != OUTER_ROOT_UID) die("rootfs owner must be outside UID 100000");
+    if (stat(argv[1], &st) < 0 || !S_ISDIR(st.st_mode))
+        die("prepared rootfs directory missing");
+    /* mkfs.ext4 -d copies all child ownership, but initializes ext4 inode 2
+     * as system-root-owned. Only the trusted guest supervisor provisions
+     * that single root inode before letting user-namespace PID1 start.
+     */
+    if (st.st_uid == 0) {
+        if (chown(argv[1], OUTER_ROOT_UID, OUTER_ROOT_UID) < 0)
+            die("provision persistent ext4 root inode owner");
+        if (stat(argv[1], &st) < 0) die("restat user root inode");
+    }
+    if (st.st_uid != OUTER_ROOT_UID)
+        die("rootfs owner must map to outside UID 100000");
     int pipe_fd[2];
     if (pipe(pipe_fd) < 0) die("namespace mapping pipe");
     void *stack = malloc(STACK_SIZE);
