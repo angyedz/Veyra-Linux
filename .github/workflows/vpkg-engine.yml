@@ -1,0 +1,48 @@
+name: Veyra package engine (experimental)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/build-vpkg-engine.sh'
+      - 'packaging/vpkg-engine/**'
+      - 'tests/test-vpkg-engine.sh'
+      - '.github/workflows/vpkg-engine.yml'
+  pull_request:
+    paths:
+      - 'scripts/build-vpkg-engine.sh'
+      - 'packaging/vpkg-engine/**'
+      - 'tests/test-vpkg-engine.sh'
+      - '.github/workflows/vpkg-engine.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  engine:
+    name: Build patched apk-tools and install signed APK into isolated root
+    runs-on: ubuntu-24.04
+    container:
+      image: alpine:3.22
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install native source-build dependencies
+        run: |
+          apk add --no-cache git patch meson ninja pkgconf build-base \
+            linux-headers openssl-dev zlib-dev
+      - name: Build patched engine with upstream source pinned by commit
+        run: sh scripts/build-vpkg-engine.sh
+      - name: Exercise APK compatibility in isolated target root
+        run: sh tests/test-vpkg-engine.sh
+      - name: Upload experimental engine and GPL license
+        uses: actions/upload-artifact@v4
+        with:
+          name: experimental-vpkg-engine-x86_64
+          path: |
+            dist/vpkg-engine/vpkg-engine
+            dist/vpkg-engine/LICENSE.apk-tools
+            dist/vpkg-engine/UPSTREAM_COMMIT
+          retention-days: 7
+          if-no-files-found: error
