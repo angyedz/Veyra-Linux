@@ -44,7 +44,7 @@ def guest_boot(qemu, kernel, initramfs, user_disk, qemu_boot, logfile):
             b"VEYRA_STAGE1_FAILURE:",
             b"Kernel panic",
         ]
-        for expected_index in range(12):
+        for expected_index in range(13):
             outcome = guest.expect(patterns, timeout=180)
             if outcome != expected_index:
                 raise RuntimeError(
