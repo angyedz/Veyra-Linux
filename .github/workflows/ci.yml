@@ -16,6 +16,8 @@ jobs:
         run: sh tests/test-recovery-builder.sh
       - name: Syntax-check atomic QEMU automation
         run: python3 -m py_compile tests/test-atomic-qemu.py tests/test-installed-qemu.py
+      - name: Verify GRUB generation-selection policies
+        run: python3 tests/test-bootctl-config.py
   alpine-smoke:
     runs-on: ubuntu-latest
     container: alpine:3.22
