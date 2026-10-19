@@ -42,3 +42,27 @@ func TestMissingArgs(t *testing.T) {
  if dispatch("install","alpine",nil)==nil {t.Fatal("accepted empty install")}
  if dispatch("remove","nix",nil)==nil {t.Fatal("accepted empty remove")}
 }
+
+func TestAtomicBootCommands(t *testing.T) {
+ oldMarker,oldBinary,oldStore:=markerFile,bootCtlBinary,bootCtlStore
+ defer func(){markerFile,bootCtlBinary,bootCtlStore=oldMarker,oldBinary,oldStore}()
+ dir:=t.TempDir()
+ markerFile=filepath.Join(dir,"deployment-mode")
+ if err:=os.WriteFile(markerFile,[]byte("atomic-v1\n"),0644);err!=nil{t.Fatal(err)}
+ log:=filepath.Join(dir,"boot-log")
+ bootCtlBinary=filepath.Join(dir,"veyra-bootctl")
+ bootCtlStore="/var/lib/veyra/store"
+ script:="#!/bin/sh\nprintf '%s\n' \"$*\" >> \"$VPKG_TEST_LOG\"\n"
+ if err:=os.WriteFile(bootCtlBinary,[]byte(script),0755);err!=nil{t.Fatal(err)}
+ t.Setenv("VPKG_TEST_LOG",log)
+ if err:=dispatch("deployments","alpine",nil);err!=nil{t.Fatal(err)}
+ if err:=dispatch("activate","alpine",[]string{"B"});err!=nil{t.Fatal(err)}
+ if err:=dispatch("rollback","alpine",[]string{"A"});err!=nil{t.Fatal(err)}
+ b,err:=os.ReadFile(log);if err!=nil{t.Fatal(err)}
+ for _,expected:=range []string{"--store /var/lib/veyra/store status","--store /var/lib/veyra/store activate B","--store /var/lib/veyra/store rollback A"}{
+  if !strings.Contains(string(b),expected){t.Fatalf("expected %q in %s",expected,string(b))}
+ }
+ if err:=dispatch("upgrade","alpine",nil);err==nil{t.Fatal("atomic mode allowed in-place upgrade")}
+ if err:=dispatch("activate","alpine",nil);err==nil{t.Fatal("accepted empty ID")}
+ if err:=dispatch("rollback","alpine",[]string{"A","B"});err==nil{t.Fatal("accepted multiple IDs")}
+}
