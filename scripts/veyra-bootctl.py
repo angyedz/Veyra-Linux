@@ -140,7 +140,7 @@ def read_config(store):
     return data
 
 
-def grub_text(config, default, candidates):
+def grub_text(config, default, candidates, recovery=False):
     # All interpolated fields are strictly allowlisted before rendering.
     validate_id(default)
     if default not in candidates:
@@ -170,6 +170,15 @@ def grub_text(config, default, candidates):
             "}",
             "",
         ])
+    if recovery:
+        lines.extend([
+            "menuentry 'Veyra conventional recovery (original Alpine root)' --id=veyra-legacy {",
+            f"    search --no-floppy --fs-uuid --set=root {uuid}",
+            f"    linux /boot/vmlinuz-lts root=UUID={uuid} rootfstype={fstype} rootflags=rw",
+            "    initrd /boot/initramfs-lts",
+            "}",
+            "",
+        ])
     return "\n".join(lines)
 
 
@@ -192,6 +201,8 @@ def main():
     init.add_argument("--uuid", required=True)
     init.add_argument("--fstype", choices=sorted(FILESYSTEMS), required=True)
     init.add_argument("--default", required=True)
+    init.add_argument("--adopt-legacy-grub", action="store_true",
+                      help="back up and replace conventional GRUB config")
     selection = sub.add_parser("activate", help="atomically replace GRUB default after verifying target root")
     selection.add_argument("id")
     rollback = sub.add_parser("rollback", help="select a known-good generation explicitly")
@@ -217,11 +228,18 @@ def main():
             config_path = state / "config.json"
             if config_path.exists() or config_path.is_symlink():
                 raise VeyraError("boot state already initialized")
-            if (grub / "grub.cfg").exists() or (grub / "grub.cfg").is_symlink():
-                raise VeyraError("existing GRUB config; refusing to replace unowned boot")
+            existing = grub / "grub.cfg"
+            if existing.exists() or existing.is_symlink():
+                if not args.adopt_legacy_grub:
+                    raise VeyraError("existing GRUB config; --adopt-legacy-grub required")
+                safe_file(existing)
+                safe_file(store / "boot" / "vmlinuz-lts")
+                safe_file(store / "boot" / "initramfs-lts")
+                atomic_write(state / "legacy-grub.cfg", existing.read_text())
             config = {"format": VERSION, "uuid": args.uuid, "fstype": args.fstype}
             atomic_write(config_path, json.dumps(config, sort_keys=True) + "\n")
-            atomic_write(grub / "grub.cfg", grub_text(config, args.default, slots(store)))
+            recovery = (store / "boot" / "vmlinuz-lts").is_file() and (store / "boot" / "initramfs-lts").is_file()
+            atomic_write(grub / "grub.cfg", grub_text(config, args.default, slots(store), recovery))
         else:
             config = read_config(store)
             if args.action == "status":
@@ -230,7 +248,8 @@ def main():
                 return
             verify_slot(store, args.id)
             # Replace only the small bootloader config; never rewrite a running root.
-            atomic_write(grub / "grub.cfg", grub_text(config, args.id, slots(store)))
+            recovery = (store / "boot" / "vmlinuz-lts").is_file() and (store / "boot" / "initramfs-lts").is_file()
+            atomic_write(grub / "grub.cfg", grub_text(config, args.id, slots(store), recovery))
         print(f"Veyra {args.action}: boot selection={selected(store)} (next boot)")
 
 
