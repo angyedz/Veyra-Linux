@@ -407,10 +407,8 @@ static void inner_pid_one(int root_fd, int ready_fd) {
     if (mount("tmpfs", bootstrap, "tmpfs", MS_NOSUID | MS_NODEV, "mode=0700") < 0)
         die("mount private intermediate tmpfs root");
     if (mkdir(newroot, 0700) < 0) die("create temporary newroot");
-    if (fchdir(root_fd) < 0) die("select validated rootfs by descriptor");
-    if (mount(".", newroot, NULL, MS_BIND, NULL) < 0)
-        die("bind pinned persistent user rootfs");
-    if (chdir("/") < 0) die("return to system root after pinned bind");
+    if (mount(ROOT_PATH, newroot, NULL, MS_BIND, NULL) < 0)
+        die("bind persistent user rootfs");
     struct stat source_st, bound_st;
     if (fstat(root_fd, &source_st) < 0 || stat(newroot, &bound_st) < 0 ||
         source_st.st_dev != bound_st.st_dev || source_st.st_ino != bound_st.st_ino)
@@ -827,4 +825,3 @@ int main(int argc, char **argv) {
             argv[0], ROOT_PATH);
     return 2;
 }
-
