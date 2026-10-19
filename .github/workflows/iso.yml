@@ -36,8 +36,40 @@ jobs:
           path: dist/calamares/*
           if-no-files-found: error
           retention-days: 7
+  glenv-manager:
+    name: Build experimental glenv manager for ISO
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    container:
+      image: golang:1.23-alpine
+    steps:
+      - name: Check out tested glenv manager
+        uses: actions/checkout@v4
+        with:
+          repository: angyedz/veyra-glenv
+          ref: bdcc0980553a2bc86fd6d62faee26002fea07999
+          persist-credentials: false
+      - name: Verify Go tests and build static native tool
+        run: |
+          set -eu
+          go test -count=1 ./...
+          mkdir -p dist
+          CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o dist/glenv-manager ./cmd/glenv
+          chmod 755 dist/glenv-manager
+          dist/glenv-manager version
+          sha256sum dist/glenv-manager > dist/glenv-manager.sha256
+      - name: Upload development manager binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: veyra-glenv-manager
+          path: |
+            dist/glenv-manager
+            dist/glenv-manager.sha256
+          if-no-files-found: error
+          retention-days: 7
+
   build:
-    needs: calamares
+    needs: [calamares, glenv-manager]
     name: Build experimental ISO
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -49,11 +81,24 @@ jobs:
         with:
           name: veyra-calamares-package
           path: dist/calamares
+      - name: Download verified development glenv manager
+        uses: actions/download-artifact@v4
+        with:
+          name: veyra-glenv-manager
+          path: dist/glenv-manager
+      - name: Verify glenv manager artifact before ISO packaging
+        run: |
+          set -eu
+          test -x dist/glenv-manager/glenv-manager
+          (cd dist/glenv-manager && sha256sum -c glenv-manager.sha256)
+          dist/glenv-manager/glenv-manager version
       - name: Preflight desktop dependencies
         run: |
           apk update
           grep -vE '^[[:space:]]*(#|$)' images/packages-desktop.txt | grep -vx veyra-calamares | xargs apk add --simulate
       - name: Build ISO with Alpine mkimage
+        env:
+          VEYRA_REQUIRE_GLENV_MANAGER: '1'
         run: sh scripts/build-iso.sh
       - name: Check image structure and checksum
         run: |
