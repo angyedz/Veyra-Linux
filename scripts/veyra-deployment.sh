@@ -47,16 +47,19 @@ slot_path() {
 verify_slot() {
     requested=$1
     subvol=$(slot_path "$requested")
-    [ -d "$subvol" ] && [ ! -L "$subvol" ] ||
+    if [ ! -d "$subvol" ] || [ -L "$subvol" ]; then
         die "missing real deployment subvolume: $requested"
+    fi
     btrfs subvolume show "$subvol" >/dev/null ||
         die "deployment is not a Btrfs subvolume: $requested"
-    [ ! -L "$subvol/etc" ] && [ ! -L "$subvol/etc/veyra" ] ||
+    if [ -L "$subvol/etc" ] || [ -L "$subvol/etc/veyra" ]; then
         die 'symlinked deployment metadata directory'
+    fi
     [ ! -L "$subvol/etc/veyra/deployment-id" ] ||
         die 'symlinked deployment ID'
-    [ -f "$subvol/etc/apk/world" ] && [ ! -L "$subvol/etc/apk/world" ] ||
+    if [ ! -f "$subvol/etc/apk/world" ] || [ -L "$subvol/etc/apk/world" ]; then
         die 'deployment needs its own regular APK world database'
+    fi
     [ -f "$subvol/etc/veyra/deployment-id" ] ||
         die 'deployment ID metadata is missing'
     [ "$(cat "$subvol/etc/veyra/deployment-id")" = "$requested" ] ||
@@ -94,20 +97,24 @@ case "$action" in
         marker_ok
         src_id=$3
         dst_id=$4
-        id_ok "$src_id" && id_ok "$dst_id" || die 'invalid deployment ID'
+        if ! id_ok "$src_id" || ! id_ok "$dst_id"; then
+            die 'invalid deployment ID'
+        fi
         [ "$src_id" != "$dst_id" ] || die 'cannot snapshot a deployment onto itself'
         verify_slot "$src_id"
         src=$(slot_path "$src_id")
         dst=$(slot_path "$dst_id")
-        [ ! -e "$dst" ] && [ ! -L "$dst" ] ||
+        if [ -e "$dst" ] || [ -L "$dst" ]; then
             die 'refusing to overwrite an existing deployment'
+        fi
         # The source is trusted and quiescent. The resulting Btrfs snapshot
         # is a NEW independently addressable deployment with its own APK DB.
         # Caller must next modify only the inactive tree, validate it,
         # then arrange an authenticated bootloader transaction.
         btrfs subvolume snapshot "$src" "$dst"
-        [ ! -L "$dst/etc" ] && [ ! -L "$dst/etc/veyra" ] ||
+        if [ -L "$dst/etc" ] || [ -L "$dst/etc/veyra" ]; then
             die 'unsafe metadata directory in staged deployment'
+        fi
         mkdir -p "$dst/etc/veyra"
         [ ! -L "$dst/etc/veyra/deployment-id" ] ||
             die 'unsafe staged deployment ID'
