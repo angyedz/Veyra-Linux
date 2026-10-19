@@ -60,13 +60,76 @@ policy must be tested for DNS, IPv4/IPv6 and traffic leakage, and for
 safe operation when the VPN fails. TUN device access must be scoped;
 WireGuard kernel support comes from the system kernel.
 
-## KDE-only platform
+## KDE-only platform and desktop execution
 
-KDE Plasma is the fixed Veyra desktop platform. The system owns the
-supported graphics stack and launch contract; plasmashell runs in the
-user environment. Installing another DE package or a kernel package
-inside the user environment must not replace the system compositor
-launch policy or active kernel. Do not special-case package names.
+**Ownership is not execution location.** KDE Plasma is a fixed,
+**system-managed component** of Veyra: system deployment owns KDE's
+packages, KWin/compositor integration, graphics policy and their coherent
+versions. These packages cannot be upgraded, uninstalled or replaced via
+user `sudo` or `vpkg` acting inside the user environment.
+
+**Runtime boundary:** `plasmashell`, KRunner (`krunner`) and all
+ordinary desktop command launchers execute inside the **user environment**
+with its user namespace, filesystem, processes, session bus and network.
+They may use a system-managed, **read-only** KDE runtime version paired
+to the active system deployment; read-only availability of KDE libraries
+does not mean user-side processes get host privileges.
+
+For clarity: KDE Plasma is **not installed as user-owned packages**.
+Damage to the user environment does not delete the system KDE
+deployment. It can nevertheless break the user-side `plasmashell` or
+KRunner process, requiring independent user-environment recovery.
+
+### Alt+F2 / KRunner launch contract
+
+KDE KRunner is a **separate executable** and may be activated using
+`org.kde.krunner` on D-Bus. Therefore, putting `plasmashell` in the
+user environment alone does **not** guarantee safe Alt+F2 behavior.
+
+1. The system compositor/shortcut service may recognize Alt+F2, but
+   must send at most a narrow **show KRunner** notification to the
+   active user session. It must never receive or execute search text,
+   shell command arguments, desktop-entry Exec lines or user-selected
+   program names.
+2. The **user** KRunner process and every runner/plugin run inside the
+   user environment. D-Bus activation of `org.kde.krunner` must occur
+   on the **user environment's private session bus**. The host must not
+   expose a separately activatable privileged KRunner on the desktop
+   user's shortcut path.
+3. Program and shell execution, `.desktop` actions, URL/file handlers,
+   terminal invocation, KIO application launching, portals and optional
+   D-Bus runners must not offer alternate host-execution routes.
+   Privileged host D-Bus, polkit, service-manager and command-execution
+   endpoints are **deny by default**. Any narrow host integration
+   undergoes a separate security review.
+4. If user init, session bus or KRunner is unavailable, Alt+F2 **fails
+   closed** rather than falling back to a host KRunner/host shell.
+   The system can still present independent maintenance or recovery UI.
+5. `sudo` issued from KRunner or Konsole is **user-environment sudo**,
+   granting only user-environment root. No command-name blacklist,
+   kernel-package blacklist or sudo-only workaround is a substitute
+   for the namespace and kernel-resource boundaries.
+
+`scripts/veyra-user-krunner.sh` is an **experimental fail-closed
+process-launch check**, not a security boundary: it refuses obvious
+host-side invocations and pins KRunner to the environment's local D-Bus
+session socket. It is **not yet wired to shortcuts, session startup, or
+the installer**. The real isolation comes from correct creation of the
+environment namespaces, mounts, UID mappings and host service policy,
+not from the script. Merely adding a wrapper cannot prevent direct
+host-side execution.
+
+**Same rules apply** to the Plasma application menu, task manager,
+Konsole, Dolphin, desktop entries, opening documents, and any other
+user-triggered launch path.
+
+Other desktop environments are **not interchangeable supported
+sessions** on installed Veyra. Installing their packages inside the
+user environment cannot replace the system KDE session. Legacy
+development installers still expose alternative desktops; removing
+those legacy options and tests must be coordinated with the finished
+KDE-only installation path, not silently inferred from this design.
+
 Graphics, input, audio, Wayland, portals and D-Bus integration need
 narrow, independently reviewed interfaces; exposing raw devices or
 host control sockets defeats the boundary.
@@ -87,7 +150,8 @@ an inactive A/B generation, never implicit from user sudo.
 - [ ] Prove separate OpenRC init and PID 1 with unprivileged host mappings.
 - [ ] Prove user sudo cannot write host root, A/B store, /boot or host sockets.
 - [ ] Prove host networking stays unchanged under user VPN and kill switch.
-- [ ] Prove user KDE Plasma Wayland session and graphics/audio integration.
+- [ ] Prove system-owned KDE integration with user-executed plasmashell and private user D-Bus.
+- [ ] Prove Alt+F2/KRunner, menu, desktop entries and all app launches never execute commands on the host; prove fail-closed behavior when user session is down.
 - [ ] Prove arbitrary package installation changes only the user rootfs.
 - [ ] Prove reboot and A/B rollback preserve user rootfs and services.
 - [ ] Run adversarial isolation tests and document kernel threat model.
