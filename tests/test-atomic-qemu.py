@@ -103,7 +103,46 @@ def main():
                     "test -s /mnt/veyra-e2e/deployments/B/boot/initramfs-lts && "
                     "test -f /mnt/veyra-e2e/boot-state/legacy-grub.cfg && "
                     "grep -q 'veyra_deployment=A' /mnt/veyra-e2e/boot/grub/grub.cfg && "
-                    "grep -q 'veyra_deployment=B' /mnt/veyra-e2e/boot/grub/grub.cfg",
+                    "grep -q '^# VEYRA_DEFAULT=A
+                    timeout=45)
+                installed.run_command(child, "sync", 30)
+            finally:
+                child.close(force=True)
+
+        print("Atomically prepared A/B on disposable installed ext4 disk; booting A",
+              flush=True)
+        guest_cycle(qemu, disk, args.log_dir, "A", [
+            "echo 'data created in A' > /home/e2euser/atomic-data.txt",
+            "/usr/local/sbin/veyra-bootctl "
+            "--store /var/lib/veyra/store activate B",
+        ])
+        print("Booting B from its own Alpine+Plasma system tree", flush=True)
+        guest_cycle(qemu, disk, args.log_dir, "B", [
+            """test "$(cat /home/e2euser/atomic-data.txt)" = 'data created in A'""",
+            "echo 'data updated in B' > /home/e2euser/atomic-data.txt",
+            "printf 'only-B\\n' > /etc/veyra/slot-specific.txt",
+            "test ! -e /var/lib/veyra/store/deployments/A/etc/veyra/slot-specific.txt",
+            "/usr/local/sbin/veyra-bootctl "
+            "--store /var/lib/veyra/store rollback A",
+        ])
+        print("Booting rolled-back A and checking durable user data", flush=True)
+        guest_cycle(qemu, disk, args.log_dir, "A", [
+            """test "$(cat /home/e2euser/atomic-data.txt)" = 'data updated in B'""",
+            "test ! -e /etc/veyra/slot-specific.txt",
+            "/usr/local/sbin/veyra-bootctl --store /var/lib/veyra/store status",
+        ])
+        print("VEYRA_ATOMIC_QEMU_SUCCESS: A -> B -> A, persistent data survived",
+              flush=True)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as exc:
+        print(f"VEYRA_ATOMIC_QEMU_FAILED: {exc}", file=sys.stderr, flush=True)
+        sys.exit(1)
+ /mnt/veyra-e2e/boot/grub/grub.cfg && "
+                    "! grep -q 'veyra_deployment=B' /mnt/veyra-e2e/boot/grub/grub.cfg",
                     timeout=45)
                 installed.run_command(child, "sync", 30)
             finally:
