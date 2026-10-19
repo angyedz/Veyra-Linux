@@ -140,6 +140,13 @@ def upload_script(child, content, remote_path):
         remote_path == "/tmp/e2e-install.sh"
         or remote_path.startswith("/usr/local/lib/veyra/installer-")
         or remote_path == "/usr/local/lib/veyra/setup-pkgrepo.sh"
+        or remote_path in {
+            "/usr/local/lib/veyra/veyra-atomic-convert.sh",
+            "/usr/local/lib/veyra/veyra-deployment.sh",
+            "/usr/local/lib/veyra/veyra-initramfs-select.sh",
+            "/usr/local/lib/veyra/build-veyra-init.sh",
+            "/usr/local/lib/veyra/veyra-bootctl.py",
+        }
     ):
         raise ValueError("Unexpected remote script path")
     payload = base64.b64encode(content).decode("ascii")
@@ -151,10 +158,11 @@ def upload_script(child, content, remote_path):
             "printf '%s' '" + chunk + "' >> /tmp/veyra-e2e-transfer.b64",
             45,
         )
+    syntax_check = ("test -s " if remote_path.endswith(".py") else "sh -n ")
     run_command(
         child,
         "base64 -d /tmp/veyra-e2e-transfer.b64 > " + remote_path
-        + " && sh -n " + remote_path,
+        + " && " + syntax_check + remote_path,
         45,
     )
 
