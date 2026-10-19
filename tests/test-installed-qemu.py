@@ -165,6 +165,8 @@ def main():
     parser.add_argument("--desktop", choices=["plasma", "gnome", "xfce", "lxqt"],
                         default="plasma")
     parser.add_argument("--log-dir", type=pathlib.Path, default=pathlib.Path("."))
+    parser.add_argument("--require-glenv-manager", action="store_true",
+                        help="require the opt-in musl manager on live and installed Veyra")
     args = parser.parse_args()
     args.log_dir.mkdir(parents=True, exist_ok=True)
     if not args.iso.is_file():
@@ -180,6 +182,11 @@ def main():
             child = boot(qemu, str(disk), str(args.iso.resolve()), log, 400)
             try:
                 login(child, 360)
+                if args.require_glenv_manager:
+                    run_command(child, "test -x /usr/local/lib/veyra/glenv-manager && "
+                                "/usr/local/lib/veyra/glenv-manager version && "
+                                "test -f /usr/local/lib/veyra/glenv-boot-pin.sh && "
+                                "test -f /usr/local/lib/veyra/glenv-boot-mount.sh", 45)
                 # The cached-ISO workflow tests current installer scripts:
                 # patch them into the disposable live guest before installing.
                 # Always copy the matching Veyra trust bootstrap script too:
@@ -209,6 +216,11 @@ def main():
             child = boot(qemu, str(disk), None, log, 400, installed=True)
             try:
                 login(child, 240)
+                if args.require_glenv_manager:
+                    run_command(child, "test -x /usr/local/lib/veyra/glenv-manager && "
+                                "/usr/local/lib/veyra/glenv-manager version && "
+                                "test -f /usr/local/lib/veyra/glenv-boot-pin.sh && "
+                                "test -f /usr/local/lib/veyra/glenv-boot-mount.sh", 45)
                 run_command(child, "test -r /etc/veyra/desktop && cat /etc/veyra/desktop", 30)
                 run_command(child, "test -s /boot/grub/grub.cfg", 30)
                 run_command(child, "test -s /etc/machine-id && rc-service dbus status", 60)
