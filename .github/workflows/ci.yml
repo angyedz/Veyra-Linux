@@ -360,7 +360,7 @@ jobs:
       - name: Install independent filesystem test tools
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq e2fsprogs xfsprogs rsync util-linux
+          sudo apt-get install -y -qq e2fsprogs xfsprogs rsync util-linux grub-common python3
       - name: Stage A/B system trees and preserve user data on two filesystems
         run: sudo sh tests/test-deployment-fs-neutral.sh
 
