@@ -44,7 +44,7 @@ jobs:
               apk --root /out/userroot --initdb \
                 --keys-dir /etc/apk/keys \
                 --repositories-file /etc/apk/repositories \
-                add alpine-base openrc
+                add alpine-base openrc sudo
               test -x /out/userroot/sbin/init
               test -x /out/userroot/sbin/openrc
               cp /work/tests/fixtures/stage1-user-inittab \
@@ -62,6 +62,10 @@ jobs:
               printf "veyrauser:x:1000:1000:Veyra User:/home/veyrauser:/bin/sh\n" \
                 >> /out/userroot/etc/passwd
               printf "veyrauser:x:1000:\n" >> /out/userroot/etc/group
+              mkdir -p /out/userroot/etc/sudoers.d
+              printf "veyrauser ALL=(ALL) NOPASSWD: ALL\n"                 > /out/userroot/etc/sudoers.d/veyrauser
+              chmod 0440 /out/userroot/etc/sudoers.d/veyrauser
+              test -x /out/userroot/usr/bin/sudo
               # No raw block nodes or host devices inside user rootfs.
               for dev in console null zero tty random urandom; do
                 rm -f "/out/userroot/dev/$dev"
@@ -73,6 +77,8 @@ jobs:
               mknod -m 0666 /out/userroot/dev/random c 1 8
               mknod -m 0666 /out/userroot/dev/urandom c 1 9
               chown -R 100000:100000 /out/userroot
+              # chown clears setuid; set it again on the test root-owned sudo.
+              chmod 4755 /out/userroot/usr/bin/sudo
               chown 101000:101000 /out/userroot/home/veyrauser
               truncate -s 180M /out/veyra-user-root.raw
               mkfs.ext4 -F -q -L VEYRA_USER_ROOT \
