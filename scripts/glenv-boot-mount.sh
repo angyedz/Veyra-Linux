@@ -63,6 +63,29 @@ if [ -n "$userroot" ]; then
     done
 fi
 
+# Signed deployments must be re-verified against the externally trusted
+# host key immediately before mounting. Never treat a pin symlink or a
+# checksum-only manifest as an authenticated runtime.
+case "${VEYRA_GLENV_REQUIRE_SIGNATURE:-0}" in
+    0) : ;; # Legacy opt-in test mode only
+    1)
+        trusted_key=${VEYRA_GLENV_TRUST_KEY:-/etc/veyra/trust/glenv-ed25519.pub}
+        glenv_bin=${VEYRA_GLENV_BIN:-glenv}
+        absolute "$trusted_key" || fail 'trusted glenv public key path must be absolute'
+        no_symlink_components "$trusted_key"
+        [ -f "$trusted_key" ] || fail "trusted glenv public key is missing: $trusted_key"
+        [ "$(stat -c %u "$trusted_key")" = 0 ] || fail 'trusted glenv public key must be root-owned'
+        permissions=$(stat -c %a "$trusted_key")
+        case "$permissions" in
+            ''|*[!0-7]*) fail 'invalid trusted glenv key permissions' ;;
+        esac
+        [ $((0$permissions & 022)) -eq 0 ] || fail 'trusted glenv public key is writable by group/others'
+        "$glenv_bin" release verify-signed "$source" "$trusted_key" ||
+            fail 'signed glenv release failed pre-mount verification'
+        ;;
+    *) fail 'VEYRA_GLENV_REQUIRE_SIGNATURE must be 0 or 1' ;;
+esac
+
 if [ "$mode" = --check ]; then
     printf 'Validated glenv mount: %s -> %s\n' "$source" "$runtime"
     if [ -n "$userroot" ]; then
