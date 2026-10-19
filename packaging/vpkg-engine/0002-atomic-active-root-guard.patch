@@ -1,7 +1,7 @@
 diff --git a/src/apk.c b/src/apk.c
 --- a/src/apk.c
 +++ b/src/apk.c
-@@ -569,1 +569,36 @@ int main(int argc, char **argv)
+@@ -569,1 +569,35 @@ int main(int argc, char **argv)
 -	r = apk_db_open(&db, &dbopts);
 +	/*
 +	 * Veyra's atomic host must never have its active root altered by the
