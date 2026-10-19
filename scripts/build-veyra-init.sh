@@ -1,4 +1,5 @@
 #!/bin/sh
+# shellcheck disable=SC2015 # Deliberate fail-closed conjunctions
 # Build a Veyra-compatible initramfs /init from Alpine's locally installed
 # original; do NOT edit or replace the packaged /usr/share/mkinitfs/initramfs-init.
 # Called with an absolute output path. Use mkinitfs -i OUTPUT KERNEL_VERSION.
