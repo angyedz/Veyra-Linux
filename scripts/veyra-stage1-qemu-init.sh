@@ -14,7 +14,7 @@ exec </dev/console >/dev/console 2>&1
 /bin/busybox modprobe virtio_blk 2>/dev/null || :
 /bin/busybox modprobe ext4 2>/dev/null || :
 disk_ready=0
-for tick in 1 2 3 4 5 6 7 8 9 10; do
+for _ in 1 2 3 4 5 6 7 8 9 10; do
     if [ -b /dev/vda ]; then disk_ready=1; break; fi
     /bin/busybox sleep 1
 done
