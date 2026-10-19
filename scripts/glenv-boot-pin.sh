@@ -31,8 +31,50 @@ case "$pin" in
     *) echo "Boot pin path must be absolute: $pin" >&2; exit 1 ;;
 esac
 
-# Fail closed: boot-pin verifies that the signed/selected host deployment ID
-# matches an immutable per-deployment pair in the glenv version store. Authenticating the deployment
-# ID itself is an external responsibility of Veyra's future boot coordinator.
-"$glenv_bin" release --store "$store" boot-pair-pin "$deployment" "$pin"
+# An explicitly requested signed boot must NEVER fall back to unsigned
+# selection. The trusted key must come from Veyra's independently authenticated
+# host deployment, not from the glenv release or user environment.
+require_signature=${VEYRA_GLENV_REQUIRE_SIGNATURE:-0}
+case "$require_signature" in
+    0|1) : ;;
+    *) echo 'VEYRA_GLENV_REQUIRE_SIGNATURE must be 0 or 1' >&2; exit 1 ;;
+esac
+
+if [ "$require_signature" = 1 ]; then
+    trusted_key=${VEYRA_GLENV_TRUST_KEY:-/etc/veyra/trust/glenv-ed25519.pub}
+    case "$trusted_key" in
+        /*) : ;;
+        *) echo 'Trusted glenv key path must be absolute' >&2; exit 1 ;;
+    esac
+    candidate=$trusted_key
+    while [ "$candidate" != / ]; do
+        [ ! -L "$candidate" ] || {
+            echo "Symlink in trusted glenv key path: $candidate" >&2
+            exit 1
+        }
+        candidate=$(dirname "$candidate")
+    done
+    [ -f "$trusted_key" ] || {
+        echo "Missing trusted glenv public key: $trusted_key" >&2
+        exit 1
+    }
+    # Owner/mode tests are defense-in-depth; Veyra's boot coordinator must
+    # additionally protect the key's parent directories and host metadata.
+    [ "$(stat -c %u "$trusted_key")" = 0 ] || {
+        echo 'Trusted glenv public key must be root-owned' >&2
+        exit 1
+    }
+    permissions=$(stat -c %a "$trusted_key")
+    case "$permissions" in
+        ''|*[!0-7]*) echo 'Invalid trusted glenv key permissions' >&2; exit 1 ;;
+    esac
+    if [ $((0$permissions & 022)) -ne 0 ]; then
+        echo 'Trusted glenv key must not be group/world writable' >&2
+        exit 1
+    fi
+    "$glenv_bin" release --store "$store" boot-pair-pin-signed "$deployment" "$pin" "$trusted_key"
+else
+    # Legacy opt-in development path only; no signature authentication.
+    "$glenv_bin" release --store "$store" boot-pair-pin "$deployment" "$pin"
+fi
 printf 'Pinned glenv for Veyra deployment %s at %s\n' "$deployment" "$pin"
