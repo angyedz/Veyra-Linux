@@ -14,6 +14,7 @@ on:
       - 'scripts/hardware-detect.sh'
       - 'scripts/build-iso.sh'
       - 'scripts/test-iso.sh'
+      - 'scripts/verify-iso-artifact.sh'
       - 'scripts/bootstrap.sh'
       - 'scripts/compat.sh'
       - 'scripts/smoke.sh'
@@ -54,10 +55,12 @@ jobs:
           grep -vE '^[[:space:]]*(#|$)' images/packages-desktop.txt | grep -vx veyra-calamares | xargs apk add --simulate
       - name: Build ISO with Alpine mkimage
         run: sh scripts/build-iso.sh
-      - name: Check image structure
+      - name: Check image structure and checksum
         run: |
-          test -n "$(find dist -maxdepth 1 -name 'veyra-linux-*.iso' -print -quit)"
-          test -n "$(find dist -maxdepth 1 -name '*.sha256' -print -quit)"
+          set -eu
+          iso=$(find dist -maxdepth 1 -name 'veyra-linux-*.iso' -print -quit)
+          test -n "$iso"
+          sh scripts/verify-iso-artifact.sh "$iso"
           ls -lh dist/
       - name: Upload ISO
         uses: actions/upload-artifact@v4
@@ -86,6 +89,11 @@ jobs:
             sudo apt-get update -qq
             sudo apt-get install -y -qq qemu-system-x86
           fi
+      - name: Verify downloaded ISO artifact
+        run: |
+          iso=$(find dist -maxdepth 1 -name 'veyra-linux-*.iso' -print -quit)
+          test -n "$iso"
+          sh scripts/verify-iso-artifact.sh "$iso"
       - name: Boot live ISO and wait for login banner
         run: |
           iso=$(find dist -maxdepth 1 -name 'veyra-linux-*.iso' -print -quit)
@@ -113,6 +121,11 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq qemu-system-x86 qemu-utils python3-pexpect
+      - name: Verify ISO artifact before installing
+        run: |
+          iso=$(find dist -maxdepth 1 -name 'veyra-linux-*.iso' -print -quit)
+          test -n "$iso"
+          sh scripts/verify-iso-artifact.sh "$iso"
       - name: Syntax-check console automation
         run: python3 -m py_compile tests/test-installed-qemu.py
       - name: Install Plasma on an isolated virtual disk and reboot
