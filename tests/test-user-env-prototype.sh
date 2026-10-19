@@ -13,6 +13,8 @@ for token in 'id -u' 'unshare --user --map-root-user --mount --pid --ipc --net' 
     grep -Fq "$token" "$launcher" || { echo "Missing gate: $token" >&2; exit 1; }
 done
 grep -Fq '/proc/self/uid_map' "$krunner"
+# This grep deliberately compares literal shell source, not a live expansion.
+# shellcheck disable=SC2016
 grep -Fq 'DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"' "$krunner"
 grep -Fq 'system-kde' "$krunner"
 
