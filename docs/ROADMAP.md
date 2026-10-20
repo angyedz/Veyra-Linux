@@ -246,7 +246,7 @@ Parallel tracks are intentional; avoid turning prototypes on in the normal boot 
 **Depends on:** proven Stages 1–9 for default enablement.
 
 - [ ] Update Calamares/TUI to create system deployment trees and independent persistent user rootfs while retaining user's ext4/XFS/F2FS/Btrfs choice.
-- [ ] Replace *legacy experimental* GNOME/Xfce/LXQt installer choices with fixed KDE-only installed-session policy **after** the new path is validated.
+- [ ] Enforce and validate a Plasma-only session in the current interim Calamares/TUI installer with static and blank-disk QEMU checks; the final separate-root, two-environment installer remains additional work.
 - [ ] Provision identity mappings, separate package databases, signed repositories, boot state, recovery entry and system-KDE runtime.
 - [ ] Provision protected SnapCore snapshot/backing-store metadata and separately restorable user-root vs personal-data domains **only after** actual CoW/Recovery Engine gates pass; keep basic installation functional if SnapCore is not enabled.
 - [ ] Keep Live bootstrap simple and functional; avoid forcing installation-related changes into it.

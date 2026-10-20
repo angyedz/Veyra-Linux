@@ -29,7 +29,14 @@ test -f images/veyra-tui-install.sh
 test -f images/veyra-live-mode.sh
 grep -q 'veyra-live-mode' images/genapkovl-veyra.sh
 grep -q 'tui-install.sh' images/veyra-install.sh
+grep -q 'XAUTHORITY' images/veyra-install.sh
+grep -q 'sudo -n --preserve-env' images/veyra-install.sh
 grep -q 'veyra-install --tui' images/veyra-install-tui.sh
+grep -q 'NOPASSWD: ALL' images/genapkovl-veyra.sh
+grep -q '49-veyra-live.rules' images/genapkovl-veyra.sh
+grep -q '49-veyra-live.rules' scripts/installer-prepare.sh
+grep -q 'etc/sudoers.d/veyra-live' tests/test-installed-qemu.py
+grep -q 'etc/polkit-1/rules.d/49-veyra-live.rules' tests/test-installed-qemu.py
 grep -q 'runlevels/boot/veyra-live-mode' scripts/installer-prepare.sh
 # The TTY installer must mount target pseudo-filesystems before chroot/APK steps.
 dev_mount_line=$(grep -n '^    mount --rbind /dev ' images/veyra-tui-install.sh | cut -d: -f1)
@@ -91,6 +98,12 @@ tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'usr/share/applications/veyra-
 tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'usr/share/applications/veyra-photorec.desktop'
 tar -xOf "$tmpdir/veyra.apkovl.tar.gz" etc/hostname | grep -qx veyra
 tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/sddm.conf.d/10-veyra-live.conf'
+tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/sudoers.d/veyra-live'
+tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/polkit-1/rules.d/49-veyra-live.rules'
+tar -xOf "$tmpdir/veyra.apkovl.tar.gz" etc/sudoers.d/veyra-live | grep -qx 'veyra ALL=(root) NOPASSWD: ALL'
+tar -xOf "$tmpdir/veyra.apkovl.tar.gz" etc/polkit-1/rules.d/49-veyra-live.rules | grep -q 'subject.user === "veyra" && subject.local && subject.active'
+tar -tvzf "$tmpdir/veyra.apkovl.tar.gz" | grep 'etc/sudoers.d/veyra-live$' | grep -q '^-r--r-----'
+tar -tvzf "$tmpdir/veyra.apkovl.tar.gz" | grep 'etc/polkit-1/rules.d/49-veyra-live.rules$' | grep -q '^-rw-r--r--'
 tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/init.d/veyra-live'
 tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/init.d/veyra-live-mode'
 tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/runlevels/boot/veyra-live-mode'

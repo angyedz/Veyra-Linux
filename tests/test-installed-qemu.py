@@ -19,7 +19,7 @@ import pexpect
 
 
 def install_script(desktop):
-    if desktop not in {"plasma", "gnome", "xfce", "lxqt"}:
+    if desktop != "plasma":
         raise ValueError("Invalid desktop")
     return """#!/bin/sh
 set -eux
@@ -67,18 +67,17 @@ test -s "$target/boot/vmlinuz-lts"
 grep -Eq '^[[:xdigit:]]{32}$' "$target/etc/machine-id"
 test ! -e "$target/etc/veyra-release"
 test ! -e "$target/etc/runlevels/default/veyra-live-mode"
+test ! -e "$target/etc/sudoers.d/veyra-live"
+test ! -e "$target/etc/polkit-1/rules.d/49-veyra-live.rules"
 test -s "$target/boot/initramfs-lts"
 grep -q 'rootfstype=ext4' "$target/etc/default/grub"
 grep -q 'ext4 virtio nvme' "$target/etc/mkinitfs/mkinitfs.conf"
 test "$(cat "$target/etc/veyra/desktop")" = DESKTOP
-# Check installed service is enabled for the chosen desktop.
-test -e "$target/etc/runlevels/default/SERVICE"
+# Check the supported Plasma display manager is enabled.
+test -e "$target/etc/runlevels/default/sddm"
 sync
 echo VEYRA_E2E_INSTALL_SUCCESS
-""".replace("DESKTOP", desktop).replace(
-        "SERVICE", "lightdm" if desktop == "xfce"
-        else "gdm" if desktop == "gnome" else "sddm"
-    )
+""".replace("DESKTOP", desktop)
 
 
 def boot(qemu, disk, iso, logfile, timeout, installed=False):
@@ -170,8 +169,8 @@ def upload_script(child, content, remote_path):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("iso", type=pathlib.Path)
-    parser.add_argument("--desktop", choices=["plasma", "gnome", "xfce", "lxqt"],
-                        default="plasma")
+    parser.add_argument("--desktop", choices=["plasma"], default="plasma",
+                        help="supported desktop: KDE Plasma")
     parser.add_argument("--log-dir", type=pathlib.Path, default=pathlib.Path("."))
     parser.add_argument("--require-glenv-manager", action="store_true",
                         help="require the opt-in musl manager on live and installed Veyra")

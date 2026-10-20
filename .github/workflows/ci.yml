@@ -10,6 +10,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Check scripts and image overlay
         run: sh tests/static.sh
+      - name: Test Calamares Xauthority, diagnostics and no-password fallback
+        run: sh tests/test-installer-launch.sh
       - name: Audit rootless user-environment preflight and negative paths
         run: sh tests/test-user-env-prototype.sh
       - name: Test ISO artifact integrity verifier
@@ -47,14 +49,6 @@ jobs:
         run: sh tests/test-install-selection.sh
       - name: Refresh repository indexes for dependency simulations
         run: apk update
-      - name: Validate alternative desktops in Alpine repositories
-        run: |
-          apk add --simulate gnome gdm gdm-openrc
-          apk add --simulate xfce4 xfce4-terminal lightdm lightdm-openrc lightdm-gtk-greeter
-          apk add --simulate lxqt-desktop qterminal openbox sddm sddm-openrc
-          apk add --simulate plasma-desktop gnome gdm gdm-openrc
-          apk add --simulate plasma-desktop xfce4 lightdm lightdm-openrc
-          apk add --simulate plasma-desktop lxqt-desktop sddm
       - name: Validate GPU and CPU packages in Alpine repositories
         run: |
           apk add --simulate intel-ucode linux-firmware-i915 linux-firmware-xe mesa-vulkan-intel intel-media-driver
