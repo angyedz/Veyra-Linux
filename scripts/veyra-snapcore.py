@@ -47,6 +47,15 @@ def _parser() -> argparse.ArgumentParser:
     rollback.add_argument("store", type=Path)
     rollback.add_argument("name")
 
+    delete_snapshot = subparsers.add_parser(
+        "delete-snapshot", help="remove a checkpoint name while retaining generations"
+    )
+    delete_snapshot.add_argument("store", type=Path)
+    delete_snapshot.add_argument("name")
+
+    gc = subparsers.add_parser("gc", help="remove unreferenced immutable objects")
+    gc.add_argument("store", type=Path)
+
     verify = subparsers.add_parser("verify", help="verify all retained generations")
     verify.add_argument("store", type=Path)
     return parser
@@ -98,6 +107,11 @@ def main(argv: list[str] | None = None) -> int:
             elif args.command == "rollback":
                 generation = volume.rollback(args.name)
                 print(json.dumps({"head_generation": generation}, sort_keys=True))
+            elif args.command == "delete-snapshot":
+                volume.delete_snapshot(args.name)
+                print(json.dumps({"deleted_snapshot": args.name}, sort_keys=True))
+            elif args.command == "gc":
+                print(json.dumps(volume.collect_garbage(), sort_keys=True))
             elif args.command == "verify":
                 print(json.dumps(volume.verify(), sort_keys=True))
         return 0

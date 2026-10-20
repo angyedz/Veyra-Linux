@@ -459,6 +459,105 @@ class SnapCoreVolume:
         )
         return generation_id
 
+    def delete_snapshot(self, name: str) -> None:
+        """Remove a checkpoint name without pruning its immutable generation."""
+        self._ensure_open()
+        self._validate_snapshot_name(name)
+        try:
+            snapshot = self._state["snapshots"][name]
+        except KeyError as exc:
+            raise SnapCoreError(f"unknown snapshot: {name}") from exc
+        head = self._generation(self.head_generation)
+        self._append_event(
+            operation="delete_snapshot",
+            generation_id=self.head_generation,
+            parent_generation=None,
+            root_id=head["root_id"],
+            snapshot_name=name,
+            snapshot_generation=snapshot["generation_id"],
+        )
+
+    def collect_garbage(self) -> dict[str, int]:
+        """Remove only unreferenced immutable objects and abandoned temp files.
+
+        Every journaled generation is retained by this prototype, even after a
+        named snapshot is deleted. Collection verifies all live roots and
+        extents before unlinking anything, then removes only objects outside
+        that complete reachability set. The volume lock serializes collection
+        against writers and other collectors.
+        """
+        self._ensure_open()
+        _checked_directory(self.root / "roots", "mapping root store")
+        _checked_directory(self.root / "extents", "extent store")
+        live_roots: set[str] = set()
+        live_extents: set[str] = set()
+        for generation in self._state["generations"]:
+            root_id = generation["root_id"]
+            blocks = self._verify_root(root_id, verify_extents=True)
+            live_roots.add(root_id)
+            live_extents.update(blocks.values())
+        for snapshot in self._state["snapshots"].values():
+            root_id = snapshot["root_id"]
+            if root_id not in live_roots:
+                blocks = self._verify_root(root_id, verify_extents=True)
+                live_roots.add(root_id)
+                live_extents.update(blocks.values())
+
+        root_removals = self._garbage_candidates(
+            self.root / "roots", suffix=".json", live_ids=live_roots
+        )
+        extent_removals = self._garbage_candidates(
+            self.root / "extents", suffix=".blk", live_ids=live_extents
+        )
+        removed_roots = self._unlink_garbage(root_removals, "root")
+        removed_extents = self._unlink_garbage(extent_removals, "extent")
+        return {
+            "removed_roots": removed_roots[0],
+            "removed_root_temps": removed_roots[1],
+            "removed_extents": removed_extents[0],
+            "removed_extent_temps": removed_extents[1],
+        }
+
+    @staticmethod
+    def _garbage_candidates(
+        directory: Path, *, suffix: str, live_ids: set[str]
+    ) -> list[tuple[Path, str]]:
+        candidates: list[tuple[Path, str]] = []
+        for path in directory.iterdir():
+            name = path.name
+            try:
+                mode = path.lstat().st_mode
+            except OSError as exc:
+                raise IntegrityError(f"cannot inspect object in {directory.name}: {exc}") from exc
+            if not stat.S_ISREG(mode):
+                raise IntegrityError(f"unexpected non-regular object in {directory.name}")
+            if re.fullmatch(r"\.pending-[0-9a-f]{32}", name):
+                candidates.append((path, "temp"))
+                continue
+            if not name.endswith(suffix):
+                raise IntegrityError(f"unexpected object name in {directory.name}: {name}")
+            object_id = name[: -len(suffix)]
+            if not _HEX.fullmatch(object_id):
+                raise IntegrityError(f"invalid object name in {directory.name}: {name}")
+            if object_id not in live_ids:
+                candidates.append((path, "object"))
+        return candidates
+
+    def _unlink_garbage(self, candidates: list[tuple[Path, str]], kind: str) -> tuple[int, int]:
+        removed_objects = 0
+        removed_temps = 0
+        if not candidates:
+            return removed_objects, removed_temps
+        for path, category in candidates:
+            os.unlink(path)
+            if category == "temp":
+                removed_temps += 1
+            else:
+                removed_objects += 1
+            self._fault(f"gc_{kind}_unlink")
+        _fsync_directory(candidates[0][0].parent)
+        return removed_objects, removed_temps
+
     def verify(self) -> dict[str, Any]:
         """Verify every retained generation, snapshot root, and referenced extent."""
         self._ensure_open()
@@ -645,6 +744,8 @@ class SnapCoreVolume:
                 or parent is not None
                 or body["root_id"] != self._generation(self.head_generation)["root_id"]
                 or body["target_snapshot"] is not None
+                or not isinstance(body["snapshot_generation"], int)
+                or isinstance(body["snapshot_generation"], bool)
                 or body["snapshot_generation"] != generation_id
             ):
                 raise IntegrityError(f"invalid snapshot event at line {line_number}")
@@ -657,6 +758,22 @@ class SnapCoreVolume:
                 "root_id": body["root_id"],
                 "created_ns": body["timestamp_ns"],
             }
+        elif operation == "delete_snapshot":
+            if (
+                generation_id != self.head_generation
+                or parent is not None
+                or body["root_id"] != self._generation(self.head_generation)["root_id"]
+                or body["target_snapshot"] is not None
+                or not isinstance(body["snapshot_generation"], int)
+                or isinstance(body["snapshot_generation"], bool)
+            ):
+                raise IntegrityError(f"invalid snapshot deletion at line {line_number}")
+            name = body["snapshot_name"]
+            self._validate_snapshot_name_from_journal(name, line_number)
+            snapshot = self._state["snapshots"].get(name)
+            if snapshot is None or snapshot["generation_id"] != body["snapshot_generation"]:
+                raise IntegrityError(f"invalid snapshot deletion target at line {line_number}")
+            del self._state["snapshots"][name]
         elif operation == "rollback":
             self._require_new_generation(generation_id, parent, line_number)
             if body["snapshot_name"] is not None:
@@ -666,6 +783,8 @@ class SnapCoreVolume:
             snapshot = self._state["snapshots"].get(name)
             if (
                 snapshot is None
+                or not isinstance(body["snapshot_generation"], int)
+                or isinstance(body["snapshot_generation"], bool)
                 or snapshot["generation_id"] != body["snapshot_generation"]
                 or snapshot["root_id"] != body["root_id"]
             ):
