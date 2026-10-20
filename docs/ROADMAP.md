@@ -33,10 +33,10 @@ Parallel tracks are intentional; avoid turning prototypes on in the normal boot 
 | vpkg | APK-derived prototype plus early Go frontend | Final installed-engine replacement, user root integration, inactive-generation updater |
 | glenv/Nix | Signed runtime pairing and Nix prototypes | Full lifecycle/integration in user root and system generations |
 | VRE | Separate console Recovery boot in diskless QEMU | Manual GRUB entry, authenticated artifacts, shared dual-scope restore backend, real repair UI and automatic recovery |
-| SnapCore user snapshots | **Design only**: [block-level CoW engine](VEYRA-SNAPCORE.md), no directory-copy snapshots or required Btrfs | On-disk engine, kernel block interface, crash-consistent snapshots, preservation/rollback QEMU proofs |
+| SnapCore user snapshots | **Experimental file-backed prototype in review**: immutable block extents/maps, journal replay, integrity verification and rollback tests; no kernel/block/filesystem integration | CI confirmation, pruning/GC, actual storage power-loss tests, QEMU filesystem restore, independent VRE reader and privilege-boundary review |
 | Guardian / Resilience | **Design only**: [independent health, UI and recovery policy](VEYRA-RESILIENCE.md) | System OpenRC monitor, trusted graphics/TTY, shared transaction engine and end-to-end disaster recovery |
 
-**Last verified `main` baseline (2026-10-20):** commit [`1754933`](https://github.com/angyedz/Veyra-Linux/commit/1754933123564d621081788f7a6ca41a29dd5dd3), PRs [#8](https://github.com/angyedz/Veyra-Linux/pull/8), [#9](https://github.com/angyedz/Veyra-Linux/pull/9), [#10](https://github.com/angyedz/Veyra-Linux/pull/10), [#11](https://github.com/angyedz/Veyra-Linux/pull/11), [#12](https://github.com/angyedz/Veyra-Linux/pull/12), [#13](https://github.com/angyedz/Veyra-Linux/pull/13) merged. [Integration CI passed](https://github.com/angyedz/Veyra-Linux/actions/runs/39452117275); [Stage 1 QEMU lifecycle passed](https://github.com/angyedz/Veyra-Linux/actions/runs/39452117206). These prove the **test-only** implementation's stated assertions, not an installed dual-environment system or a general host-escape security review. Continue recording failures and guest serial logs for future gates.
+**Current `main` baseline (2026-10-20):** commit [`b9668e6`](https://github.com/angyedz/Veyra-Linux/commit/b9668e6d5517535b265da49f979ac519c9cfdfd8). PRs [#8](https://github.com/angyedz/Veyra-Linux/pull/8), [#9](https://github.com/angyedz/Veyra-Linux/pull/9), [#10](https://github.com/angyedz/Veyra-Linux/pull/10), [#11](https://github.com/angyedz/Veyra-Linux/pull/11), [#12](https://github.com/angyedz/Veyra-Linux/pull/12), [#13](https://github.com/angyedz/Veyra-Linux/pull/13) are merged. Existing evidence: [Integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39452117275) and [Stage 1 QEMU lifecycle](https://github.com/angyedz/Veyra-Linux/actions/runs/39452117206). Those runs prove their test-only assertions, not an installed dual-environment system or a general host-escape security review. Continue recording failures and guest serial logs for future gates.
 
 ### Stage progress at a glance
 
@@ -44,7 +44,7 @@ Parallel tracks are intentional; avoid turning prototypes on in the normal boot 
 | --- | --- | --- |
 | **0 — Experimental audit/CI** | **Merged QEMU/static baseline** | PR #8; threat model still incomplete |
 | **1 — Persistent user environment** | **QEMU prototype milestones passed**, not deployed | PRs #9–13; production OpenRC service, default login and A/B-independent storage pending |
-| **1S — SnapCore snapshots (parallel research)** | **Architecture only; no prototype** | CoW block-map engine, immutable generations, FS-specific tests and safe user rollback pending |
+| **1S — SnapCore snapshots (parallel research)** | **Prototype v0.1 in review**; local rootless tests pass | File-backed maps and crash replay only; CI, filesystem, VRE and production gates remain open |
 | **2 — System/user isolation** | **Partial defensive proofs only** | Rootfs validation, FD filtering and pidfd tests; full adversarial host boundary unproven |
 | **3 — User network/VPN** | Not integrated | Virtual link, independent routing/DNS/TUN and VPN tests pending |
 | **4–5 — KDE/launch paths** | Architecture and early launcher preflight | Version-locked system KDE with user-executed Plasma/KRunner still pending |
@@ -107,11 +107,13 @@ Parallel tracks are intentional; avoid turning prototypes on in the normal boot 
 
 ## Stage 1S — SnapCore protected user-environment snapshots (parallel R&D)
 
-**Status:** **all proposed / unimplemented** as of 2026-10-20. [SnapCore architecture contract](VEYRA-SNAPCORE.md). This work is separate from system A/B and must not block its snapshot-free filesystem neutrality.
+**Status:** prototype v0.1 is implemented in the review branch in [SnapCore](VEYRA-SNAPCORE.md); local unit and CLI tests pass. It uses a file-backed simulated block volume and is not integrated with system A/B, the installed user root, a kernel block interface, Guardian or VRE. This work is separate from system A/B and must not block its snapshot-free filesystem neutrality.
 
-- [ ] Design a versioned **block-level CoW** snapshot format, immutable mapping roots, transactional commit/journal/replay, reference-safe reclamation, integrity and recovery compatibility; **do not substitute copied file trees**.
-- [ ] Build a file-backed simulated block-volume engine; prove create/read/write/fork/restore/new-head/delete with overlapping writes, immutable historical points and no full filesystem copy.
-- [ ] Property/fuzz and power-cut/`SIGKILL` tests for metadata journaling, flush ordering, ENOSPC, corruption, deletion/pruning and last-known-good protection.
+- [x] Prototype a versioned file-backed **block-level CoW** store with immutable extents and mapping roots, checksummed journal replay, partial writes, checkpoints and rollback into a new writable head. Rootless evidence: `python3 tests/test_snapcore.py` (9 passing tests, including CLI round-trip). This is a simulated engine milestone, not a production-format decision.
+- [x] Exercise process termination before immutable extent/root publication, after extent/root sync, during partial journal append, after full append before sync, and after journal sync; reopen, retry writes, verify valid history and confirm the last-known-good snapshot remains available. This does not prove physical power-cut or hardware write-cache behavior.
+- [ ] Add reference-aware deletion/pruning and prove garbage collection never removes an extent referenced by a retained generation or checkpoint.
+- [ ] Expand to property/fuzz and concurrent I/O tests for overlapping writes, sparse ranges, fork histories, deletion, reference counts, ENOSPC and last-known-good protection.
+- [ ] Perform actual power-loss/storage-fault testing for metadata ordering, flush behavior, corruption, deletion/pruning and restart recovery.
 - [ ] Evaluate kernel `ublk` (or reviewed alternative) as a trusted block interface controlled by system OpenRC; prevent user `sudo` accessing backing storage, raw device, metadata or control socket.
 - [ ] QEMU mount ext4 over SnapCore, create a **filesystem-consistent** checkpoint (safe freeze/thaw or stopped user init), damage only disposable user-root data, roll back and prove retained historical generations.
 - [ ] Validate XFS, F2FS and optionally Btrfs **as ordinary filesystems on the virtual block volume**, with per-FS freeze/flush/restore tests; no filesystem snapshot feature may be required.
@@ -120,7 +122,7 @@ Parallel tracks are intentional; avoid turning prototypes on in the normal boot 
 - [ ] Keep SnapCore catalog/store independent of system A/B; boot the recovery reader in independently booted VRE and test snapshot compatibility across system A→B→A.
 - [ ] Test space reservation and retention, backend crash, raw device permissions, bad keys, interrupted restore, immutable snapshot protection and external backup limitations.
 
-**Gate:** repeatable QEMU demonstration of genuine block-level CoW, crash-safe snapshots, failed-user-root recovery with unchanged host state and newer personal data, plus independent VRE accessibility and security review. **No box above is implemented yet.**
+**Gate:** still open. The review-branch simulator demonstrates block-level CoW map behavior and process-crash journal replay locally. CI confirmation, delete/prune, a real block interface, repeatable QEMU filesystem rollback, recovery of user root with separate personal data, independent VRE access and security review remain required.
 
 
 ## Stage 2 — Enforced system/user privilege boundary
@@ -282,7 +284,7 @@ Parallel tracks are intentional; avoid turning prototypes on in the normal boot 
 
 1. **Stage 0 prototype complete and merged**: PR #8 QEMU/static gates verified; continue its unfinished threat-model work under Stage 2.
 2. **Stage 1 QEMU milestone complete and merged**: PRs #9–13; **next** productionize the tested system manager as a real OpenRC service, finalize persistent rootfs outside A/B, add normal login/auth and trusted cleanup.
-3. **In parallel Stage 1S:** prototype SnapCore genuine block-level CoW with crash-consistent mapping roots, power-cut tests and independent root vs `/home` recovery; preserve system A/B's snapshot-free contract.
+3. **In parallel Stage 1S:** continue SnapCore from the file-backed v0.1 prototype: add safe pruning, run CI and storage-fault tests, then evaluate a trusted block interface and independent root vs `/home` recovery; preserve system A/B's snapshot-free contract.
 4. Stage 2: adversarially prove the production inner `sudo` cannot escape or control host kernel/devices/boot/network/services; extend inherited-FD/cgroup/LSM audits.
 5. Stage 3: controlled user internet and VPN while host network stays independent.
 6. In parallel, Stage 7: complete the real A -> B -> A QEMU cycle.

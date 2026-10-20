@@ -1,6 +1,6 @@
 # Veyra SnapCore — protected block-level snapshots of the user environment
 
-**Status (2026-10-20): DESIGN PROPOSAL ONLY. No SnapCore engine, snapshot storage format, QEMU rollback or installed integration exists.** Related: [Veyra Resilience](VEYRA-RESILIENCE.md), [VRE](VEYRA-RECOVERY.md), [Roadmap](ROADMAP.md).
+**Status (2026-10-20): experimental file-backed engine prototype in review.** The Python prototype and rootless replay tests live in `snapcore/` and `tests/test_snapcore.py`. It proves a limited on-disk CoW map, immutable generations, checkpoint rollback into a new head, integrity checks and process-crash journal replay. It is not integrated into boot, user storage, VRE or Guardian and is not production-ready. Related: [Veyra Resilience](VEYRA-RESILIENCE.md), [VRE](VEYRA-RECOVERY.md), [Roadmap](ROADMAP.md).
 
 ## Decision and objectives
 
@@ -9,6 +9,19 @@ Veyra should have a **Veyra-owned copy-on-write (CoW) block-volume snapshot engi
 The engine sits **below an ordinary filesystem**. Test ext4 first, then XFS, F2FS and optionally Btrfs used as an ordinary filesystem. Do not claim compatibility without independent filesystem-specific tests. **System A/B** remains the pre-existing filesystem-neutral, directory-generation mechanism and must work without SnapCore, block CoW or snapshots.
 
 The storage service and controller belong to the **system environment**, not the user's own root (inner `sudo`). Its metadata and backing device must not be accessible via guest device nodes, writable mounts, inherited FDs, control sockets, host D-Bus or raw storage operations.
+
+## Experimental file-backed prototype v0.1
+
+The implementation in `snapcore/engine.py` uses a private test directory instead of a real block device:
+
+- Each logical block is an immutable, SHA-256-named extent file. Partial writes read the previous block and publish a replacement extent; sparse zero blocks have no extent.
+- Each logical map is an immutable, content-addressed root. Generations refer to roots, so writes do not mutate extents or roots reachable from earlier generations.
+- Checkpoints append a journal event that pins the current generation. Rollback appends a new generation referencing the checkpoint root; it does not rewrite or remove later generations.
+- The append-only journal has a checksum chain, monotonically increasing event sequence, data/root-before-journal ordering and `fsync` boundaries. A trailing incomplete record is discarded on open; a complete record with a bad checksum fails closed.
+- `verify()` checks every retained map and referenced extent. Snapshot inventory can request the same verification before a point is offered.
+- The developer CLI is `scripts/veyra-snapcore.py`. This prototype has no pruning/GC, block-device interface, filesystem freeze/thaw, filesystem-consistency guarantee, encryption, authenticated metadata, dual-superblock recovery, bounded journal compaction or VRE reader. Checksums detect accidental corruption; they do not authenticate the store against a privileged attacker.
+
+The crash tests terminate a writer process at deterministic persistence boundaries and reopen the store. They test journal replay and incomplete-tail recovery, **not** physical power loss, device-cache behavior, kernel `ublk` semantics or filesystem recovery. No real ext4/XFS/F2FS volume is mounted on this prototype.
 
 ## Logical architecture
 
@@ -80,12 +93,14 @@ The common [Recovery Engine](VEYRA-RESILIENCE.md) accepts only authorized reques
 - A system environment failure is repaired by the separate **system A/B rollback path**; SnapCore must not grant inner `sudo` access to host recovery, boot or A/B metadata.
 - A healthy local snapshot cannot protect against dead disks or destroyed local keys. Offer/encourage **independent external backup** for these scenarios.
 
-## QEMU implementation and verification tasks — ALL OPEN
+## QEMU implementation and verification tasks
 
-- [ ] Define the explicit volume/catalog on-disk format, CoW mapping invariants, atomic journal, error policy, encryption/compatibility strategy and independent reader.
-- [ ] Write an isolated file-backed **simulated block-volume engine** with real immutable CoW snapshot maps, read/overwrite/rollback and correct reference-aware pruning; **no directory-copy implementation**.
+- [x] Build prototype v0.1: file-backed immutable block extents and mapping roots; sparse and partial reads/writes; checkpoint preservation; rollback into a new head; and full retained-generation/extent verification. Rootless checks: `python3 tests/test_snapcore.py` (9 tests, including CLI round-trip). This closes only the first simulated-engine milestone.
+- [x] Inject child-process termination before immutable extent/root publication, after extent/root sync, during partial journal append, after full append before sync, and after journal sync; retry writes, replay a valid prior or committed generation, and preserve the last-known-good point.
+- [ ] Define the production volume/catalog format, complete CoW invariants, bounded parser, atomic journal, error policy, encryption/compatibility strategy and independent recovery reader.
+- [ ] Add reference-aware delete/prune/garbage collection without reclaiming extents reachable from heads, snapshots or rollback checkpoints.
 - [ ] Property/fuzz tests: overlapping writes, sparse ranges, concurrent I/O, partial writes, snapshot fork histories, deletion, old/new-map content and reference counts.
-- [ ] Fault-inject power loss/`SIGKILL` at every commit stage; reopen and validate all acknowledged generations after restart.
+- [ ] Test actual power loss or storage fault behavior on supported filesystems and devices; process termination tests do not prove hardware flush semantics.
 - [ ] Evaluate Linux `ublk` (or alternative reviewed virtual block interface), its flush/discard and kernel requirements; keep backend and raw device unexposed to user root.
 - [ ] Boot disposable QEMU with ext4 formatted on SnapCore; create snapshot; destructively mutate **only the disposable user rootfs**; restore the snapshot without filesystem-tree copy.
 - [ ] Test filesystem-consistent checkpoints, freeze/thaw failure recovery, mounted-device safeguards and flush semantics on ext4, XFS, F2FS and optionally Btrfs.

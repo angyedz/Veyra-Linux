@@ -1,0 +1,38 @@
+name: Veyra SnapCore prototype
+
+on:
+  pull_request:
+    paths:
+      - 'snapcore/**'
+      - 'scripts/veyra-snapcore.py'
+      - 'tests/test_snapcore.py'
+      - 'docs/VEYRA-SNAPCORE.md'
+      - 'docs/ROADMAP.md'
+      - '.github/workflows/snapcore.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'snapcore/**'
+      - 'scripts/veyra-snapcore.py'
+      - 'tests/test_snapcore.py'
+      - 'docs/VEYRA-SNAPCORE.md'
+      - 'docs/ROADMAP.md'
+      - '.github/workflows/snapcore.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  file-backed-engine:
+    name: Rootless CoW integrity and journal replay
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Compile prototype and tests
+        run: python3 -m py_compile snapcore/*.py scripts/veyra-snapcore.py tests/test_snapcore.py
+      - name: Test immutable generations, integrity, rollback and crash replay
+        run: python3 tests/test_snapcore.py
