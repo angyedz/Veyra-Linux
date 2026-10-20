@@ -116,6 +116,7 @@ Parallel tracks are intentional; avoid turning prototypes on in the normal boot 
 - [ ] QEMU mount ext4 over SnapCore, create a **filesystem-consistent** checkpoint (safe freeze/thaw or stopped user init), damage only disposable user-root data, roll back and prove retained historical generations.
 - [ ] Validate XFS, F2FS and optionally Btrfs **as ordinary filesystems on the virtual block volume**, with per-FS freeze/flush/restore tests; no filesystem snapshot feature may be required.
 - [ ] Design and prove independently restorable user **root OS**, `/home` and other durable state. Restoring user root must preserve a newer personal document by default.
+- [ ] Prove **cross-mount deletion** behavior: removing user `/` may also erase writable `/home`; distinguish OS-only recovery of undamaged current documents from separately authorized restore of a previously snapped personal-data volume. Never claim personal files survive deletion without an independent preserved version.
 - [ ] Keep SnapCore catalog/store independent of system A/B; boot the recovery reader in independently booted VRE and test snapshot compatibility across system A→B→A.
 - [ ] Test space reservation and retention, backend crash, raw device permissions, bad keys, interrupted restore, immutable snapshot protection and external backup limitations.
 
@@ -217,6 +218,7 @@ Parallel tracks are intentional; avoid turning prototypes on in the normal boot 
 - [ ] Provide an independent **system TTY recovery UI** with clear diagnostics and safe offline-VRE handoff when KWin is unavailable.
 - [ ] Prototype a **system-owned trusted graphical Guardian recovery surface** when KWin/compositor still works, without user Plasma/D-Bus; design anti-spoofed input and fall back to TTY reliably.
 - [ ] Design user-visible statuses and actions (“Рабочее окружение недоступно”, retry, diagnose, select verified snapshot, restore); never claim a snapshot is available before validation.
+- [ ] Implement a **calm incident state machine** with trusted system-owned status sources, debounced shell restarts, accurate health wording, disabled unavailable actions, keyboard-accessible diagnostics and explicit TTY/VRE escape routes. See [UX acceptance contract](VEYRA-RESILIENCE.md#calm-incident-experience-executable-requirements).
 
 ### One trusted Recovery Engine, two restore scopes
 
@@ -231,9 +233,11 @@ Parallel tracks are intentional; avoid turning prototypes on in the normal boot 
 ### Adversarial recovery gates
 
 - [ ] Disposable QEMU: destroy user `/usr` under inner `sudo`; keep **system OpenRC and independent Guardian/TTY** responsive; restore previous SnapCore user-root generation without reverting newer personal files.
+- [ ] Disposable QEMU/VirtualBox: deliberately delete user `/` **with a writable `/home` mount** and separately prove truthful loss reporting, retained earlier personal-volume snapshots/backup options, informed volume-scoped restoration, and no user-root access to SnapCore storage.
 - [ ] Disposable QEMU: force crash of `plasmashell` alone; verify bounded shell restart or non-destructive notice, **not** full user-volume rollback.
 - [ ] Disposable QEMU: corrupt system A/B generation, then both system and user; boot independent VRE and repair the two environments **separately**.
 - [ ] Fail-inject broken KWin, broken user bus, missing/corrupt snapshot, ENOSPC, power loss during rollback, lost decryption key and incompatible recovery versions; show accurate failures and preserve last-known-good recovery data.
+- [ ] Validate recovery UX with **no valid snapshots** and with unfinished/aborted recovery transactions: no false green status, no fake progress, bounded waiting, replay-safe retries, diagnostic error IDs and a path to offline VRE.
 
 **Gate:** independent user-failure notification and recovery despite destroyed user rootfs; system A/B restoration from a separately booted VRE; no unintended rollback of personal data, no silent destructive actions. **Not yet passed.**
 

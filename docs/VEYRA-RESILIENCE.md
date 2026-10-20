@@ -76,6 +76,28 @@ The backend is shared by Guardian and VRE; the two have different execution cont
 - Protect independent recovery kernel/initramfs, authenticated artifacts, SnapCore metadata and last-known-good system generation. Treat the physical disk and optional secure boot/TPM separately; these are not already implemented.
 - A local snapshot isn't an off-device backup. Corruption of physical storage or total encryption-key loss requires an independent backup/recovery medium.
 
+## Calm incident experience: executable requirements
+
+Guardian and its presentation stack must be designed so that a failure can be **announced without invoking anything from the broken user environment**. This is a future acceptance contract, not a claim that a system overlay, health service or Recovery Engine currently exists.
+
+1. **Verify before alarming.** Distinguish `SHELL_RESTARTABLE`, `SESSION_UNRESPONSIVE`, `USER_ENV_UNAVAILABLE`, `USER_ROOT_DAMAGED`, `STORAGE_UNVERIFIED`, `SYSTEM_GRAPHICS_UNAVAILABLE` and `SYSTEM_BOOT_UNAVAILABLE` from independently observable evidence. A client heartbeat is advisory and may be delayed or spoofed by compromised user code; only trusted system-side lifecycle/storage evidence authorizes privileged recovery actions.
+2. **Bounded, non-destructive first response.** After a solitary Plasma shell crash, perform a small, documented number of restart attempts with backoff. Do not show a catastrophic warning, forcibly log the user out, reboot, relabel rootfs as corrupted, or silently restore a snapshot solely because a process died or heartbeat expired. Persist diagnostic event IDs in system-owned storage for later review.
+3. **Independent notification delivery.** When the compositor is healthy, use only a tested system-owned, authenticated surface independent of user Plasma, user D-Bus, user filesystem and user executables. When graphics/focus is unavailable, use a system OpenRC-owned TTY; if the installed system does not boot, retain a verified GRUB path to offline VRE. Test the notification paths while *all user executables have been removed in a disposable VM*.
+4. **Truthful, calm copy.** Prefer `Рабочее окружение недоступно. Основная система продолжает работать.` **only after system health has actually been verified**. If it is not verified, say `Состояние основной системы неизвестно` rather than displaying an unsupported green indicator. Never promise a snapshot or a short completion time until storage integrity and operation state are checked.
+5. **Options follow the verified diagnosis.** Offer `Повторить запуск` for restartable faults, `Диагностика` always, and `Восстановить рабочую среду` only after identifying valid user-root restore points. When no valid point exists, present a safe offline/reinstall/external-backup route; don't pretend the snapshot list is healthy. A system failure offers A/B recovery through independent VRE instead of a user-root-only rollback.
+6. **Show exactly which volume changes.** Default to user-OS-only restoration. Display a per-volume preview and date/identity of verified restore points, warn about applications/configuration that will roll back, and explicitly say that mounted `/home` can also have been deleted by a destructive `rm -rf /`. A newer personal file is preserved **only if the current personal volume still has it**; an already deleted file needs its own earlier data snapshot/backup.
+7. **No irreversible surprise.** Require confirmation before a potentially destructive restore, preserve the damaged head when possible, and provide an explicit warning when a pre-restore checkpoint cannot be retained. The Recovery Engine locks operations, verifies the target, stops all user writers and persists transaction progress before switching generation; retries after crashes must be idempotent and must not corrupt the last verified point.
+8. **Never dead-end the person.** All paths expose accessible keyboard navigation, a diagnostic code, an explanation of why a button is disabled, and a fallthrough to a trusted TTY or independent VRE. If local storage itself is lost, recommend external installation/recovery media and backups rather than offering a fictitious local rescue.
+
+### Reproducible user-experience scenarios — pending
+
+- [ ] Crash only `plasmashell`: bounded restart and normal session recovery; no user-root rollback, no permanent modal panic screen.
+- [ ] Delete user `/usr` under mapped inner `sudo` **in a disposable VM**: Guardian detects *confirmed* user-environment failure, the user can read a host-owned notification/TTY without user D-Bus, and a valid OS snapshot restores services.
+- [ ] Repeat destructive deletion with writable `/home` mounted: verify the UI does not claim newer already-erased personal files survived; offer independently verified `/home` snapshot restore only with separate consent.
+- [ ] Render trustworthy UI after breaking user OpenRC and D-Bus, then force KWin crash: prove TTY remains usable and can route to offline VRE.
+- [ ] Provide **no snapshot**, corrupt catalog, no space, missing key or an inaccessible device: never show a false 'snapshot available' badge, fabricated progress or unsafe one-click restore.
+- [ ] Interrupt confirmation/recovery at each durable transition: after reboot display a truthful transaction state and resume or safely roll back without consuming the final known-good copy.
+
 ## Test plan / acceptance gates — ALL OPEN
 
 - [ ] Implement Guardian as an independent system OpenRC service receiving structured health events from the privileged user-environment manager, with restart debounce, heartbeat and error classification.

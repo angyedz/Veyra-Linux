@@ -47,6 +47,16 @@ Block CoW snapshots operate on **whole logical volumes**, not arbitrary director
 
 An optional separate, carefully audited file-extraction tool may help retrieve documents, but **file copying is not SnapCore's snapshot mechanism**. No automatic migration/rollback of `/home` during system A/B rollback. User rootfs and SnapCore catalogs must remain outside system A/B generations. Define generation/format compatibility for A→B→A and independent VRE.
 
+### Failure mode: deleting `/` can also delete `/home`
+
+**Separate snapshot domains do not protect the *live contents* of mounted personal-data filesystems against inner root.** For example, a destructive recursive removal started at `/` inside the user environment can traverse a writable `/home` mount and delete personal documents even while the system kernel, host root and trusted SnapCore store remain intact. A separate `/home` volume makes its *restore scope* independent; it is not a permission boundary against the owner or inner `sudo`.
+
+- Never advertise **"restore environment, preserve all files"** when the live `/home` contents are damaged or unverified. Say explicitly that reverting the user OS leaves the **current** `/home` as-is; erased current documents require an earlier retained personal-volume snapshot or an independent backup.
+- Before intentional full-tree deletion tests, snapshot **both** user OS and the separately mounted personal volume inside **disposable** QEMU/VirtualBox guests. Test an OS-only restore with `/home` unaffected **and separately** test cross-mount deletion plus an explicitly authorized personal-volume restore. Never run the deletion test on a developer's real machine.
+- The product may offer separately scoped personal-data snapshots, but user root must not be able to destroy their stored generations or SnapCore metadata. Ordinary file permissions alone cannot provide that guarantee against inner root; enforce it at namespace/device/privileged-service boundaries.
+
+**Two different guarantees must never be conflated:** (1) recovery can roll back the user **OS volume without rewinding newer undamaged `/home` files**; (2) if those newer files themselves were deleted, recovery succeeds only when another **valid snapshot or external backup** still contains them. Neither CoW nor A/B can recover data that was never preserved.
+
 ## Consistency, power loss and format contract
 
 Nothing here is implemented yet. Before presenting SnapCore as safe, specify and test:
