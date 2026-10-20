@@ -54,14 +54,26 @@ class SnapCoreTests(unittest.TestCase):
         first = self.volume.snapshot("known-good")
         original_generation = first["generation_id"]
         original_root = first["root_id"]
+        original_extent = self.volume._load_root(original_root)["0"]
 
         self.volume.write(0, b"broken!")
         damaged_generation = self.volume.head_generation
-        self.volume.snapshot("damaged")
+        damaged = self.volume.snapshot("damaged")
+        damaged_extent = self.volume._load_root(damaged["root_id"])["0"]
+        self.assertNotEqual(original_root, damaged["root_id"])
+        self.assertNotEqual(original_extent, damaged_extent)
+        self.assertEqual(self.volume._read_extent(original_extent), b"before" + bytes(10))
+        self.assertEqual(self.volume._read_extent(damaged_extent), b"broken!" + bytes(9))
         self.assertEqual(self.volume.read(0, 7), b"broken!")
 
+        first_restore = self.volume.rollback("known-good")
+        self.assertGreater(first_restore, damaged_generation)
+        self.assertEqual(self.volume.read(0, 7), b"before\0")
+        damaged_restore = self.volume.rollback("damaged")
+        self.assertGreater(damaged_restore, first_restore)
+        self.assertEqual(self.volume.read(0, 7), b"broken!")
         restored_generation = self.volume.rollback("known-good")
-        self.assertGreater(restored_generation, damaged_generation)
+        self.assertGreater(restored_generation, damaged_restore)
         self.assertEqual(self.volume.read(0, 7), b"before\0")
         self.assertEqual(self.volume.snapshots(verify=True), sorted(
             self.volume.snapshots(), key=lambda item: item["name"]
@@ -73,7 +85,7 @@ class SnapCoreTests(unittest.TestCase):
         generations = self.volume.generations()
         self.assertEqual([g["generation_id"] for g in generations], list(range(1, restored_generation + 1)))
         self.assertEqual(generations[-1]["operation"], "rollback")
-        self.assertEqual(generations[-1]["parent_generation"], damaged_generation)
+        self.assertEqual(generations[-1]["parent_generation"], damaged_restore)
         self.assertEqual(
             self.volume.verify()["generations"],
             len(generations),
