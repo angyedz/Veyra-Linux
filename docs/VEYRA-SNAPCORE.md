@@ -1,6 +1,6 @@
 # Veyra SnapCore — protected block-level snapshots of the user environment
 
-**Status (2026-10-20): experimental file-backed engine prototype in review.** The Python prototype and rootless replay tests live in `snapcore/` and `tests/test_snapcore.py`. It proves a limited on-disk CoW map, immutable generations, checkpoint rollback into a new head, integrity checks and process-crash journal replay. It is not integrated into boot, user storage, VRE or Guardian and is not production-ready. Related: [Veyra Resilience](VEYRA-RESILIENCE.md), [VRE](VEYRA-RECOVERY.md), [Roadmap](ROADMAP.md).
+**Status (2026-10-20): experimental file-backed engine prototype in review.** The Python prototype and rootless replay tests live in `snapcore/` and `tests/test_snapcore.py`. Local tests, [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39477829000) and [dedicated SnapCore CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39477829083) pass. It proves a limited on-disk CoW map, immutable generations, checkpoint rollback into a new head, integrity checks and process-crash journal replay. It is not integrated into boot, user storage, VRE or Guardian and is not production-ready. Related: [Veyra Resilience](VEYRA-RESILIENCE.md), [VRE](VEYRA-RECOVERY.md), [Roadmap](ROADMAP.md).
 
 ## Decision and objectives
 
@@ -95,7 +95,7 @@ The common [Recovery Engine](VEYRA-RESILIENCE.md) accepts only authorized reques
 
 ## QEMU implementation and verification tasks
 
-- [x] Build prototype v0.1: file-backed immutable block extents and mapping roots; sparse and partial reads/writes; checkpoint preservation; rollback into a new head; and full retained-generation/extent verification. Rootless checks: `python3 tests/test_snapcore.py` (9 tests, including CLI round-trip). This closes only the first simulated-engine milestone.
+- [x] Build prototype v0.1: file-backed immutable block extents and mapping roots; sparse and partial reads/writes; checkpoint preservation; rollback into a new head; and full retained-generation/extent verification. Rootless checks: `python3 tests/test_snapcore.py` (9 tests, including CLI round-trip); [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39477829000) and [dedicated SnapCore CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39477829083) passed. This closes only the first simulated-engine milestone.
 - [x] Inject child-process termination before immutable extent/root publication, after extent/root sync, during partial journal append, after full append before sync, and after journal sync; retry writes, replay a valid prior or committed generation, and preserve the last-known-good point.
 - [ ] Define the production volume/catalog format, complete CoW invariants, bounded parser, atomic journal, error policy, encryption/compatibility strategy and independent recovery reader.
 - [ ] Add reference-aware delete/prune/garbage collection without reclaiming extents reachable from heads, snapshots or rollback checkpoints.
