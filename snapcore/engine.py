@@ -340,6 +340,10 @@ class SnapCoreVolume:
             raise SnapCoreError(f"snapshot already exists: {name}")
         generation_id = self.head_generation
         root_id = self._generation(generation_id)["root_id"]
+        # A checkpoint must not turn already-corrupt data into a seemingly
+        # recoverable point. Validate every referenced block before publishing
+        # the durable snapshot event.
+        self._verify_root(root_id, verify_extents=True)
         self._append_event(
             operation="snapshot",
             generation_id=generation_id,
@@ -441,6 +445,9 @@ class SnapCoreVolume:
             snapshot = self._state["snapshots"][name]
         except KeyError as exc:
             raise SnapCoreError(f"unknown snapshot: {name}") from exc
+        # Do not commit a new head that points at missing or damaged snapshot
+        # data. The journal append is the restore commit boundary.
+        self._verify_root(snapshot["root_id"], verify_extents=True)
         generation_id = self.head_generation + 1
         self._append_event(
             operation="rollback",

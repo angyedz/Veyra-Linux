@@ -152,6 +152,124 @@ class SnapCoreTests(unittest.TestCase):
             with self.assertRaises(IntegrityError):
                 reopened.read(0, 1)
 
+    def test_snapshot_refuses_corrupt_head_without_appending_checkpoint(self) -> None:
+        self.volume.write(0, b"damaged")
+        root_id = self.volume._generation(self.volume.head_generation)["root_id"]
+        extent_id = self.volume._load_root(root_id)["0"]
+        self.volume.close()
+        (self.store / "extents" / f"{extent_id}.blk").write_bytes(b"corrupt")
+        self.volume = None
+
+        with SnapCoreVolume.open(self.store) as reopened:
+            journal_size = (self.store / "journal.log").stat().st_size
+            head = reopened.head_generation
+            with self.assertRaises(IntegrityError):
+                reopened.snapshot("must-not-commit")
+            self.assertEqual(reopened.head_generation, head)
+            self.assertEqual(reopened.snapshots(), [])
+            self.assertEqual((self.store / "journal.log").stat().st_size, journal_size)
+
+    def test_rollback_refuses_corrupt_snapshot_without_changing_head(self) -> None:
+        self.volume.write(0, b"last-known-good")
+        saved = self.volume.snapshot("good")
+        self.volume.write(0, b"damaged-state")
+        damaged_generation = self.volume.head_generation
+        extent_id = self.volume._load_root(saved["root_id"])["0"]
+        self.volume.close()
+        (self.store / "extents" / f"{extent_id}.blk").write_bytes(b"corrupt")
+        self.volume = None
+
+        with SnapCoreVolume.open(self.store) as reopened:
+            journal_size = (self.store / "journal.log").stat().st_size
+            with self.assertRaises(IntegrityError):
+                reopened.rollback("good")
+            self.assertEqual(reopened.head_generation, damaged_generation)
+            self.assertEqual(reopened.read(0, 13), b"damaged-state")
+            self.assertEqual((self.store / "journal.log").stat().st_size, journal_size)
+            with self.assertRaises(IntegrityError):
+                reopened.snapshots(verify=True)
+
+    def test_process_crash_during_snapshot_or_rollback_replays_atomically(self) -> None:
+        snapshot_script = (
+            "import os,sys; "
+            "from snapcore import SnapCoreVolume; "
+            "v=SnapCoreVolume.open(sys.argv[1], "
+            "_fault_hook=lambda point: os._exit(88) if point == sys.argv[2] else None); "
+            "v.snapshot('checkpoint'); os._exit(0)"
+        )
+        rollback_script = (
+            "import os,sys; "
+            "from snapcore import SnapCoreVolume; "
+            "v=SnapCoreVolume.open(sys.argv[1], "
+            "_fault_hook=lambda point: os._exit(89) if point == sys.argv[2] else None); "
+            "v.rollback('last-known-good'); os._exit(0)"
+        )
+        for point in ("journal_partial", "journal_append", "journal_fsync"):
+            with self.subTest(operation="snapshot", point=point), tempfile.TemporaryDirectory(
+                prefix="veyra-snapcore-snapshot-crash-"
+            ) as temp:
+                store = Path(temp) / "volume"
+                with SnapCoreVolume.format(
+                    store, size_bytes=8 * self.block_size, block_size=self.block_size
+                ) as baseline:
+                    baseline.write(0, b"baseline")
+                    head = baseline.head_generation
+                child = subprocess.run(
+                    [sys.executable, "-c", snapshot_script, str(store), point],
+                    cwd=ROOT,
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                )
+                self.assertEqual(child.returncode, 88, child.stderr)
+                with SnapCoreVolume.open(store) as recovered:
+                    self.assertEqual(recovered.head_generation, head)
+                    names = {item["name"] for item in recovered.snapshots(verify=True)}
+                    if point == "journal_partial":
+                        self.assertEqual(names, set())
+                    else:
+                        self.assertIn(names, (set(), {"checkpoint"}))
+                    self.assertEqual(recovered.read(0, 8), b"baseline")
+                    recovered.write(0, b"continued")
+                    recovered.verify()
+
+            with self.subTest(operation="rollback", point=point), tempfile.TemporaryDirectory(
+                prefix="veyra-snapcore-rollback-crash-"
+            ) as temp:
+                store = Path(temp) / "volume"
+                with SnapCoreVolume.format(
+                    store, size_bytes=8 * self.block_size, block_size=self.block_size
+                ) as baseline:
+                    baseline.write(0, b"last-known-good")
+                    baseline.snapshot("last-known-good")
+                    baseline.write(0, b"damaged-state")
+                    old_head = baseline.head_generation
+                child = subprocess.run(
+                    [sys.executable, "-c", rollback_script, str(store), point],
+                    cwd=ROOT,
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                )
+                self.assertEqual(child.returncode, 89, child.stderr)
+                with SnapCoreVolume.open(store) as recovered:
+                    if point == "journal_partial":
+                        self.assertEqual(recovered.head_generation, old_head)
+                        self.assertEqual(recovered.read(0, 13), b"damaged-state")
+                    else:
+                        self.assertIn(recovered.head_generation, (old_head, old_head + 1))
+                        self.assertIn(
+                            recovered.read(0, 15),
+                            (b"damaged-stateod", b"last-known-good"),
+                        )
+                        if point == "journal_fsync":
+                            self.assertEqual(recovered.head_generation, old_head + 1)
+                            self.assertEqual(recovered.read(0, 15), b"last-known-good")
+                    self.assertEqual(len(recovered.snapshots(verify=True)), 1)
+                    recovered.verify()
+                    recovered.write(0, b"recovered")
+                    recovered.verify()
+
     def test_mapping_root_corruption_fails_closed_on_open(self) -> None:
         self.volume.write(0, b"data")
         root_id = self.volume._generation(self.volume.head_generation)["root_id"]
