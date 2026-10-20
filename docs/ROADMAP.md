@@ -54,7 +54,9 @@ Record relevant commit IDs, CI runs, guest serial logs and failure modes for eac
 
 **Depends on:** Stage 0.
 
-**Prototype milestone (verified in QEMU, not the finished stage):** a disposable Alpine 3.22 user rootfs booted through its own BusyBox PID 1 and OpenRC on the same guest kernel, with separate user/PID/mount/network/IPC/UTS namespaces, mapped inner root/normal UIDs, namespace-local `sudo` and persistent boot-count over two VM boots. [QEMU evidence](https://github.com/angyedz/Veyra-Linux/actions/runs/39308988112) · [test specification](STAGE1-USER-ROOTFS.md). This does **not** satisfy production login, host boundary audit, A/B integration, KDE or recovery gates below.
+**QEMU baseline milestone (PR #9):** a disposable Alpine 3.22 user rootfs booted through its own BusyBox PID 1 and OpenRC on the same guest kernel, with separate user/PID/mount/network/IPC/UTS namespaces, mapped inner root/normal UIDs, namespace-local sudo and persistent state over two VM boots. [QEMU evidence](https://github.com/angyedz/Veyra-Linux/actions/runs/39308988112).
+
+**QEMU lifecycle milestone (PR #10):** the system-side test manager passed start/status/stop, restart and nested PID 1 crash detection; rootfs checks rejected entries outside mapped ownership, an unapproved setuid file, a nested mount and a block device. Two guest boots reused one disk and finished with counts 2 then 4. [QEMU evidence](https://github.com/angyedz/Veyra-Linux/actions/runs/39312323358) · [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39312323395) · [Stage 1 prototype details](STAGE1-USER-ROOTFS.md). This remains a disposable prototype, not a production login path or security sign-off.
 
 - [ ] Decide persistent rootfs/state layout outside system A/B; preserve user package DB, services, `/home` and `/nix` across system rollback.
 - [ ] Build a clean Alpine rootfs with its own init/service configuration and suitable `/dev`, `/run`, `/proc`, `/sys` exposure.
@@ -194,7 +196,7 @@ Record relevant commit IDs, CI runs, guest serial logs and failure modes for eac
 ## Immediate execution order
 
 1. Stage 0: finish PR #8 audit, CI gates and review.
-2. Stage 1: boot separate user init with a persistent rootfs and **multi-ID** user mapping in disposable QEMU.
+2. Stage 1: supervise start/status/stop/crash of separate user init, validate persistent rootfs ownership and device contents, and retain the **multi-ID** mapping proof in disposable QEMU.
 3. Stage 2: prove `sudo` cannot escape the environment.
 4. Stage 3: controlled user internet and VPN while host network stays independent.
 5. In parallel, Stage 7: complete the real A -> B -> A QEMU cycle.

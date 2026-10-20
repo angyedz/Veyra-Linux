@@ -1,4 +1,4 @@
-name: Veyra Stage 1 user OpenRC and rootfs QEMU
+name: Veyra Stage 1 user lifecycle manager and rootfs QEMU
 
 on:
   push:
@@ -25,7 +25,7 @@ permissions:
 
 jobs:
   separate-user-openrc:
-    name: Two separate user OpenRC boots and persistent state in QEMU
+    name: Supervised lifecycle and persistent rootfs over two QEMU boots
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
@@ -44,7 +44,7 @@ jobs:
           docker run --rm -v "$PWD:/work:ro" \
             -v /tmp/veyra-stage1-qemu:/out alpine:3.22 sh -ec '
               apk add --no-cache alpine-base linux-lts mkinitfs \
-                build-base e2fsprogs cpio gzip
+                build-base linux-headers e2fsprogs cpio gzip
               kernel=$(basename "$(find /lib/modules -mindepth 1 -maxdepth 1 -type d -print -quit)")
               test -n "$kernel"
               cc -static -Os -Wall -Wextra -Werror \
@@ -68,6 +68,7 @@ jobs:
                 /out/userroot/etc/runlevels/default/veyra-stage1-user
               mkdir -p /out/userroot/home/veyrauser \
                 /out/userroot/var/lib/veyra-user
+              printf "format=stage1\n" > /out/userroot/.veyra-stage1-rootfs
               printf "veyrauser:x:1000:1000:Veyra User:/home/veyrauser:/bin/sh\n" \
                 >> /out/userroot/etc/passwd
               printf "veyrauser:x:1000:\n" >> /out/userroot/etc/group
@@ -85,12 +86,16 @@ jobs:
               mknod -m 0666 /out/userroot/dev/tty c 5 0
               mknod -m 0666 /out/userroot/dev/random c 1 8
               mknod -m 0666 /out/userroot/dev/urandom c 1 9
-              chown -R 100000:100000 /out/userroot
+              # Include recovery metadata before formatting and map package
+              # symlinks as well as regular files to the nested UID range.
+              mkdir -p /out/userroot/lost+found
+              chown -hR 100000:100000 /out/userroot
               # chown clears setuid; set it again on the test root-owned sudo.
               chmod 4755 /out/userroot/usr/bin/sudo
               chown 101000:101000 /out/userroot/home/veyrauser
               truncate -s 180M /out/veyra-user-root.raw
               mkfs.ext4 -F -q -L VEYRA_USER_ROOT \
+                -E root_owner=100000:100000 \
                 -d /out/userroot /out/veyra-user-root.raw
               chmod 0666 /out/veyra-user-root.raw
               mkinitfs -F "base ext4 virtio" \
@@ -106,7 +111,7 @@ jobs:
               test -s /out/veyra-stage1-kernel
               test -s /out/veyra-stage1-initramfs
             '
-      - name: Boot user PID1 and OpenRC twice, preserving one rootfs
+      - name: Start/status/stop/crash detection and rootfs checks across two QEMU boots
         run: |
           python3 tests/test-stage1-user-openrc-qemu.py \
             /tmp/veyra-stage1-qemu/veyra-stage1-kernel \

@@ -1,6 +1,6 @@
 # Stage 1: persistent user rootfs and independent init — QEMU prototype
 
-**Status:** QEMU-only prototype with passing **explicit two-boot and inner-sudo serial assertions**; **not enabled** by installed Veyra or Live ISO. Evidence: [GitHub Actions #39308745394](https://github.com/angyedz/Veyra-Linux/actions/runs/39308988112).
+**Status:** the QEMU lifecycle and rootfs-validation milestone passed in [PR #10 QEMU CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39312323358) and [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39312323395). **Not enabled** by installed Veyra or Live ISO; this remains a disposable prototype, not production security validation.
 This prototype is stacked on [Stage 0](DUAL-ENVIRONMENT.md) in PR #8.
 Track product requirements and future steps in [ROADMAP.md](ROADMAP.md).
 
@@ -31,45 +31,94 @@ binary acting as the literal PID 1. The system still has its own init.
 
 ## Implementation artifacts
 
-- `tests/stage1-user-supervisor.c` — **test-only** privileged system-side
-  supervisor launched within a disposable QEMU guest; creates user/mount/PID/
-  network/IPC/UTS namespaces, writes multi-ID UID/GID mappings, pivots into
-  the disk-backed rootfs and starts its independent init. The outside root UID
-  mapping is intentionally **100000**, never host UID 0. The unprivileged
-  launcher first drops to outside UID 100000, creates a user namespace,
-  receives the system supervisor's authorized 65536-ID UID/GID mappings,
-  then starts its own PID 1. Unlike self-mapping, this privileged setup does
-  not deny `setgroups`, so namespace-local sudo may change group vectors.
-- `scripts/veyra-stage1-qemu-init.sh` — disposable VM initial init that
-  mounts the test rootfs and invokes the system-side supervisor.
-- `tests/fixtures/stage1-user-inittab` and
-  `tests/fixtures/stage1-user-openrc.initd` — minimal BusyBox PID 1 runlevels
+- tests/stage1-user-supervisor.c — **test-only** system-side manager and
+  namespace launcher. Its local start, status and stop commands use a
+  root-owned Unix socket under system /run; it validates the persistent mount
+  before each start, waits for OpenRC readiness, reaps the launcher to detect
+  PID 1 crashes, and stops only that nested PID 1. It creates separate
+  user/mount/PID/network/IPC/UTS namespaces and maps inner IDs 0..65535 to
+  outer IDs 100000..165535. The unprivileged launcher creates its own user
+  namespace before the system-side process installs the UID/GID maps. The
+  manager socket is not mounted in the user rootfs.
+- scripts/veyra-stage1-qemu-init.sh — disposable VM initial init that mounts
+  the test rootfs, starts the manager and drives its lifecycle checks.
+- tests/fixtures/stage1-user-inittab and
+  tests/fixtures/stage1-user-openrc.initd — minimal BusyBox PID 1 runlevels
   and a test service writing a durable boot counter. A private intermediate
-  tmpfs root is used because `pivot_root` directly from initramfs `rootfs`
-  returns EINVAL.
-- `tests/test-stage1-user-openrc-qemu.py` — boots the *same disk image*
-  twice, expects count 1 then 2 and checks inner UID 1000 file ownership.
-- `.github/workflows/stage1-user-openrc-qemu.yml` — assembles disposable
-  Alpine 3.22 userspace on an ext4 raw file with mkfs.ext4 -d, an Alpine LTS
-  kernel and dedicated initramfs. No host disk partitions are modified.
+  tmpfs root is used because pivot_root directly from initramfs rootfs returns
+  EINVAL.
+- tests/test-stage1-user-openrc-qemu.py — boots the same disk image twice;
+  in each guest boot it tests invalid rootfs ownership and extra setuid
+  rejection, start/status/stop/restart, and forced PID 1 crash detection. Two
+  nested starts per guest boot leave persistent counts 2 then 4.
+- .github/workflows/stage1-user-openrc-qemu.yml — builds a disposable Alpine
+  3.22 rootfs on an ext4 raw file, assigns the ext4 root inode to mapped UID/GID
+  100000, then boots an Alpine LTS kernel and dedicated initramfs. No host disk
+  partitions are modified.
+
+## System-side lifecycle manager and rootfs checks
+
+The QEMU system init starts one foreground manager in the initial namespaces.
+System-side test commands send start, status or stop over
+/run/veyra-user-manager/control.sock. Its parent directory is root-owned mode
+0700; the socket is mode 0600, and the server accepts only peer UID 0 as seen
+from the system's initial user namespace. The nested user rootfs does not
+receive the system /run mount or this socket.
+
+Start validates the stopped rootfs, creates the unprivileged namespace
+launcher, installs the authorized multi-ID maps, and waits for the nested
+OpenRC boot counter plus normal-user and mapped-sudo proofs. Status reports
+the manager's current state. Stop sends SIGTERM to nested PID 1, then uses
+SIGKILL after a bounded wait. The manager polls and reaps its launcher; an
+unexpected exit becomes FAILED and remains visible until another start.
+These commands are a QEMU-only management interface, not an installed service
+or public API.
+
+Before each start the validator requires the exact rootfs mountpoint to be a
+separate non-volatile filesystem with no nested mountpoints. It opens the
+mountpoint without following a symlink, checks the root inode and every
+entry's UID/GID are inside the mapped range, caps traversal depth and entry
+count, rejects unsupported device/special files, and allows only the six
+expected character devices. The only allowed setuid file is the fixture's
+mapped-root-owned /usr/bin/sudo. It also requires the Stage 1 format marker
+and resolves /sbin/init and sudo inside the rootfs with openat2 root
+resolution.
+
+The QEMU harness injects an initial-namespace-root-owned file, an unexpected
+setuid file, a nested tmpfs mount and a block device, and requires each start
+to fail before launching user init. It then exercises start, status, stop,
+restart and a forced nested PID 1 crash on each of two guest boots using the
+same ext4 disk. The [passing QEMU run](https://github.com/angyedz/Veyra-Linux/actions/runs/39312323358)
+asserts final boot counts 2 then 4.
+
+These checks are structural startup checks, not cryptographic authentication
+of user data. The marker can be changed by anyone who can write the rootfs;
+this prototype has no signed manifest, immutable rootfs, production mount
+policy or protection against a shared-kernel vulnerability. The expected
+namespace-local sudo rule is NOPASSWD only in this disposable fixture.
 
 ## Acceptance gates for this prototype
 
-- [x] Standalone C supervisor builds statically with `-Werror`.
-- [x] First QEMU boot loads its user disk and launches BusyBox PID 1 within the
-      user PID namespace, with independent OpenRC runlevels.
-- [x] Inside UID 0 is mapped to outside **100000**; inside UID 1000 to
-      outside **101000**, and the inner user successfully writes to `/home`.
-- [x] The OpenRC test service writes boot-count 1, syncs, and the outer system
-      reports readiness with an isolated rootfs.
-- [x] A second QEMU boot of the same raw disk reports boot-count **2** and
-      preserves the normal user's home file.
-- [x] A normal inner UID 1000 uses setuid `sudo` to obtain inner UID **0**; a root-owned proof file is mapped to outside UID **100000**, never outside UID 0. Authorized system-side GID mapping keeps inner `setgroups()` functional.
-- [x] CI retains serial evidence for the QEMU test.
+The earlier PR #9 baseline passed a static C build and QEMU checks for
+separate PID 1, mapped UIDs, namespace-local sudo and persistent state. The
+PR #10 manager and rootfs checks passed in [QEMU CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39312323358)
+and [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39312323395).
 
-**Test evidence:** [successful QEMU Stage 1 OpenRC and sudo run](https://github.com/angyedz/Veyra-Linux/actions/runs/39308988112) recorded both boot counts and the mapped sudo proof. This validates the disposable prototype only.
+- [x] Build the system-side manager statically with -Werror.
+- [x] Start, report running status, stop, report stopped status and restart
+      the nested user environment in QEMU.
+- [x] Detect a forced nested PID 1 crash and report FAILED from the system
+      side.
+- [x] Reject an unmapped initial-namespace-root-owned file, unexpected
+      setuid file, nested mountpoint and block device before launching user PID 1.
+- [x] Preserve the same disk across two QEMU guest boots; the two nested starts
+      per guest boot must leave boot counts 2 then 4.
+- [x] Keep the existing inner UID 1000 and sudo proof mapped to outside UIDs
+      101000 and 100000 respectively.
+- [x] Retain serial evidence for the manager and rootfs validation checks.
 
-None of these prove **production** host security. The prototype is only the first runnable milestone in Stage 1 of the full [roadmap](ROADMAP.md).
+None of these prove **production** host security. This remains a disposable
+prototype in Stage 1 of the full [roadmap](ROADMAP.md).
 
 ## Known limitations and security risks
 
@@ -84,9 +133,11 @@ This prototype deliberately has the following gaps:
 3. The child inherits **serial console file descriptors** for diagnostic
    output; a real Veyra supervisor must sanitize inherited FDs and grant
    only narrowly reviewed communication endpoints.
-4. The rootfs, UID mappings, storage permissions and mountpoint lifecycle
-   must be made race-safe and non-escapable. Existing code is experimental.
-5. **Normal interactive user login, password policy, vpkg and KDE** are *not* integrated. `sudo` is validated **only inside this controlled disposable guest**, with an explicit temporary NOPASSWD test rule. This is not a production sudo privilege policy or proof that user root cannot exploit a kernel vulnerability.
+4. The new validator checks mount and ownership structure at start, but does
+   not authenticate mutable user data or close every race on a hostile live
+   filesystem. Production mount policy and the full storage lifecycle need
+   a separate review.
+5. **Normal interactive user login, password policy, vpkg and KDE** are *not* integrated. `sudo` is validated **only inside this controlled disposable guest**, with an explicit temporary NOPASSWD test rule. User-side sudo maps to outside UID 100000; it does not control the system-side manager. This does not prevent a shared-kernel exploit.
 6. System-owned Plasma/KWin and user-side plasmashell/KRunner, session bus,
    graphics access, VPN traffic and A/B integration are separate future
    milestones. This demonstration has no physical network, no user VPN and
