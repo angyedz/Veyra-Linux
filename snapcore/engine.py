@@ -178,6 +178,7 @@ class SnapCoreVolume:
         self._lock_fd = lock_fd
         self._fault_hook = fault_hook
         self._closed = False
+        self._poisoned = False
         self._state: dict[str, Any] = {}
 
     @classmethod
@@ -298,6 +299,7 @@ class SnapCoreVolume:
                 os.close(self._lock_fd)
 
     def __enter__(self) -> "SnapCoreVolume":
+        self._ensure_open()
         return self
 
     def __exit__(self, exc_type: Any, exc: Any, traceback: Any) -> None:
@@ -305,24 +307,30 @@ class SnapCoreVolume:
 
     @property
     def size_bytes(self) -> int:
+        self._ensure_open()
         return self._state["format"]["size_bytes"]
 
     @property
     def block_size(self) -> int:
+        self._ensure_open()
         return self._state["format"]["block_size"]
 
     @property
     def head_generation(self) -> int:
+        self._ensure_open()
         return self._state["head_generation"]
 
     @property
     def volume_id(self) -> str:
+        self._ensure_open()
         return self._state["format"]["volume_id"]
 
     def generations(self) -> list[dict[str, Any]]:
+        self._ensure_open()
         return [dict(item) for item in self._state["generations"]]
 
     def snapshots(self, *, verify: bool = False) -> list[dict[str, Any]]:
+        self._ensure_open()
         result = [
             {"name": name, **dict(snapshot)}
             for name, snapshot in sorted(self._state["snapshots"].items())
@@ -576,6 +584,10 @@ class SnapCoreVolume:
     def _ensure_open(self) -> None:
         if self._closed:
             raise SnapCoreError("volume is closed")
+        if self._poisoned:
+            raise SnapCoreError(
+                "volume state is uncertain after a journal I/O failure; close and reopen it"
+            )
 
     @staticmethod
     def _validate_snapshot_name(name: str) -> None:
@@ -950,19 +962,30 @@ class SnapCoreVolume:
             self.root / "journal.log", os.O_WRONLY | os.O_APPEND | _NOFOLLOW
         )
         try:
-            if self._fault_hook is not None:
-                partial = encoded[: max(1, len(encoded) // 2)]
-                _write_all(fd, partial)
-                self._fault("journal_partial")
-                _write_all(fd, encoded[len(partial) :])
-            else:
-                _write_all(fd, encoded)
-            self._fault("journal_append")
-            os.fsync(fd)
-            self._fault("journal_fsync")
+            try:
+                if self._fault_hook is not None:
+                    partial = encoded[: max(1, len(encoded) // 2)]
+                    _write_all(fd, partial)
+                    self._fault("journal_partial")
+                    _write_all(fd, encoded[len(partial) :])
+                else:
+                    _write_all(fd, encoded)
+                self._fault("journal_append")
+                os.fsync(fd)
+                self._fault("journal_fsync")
+                self._apply_record(record, body["sequence"])
+            except BaseException:
+                # A failed append/fsync leaves commit status uncertain. This
+                # instance must not append using stale in-memory sequence data;
+                # close and replay the journal before accepting more work.
+                self._poisoned = True
+                raise
         finally:
-            os.close(fd)
-        self._apply_record(record, body["sequence"])
+            try:
+                os.close(fd)
+            except OSError:
+                self._poisoned = True
+                raise
 
     def _fault(self, point: str) -> None:
         if self._fault_hook is not None:

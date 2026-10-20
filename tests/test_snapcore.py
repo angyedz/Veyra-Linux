@@ -277,6 +277,65 @@ class SnapCoreTests(unittest.TestCase):
                     self.assertEqual(recovered.read(0, 12), b"keep-current")
                     recovered.verify()
 
+    def test_journal_io_failure_poison_instance_until_replay(self) -> None:
+        for point in ("journal_partial", "journal_append", "journal_fsync"):
+            with self.subTest(point=point), tempfile.TemporaryDirectory(
+                prefix="veyra-snapcore-io-failure-"
+            ) as temp:
+                store = Path(temp) / "volume"
+                with SnapCoreVolume.format(
+                    store, size_bytes=8 * self.block_size, block_size=self.block_size
+                ) as baseline:
+                    baseline.write(0, b"committed")
+                    baseline.snapshot("known-good")
+                    previous_generation = baseline.head_generation
+
+                def inject_io_error(current: str) -> None:
+                    if current == point:
+                        raise OSError("injected journal I/O failure")
+
+                volume = SnapCoreVolume.open(store, _fault_hook=inject_io_error)
+                with self.assertRaisesRegex(OSError, "injected journal I/O failure"):
+                    volume.write(0, b"uncertain")
+                blocked_operations = (
+                    lambda: volume.write(0, b"must-not-append"),
+                    lambda: volume.read(0, 1),
+                    lambda: volume.head_generation,
+                    lambda: volume.size_bytes,
+                    lambda: volume.block_size,
+                    lambda: volume.volume_id,
+                    volume.generations,
+                    volume.snapshots,
+                )
+                for operation in blocked_operations:
+                    with self.assertRaisesRegex(SnapCoreError, "close and reopen"):
+                        operation()
+                volume.close()
+
+                with SnapCoreVolume.open(store) as recovered:
+                    recovered_state = (
+                        recovered.head_generation,
+                        recovered.read(0, 9),
+                    )
+                    self.assertIn(
+                        recovered_state,
+                        (
+                            (previous_generation, b"committed"),
+                            (previous_generation + 1, b"uncertain"),
+                        ),
+                    )
+                    if point == "journal_partial":
+                        self.assertEqual(
+                            recovered_state,
+                            (previous_generation, b"committed"),
+                        )
+                    elif point == "journal_fsync":
+                        self.assertEqual(
+                            recovered_state,
+                            (previous_generation + 1, b"uncertain"),
+                        )
+                    recovered.verify()
+
     def test_gc_restarts_safely_after_process_crash(self) -> None:
         self.volume.write(0, b"protected")
         saved = self.volume.snapshot("protected")
