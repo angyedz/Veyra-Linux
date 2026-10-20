@@ -1,6 +1,6 @@
 # Veyra Linux development roadmap
 
-**Last reviewed:** 2026-10-19  
+**Last reviewed:** 2026-10-20  
 **Status:** engineering plan, not a claim that any unfinished component ships.  
 **Target:** an installed KDE-only, filesystem-neutral, atomic Veyra with **two independently administered Linux environments on one kernel**, plus separately bootable Recovery.
 
@@ -25,19 +25,33 @@ Parallel tracks are intentional; avoid turning prototypes on in the normal boot 
 | Alpine 3.22, OpenRC, KDE Live ISO | Existing conventional image and installer tests | Final dual-environment installed runtime |
 | Desktop installer | Experimental shell/QEMU install/reboot path | KDE-only Calamares install into separate system/user roots and real graphical click-through |
 | Atomic boot | Offline FS-neutral staging, GRUB/initramfs selectors and QEMU automation | Passing and reviewed full A -> B -> A; authenticated, power-loss-safe updates |
-| Dual environments | Experimental launchers, design and namespace probes in draft PR #8 | Supervised user init/rootfs, multi-UID mappings, real privileged-boundary proofs |
+| Dual environments | PRs #8–13 **merged into `main`**: namespace probes; Alpine user-root/OpenRC PID 1; multi-ID mapping and inner `sudo`; QEMU lifecycle manager, rootfs staging, descriptor checks, pidfd safety | Installed manager and login, real host privilege-boundary audit, production user storage/KDE/network integration |
 | VPN isolation | Design | veth/network policy, DNS, user VPN and kill-switch tests |
 | KDE cross-boundary launch | Design and experimental KRunner preflight in PR #8 | System-selected read-only KDE runtime, user session, safe Alt+F2, D-Bus/Wayland integration |
 | vpkg | APK-derived prototype plus early Go frontend | Final installed-engine replacement, user root integration, inactive-generation updater |
 | glenv/Nix | Signed runtime pairing and Nix prototypes | Full lifecycle/integration in user root and system generations |
 | VRE | Separate console Recovery boot in diskless QEMU | Manual GRUB entry, authenticated artifacts, actual repair UI and automatic recovery |
 
-**Caution:** the presence of a test workflow does not mean its latest run passed.
-Record relevant commit IDs, CI runs, guest serial logs and failure modes for each gate.
+**Last verified `main` baseline (2026-10-20):** commit [`1754933`](https://github.com/angyedz/Veyra-Linux/commit/1754933123564d621081788f7a6ca41a29dd5dd3), PRs [#8](https://github.com/angyedz/Veyra-Linux/pull/8), [#9](https://github.com/angyedz/Veyra-Linux/pull/9), [#10](https://github.com/angyedz/Veyra-Linux/pull/10), [#11](https://github.com/angyedz/Veyra-Linux/pull/11), [#12](https://github.com/angyedz/Veyra-Linux/pull/12), [#13](https://github.com/angyedz/Veyra-Linux/pull/13) merged. [Integration CI passed](https://github.com/angyedz/Veyra-Linux/actions/runs/39452117275); [Stage 1 QEMU lifecycle passed](https://github.com/angyedz/Veyra-Linux/actions/runs/39452117206). These prove the **test-only** implementation's stated assertions, not an installed dual-environment system or a general host-escape security review. Continue recording failures and guest serial logs for future gates.
+
+### Stage progress at a glance
+
+| Stage | State as of 2026-10-20 | Evidence / next boundary |
+| --- | --- | --- |
+| **0 — Experimental audit/CI** | **Merged QEMU/static baseline** | PR #8; threat model still incomplete |
+| **1 — Persistent user environment** | **QEMU prototype milestones passed**, not deployed | PRs #9–13; production OpenRC service, default login and A/B-independent storage pending |
+| **2 — System/user isolation** | **Partial defensive proofs only** | Rootfs validation, FD filtering and pidfd tests; full adversarial host boundary unproven |
+| **3 — User network/VPN** | Not integrated | Virtual link, independent routing/DNS/TUN and VPN tests pending |
+| **4–5 — KDE/launch paths** | Architecture and early launcher preflight | Version-locked system KDE with user-executed Plasma/KRunner still pending |
+| **6 — vpkg/glenv/Nix** | Existing component prototypes | User-root and A/B integration pending |
+| **7 — Filesystem-neutral A/B** | Independent experimental staging/boot track | Installed A → B → A with fault injection still pending |
+| **8 — Coherent KDE A/B** | Planned | Matched runtime activation/rollback pending |
+| **9 — Recovery** | Independent console VRE QEMU proof | Fully integrated boot entry and real repair workflows pending |
+| **10–12 — Installer, QA, release** | Not release-ready | Dual-root installed path and qualification pending |
 
 ## Stage 0 — Audit experimental PR #8 and establish gates
 
-**Priority:** immediate. **Status:** under review; do not merge until gates complete.
+**Status:** **PR #8 merged into `main` on 2026-10-20.** Initial static/negative test and QEMU primitive gates passed. This closes the *PR/CI baseline milestone*, **not** the full Stage 2 threat-model audit or production isolation.
 
 - [x] Review old namespace, KRunner and UID-map scripts; label single-UID/bootstrap-only constraints.
 - [x] Add conservative canonical rootfs, ownership and submount preflight; add `--check` without launching namespaces.
@@ -45,10 +59,11 @@ Record relevant commit IDs, CI runs, guest serial logs and failure modes for eac
 - [x] Separate namespace-support **SKIP (77)** from a failed invariant after entering namespaces.
 - [x] Pass rootless negative tests and shellcheck in GitHub Actions; inspect run logs. Evidence: [integration CI success, 2026-10-19](https://github.com/angyedz/Veyra-Linux/actions/runs/39301689918).
 - [x] Report **SKIP (77)** explicitly when the GitHub runner prohibits unprivileged namespaces. In addition, run a **real disposable, networkless QEMU kernel test**: a nonroot guest process creates a user namespace, a trusted guest supervisor installs UID/GID mappings, and the nested process proves PID 1, mount/network/IPC isolation and inability to read a root-only guest file. Evidence: [QEMU namespace smoke test, 2026-10-19](https://github.com/angyedz/Veyra-Linux/actions/runs/39301689815).
-- [ ] Review threat-model gaps (host file descriptors, mount subtrees, inherited capabilities, runtime origin).
-- [ ] Merge PR #8 only after review, with no live ISO/installed boot path changes.
+- [x] Merge [PR #8](https://github.com/angyedz/Veyra-Linux/pull/8) into `main` (2026-10-20), without switching the installed/Live boot flow to the experimental user environment.
+- [x] Extend the QEMU baseline with targeted rootfs substitution and inherited-FD regressions in [merged PR #12](https://github.com/angyedz/Veyra-Linux/pull/12); separate `pidfd` signal-safety regression in [merged PR #13](https://github.com/angyedz/Veyra-Linux/pull/13).
+- [ ] Complete the **production threat-model review** (all inherited capabilities, kernel attack surface, runtime provenance, cross-boundary sockets, mount and device policy). The targeted QEMU checks do not constitute comprehensive security sign-off.
 
-**Gate:** repeatable syntax, static, preflight and negative tests in CI; a real namespace primitive smoke test in QEMU; documented limitations. **Passed as a test baseline, not an isolation sign-off.** The remaining manual PR review, security threat-model review and production launcher are not complete.
+**Gate:** syntax, static, negative tests and real namespace primitives in disposable QEMU **passed**, and PR #8 was merged. **Still not a production isolation sign-off**: full threat-model review and installed service are separate outstanding gates.
 
 ## Stage 1 — Persistent user Linux environment
 
@@ -60,20 +75,39 @@ Record relevant commit IDs, CI runs, guest serial logs and failure modes for eac
 
 **Manager-exit cleanup milestone (PR #11):** QEMU killed the system-side manager while the user environment was running, verified that launcher death terminated nested PID 1, then restarted the manager and confirmed STOPPED plus stale-socket recovery. The same persistent disk passed two guest boots with counts 3 then 6. [QEMU evidence](https://github.com/angyedz/Veyra-Linux/actions/runs/39318056661) · [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39318056566). This is still a prototype lifecycle check, not production crash recovery or a host security sign-off.
 
-**Rootfs launch validation milestone (PR #12):** the launcher retains the directory descriptor that passed validation and compares its device/inode with the rootfs bind mount before pivoting; a different directory fails closed. A QEMU self-test exercises both the same-inode and different-inode comparator results (using the persistent rootfs and system `/run`), and the harness replaces `/sbin/init` with a symlink targeting an existing system-side `/tmp` file to verify that `openat2(RESOLVE_IN_ROOT)` rejects it. The two-boot ext4 lifecycle run passed with persistent counts 3 then 6. [QEMU evidence](https://github.com/angyedz/Veyra-Linux/actions/runs/39320831998) · [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39320831889). The self-test does not simulate a concurrent mountpoint replacement; the inode comparison is not an atomic descriptor-based bind mount and does not freeze or authenticate rootfs contents. This remains an unreviewed QEMU prototype.
+**Rootfs and inherited-descriptor hardening (merged PR #12):** the system-side manager retains the validated rootfs directory FD, binds it from the FD to a trusted, non-writable **system-controlled staging mount**, and lets the child bind only that pinned stage instead of re-resolving a mutable user-controlled path. Readiness also uses the validated FD. QEMU exercises an actual visible-mount-name substitution, verifies the originally pinned inode remains selected, rejects escaping `/sbin/init` symlinks with `openat2(RESOLVE_IN_ROOT)`, and checks fail-closed launcher/nested-init FD allowlists. [QEMU pass](https://github.com/angyedz/Veyra-Linux/actions/runs/39404374568) · [integration pass](https://github.com/angyedz/Veyra-Linux/actions/runs/39404374542). **Limit:** pinned directory identity does not freeze or authenticate mutable file contents; the VM console FDs 0–2 remain a deliberate test exception.
 
-- [ ] Decide persistent rootfs/state layout outside system A/B; preserve user package DB, services, `/home` and `/nix` across system rollback.
-- [ ] Build a clean Alpine rootfs with its own init/service configuration and suitable `/dev`, `/run`, `/proc`, `/sys` exposure.
-- [ ] Implement **multi-ID UID/GID mappings** and ordinary user accounts plus a working inner `sudo`. Rootless `--map-root-user` by itself cannot provide this.
-- [ ] Supervise the user's own init in a PID namespace; explicitly verify the intended OpenRC init arrangement rather than assuming Alpine's `/sbin/init` is OpenRC.
-- [ ] Auto-enter user context on login; add clean startup, shutdown, crash reporting and reboot lifetime management.
+**Process-signal safety (merged PR #13):** manager uses `pidfd_open` and `pidfd_send_signal` for nested init STOP/timeout handling, rejects missing/stale pidfd handles rather than falling back to a numeric PID, and verifies a reaped task's pidfd returns `ESRCH`. This mitigates PID reuse in the disposable supervisor, **not** the need for production cgroup/service lifecycle controls. [Merged PR #13](https://github.com/angyedz/Veyra-Linux/pull/13) · [passing QEMU on `main`](https://github.com/angyedz/Veyra-Linux/actions/runs/39452117206).
 
-**Gate:** disposable QEMU boots both system and user init, sees correct PID 1 per namespace, supports ordinary login and reboot with persistent user state.
+### Verified Stage 1 QEMU milestones
+
+- [x] Prepare a separate persistent Alpine 3.22 ext4 test rootfs and boot a **distinct BusyBox PID 1** that invokes user-environment OpenRC runlevels; system init remains independent.
+- [x] Use system-authorized **multi-ID user/group mappings** (inner IDs 0–65535 → guest outer IDs 100000–165535); verify ordinary inner UID 1000 and real inner `sudo` mapping to **outer UID 100000**, not system UID 0.
+- [x] Demonstrate user rootfs persistence across two actual guest boots, with a test OpenRC service's counter reaching 3 then 6 after start/restart/manager-death scenarios.
+- [x] Test system-side `start`, `status`, `stop`, restart, forced PID 1 crash reporting, manager-death cleanup, and stale-socket recovery in QEMU.
+- [x] Reject hostile rootfs structure in QEMU (outside-mapped owners, nested mounts, block devices, unexpected setuid files, and escaping init symlinks).
+- [x] Verify rootfs source-path substitution cannot redirect a mount pinned through the trusted system-side FD staging; keep the validated FD for readiness.
+- [x] Verify child FD cleanup beyond explicitly permitted startup channels, and pidfd-based safe signal delivery / rejection of stale targets.
+- [x] Merge this QEMU-prototype sequence, [PRs #9–13](https://github.com/angyedz/Veyra-Linux/pull/13), into `main`, with [full CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39452117275) and [QEMU](https://github.com/angyedz/Veyra-Linux/actions/runs/39452117206) passing.
+
+### Still required for the **installed** Stage 1
+
+- [ ] Finalize filesystem-neutral persistent user rootfs/state **outside system A/B**, including `/home`, `/nix`, package DB, permissions, persistence across real system rollback and recovery/migration strategy (only ext4 guest-image persistence is proven).
+- [ ] Port the guest-only supervisor into a reviewed, correctly managed **system OpenRC service** with safe provisioning, stop/restart, cgroup/process ownership, crash recovery, cleanup of trusted stage mounts and protected manager controls.
+- [ ] Define production `/dev`, `/proc`, `/sys`, `/run`, capabilities and inherited FD 0–2 policy; check isolation against a hostile user environment, not only the QEMU smoke test.
+- [ ] Provision real accounts, authentication and inner `sudo` policy **without** the disposable test fixture's `NOPASSWD` rule.
+- [ ] Auto-enter the user environment at normal login; prove service lifecycle, shutdown, reboot and persistent user state in a **clean installed VM** rather than a custom initramfs harness.
+
+**Gate:** the **disposable QEMU prototype portion passed** (two user OpenRC guest boots, mapped `sudo`, persistent state, manager lifecycle and focused safety tests). **Stage 1 as an installed feature is still OPEN**: normal interactive login, production supervision, system A/B-independent storage, security review and boot integration are unproven.
 
 ## Stage 2 — Enforced system/user privilege boundary
 
 **Depends on:** Stage 1.
 
+**Partial QEMU evidence already in `main`:** namespace-local UID remapping, private mounts/network/IPC/PID, rootfs structural rejection, restricted inherited FDs and pidfd signalling. See PRs #9–13 and the Stage 1 QEMU run. These are **not** exhaustive escape tests.
+
+- [x] QEMU-only: reject invalid user-root device nodes/ownership/mounts and leaked system manager socket; clear unwanted startup file descriptors before executing inner init.
+- [x] QEMU-only: verify stale pidfd signal targets are rejected; do not target initial PID 1 during nested environment shutdown.
 - [ ] Separate mounts, users/capabilities, IPC, process visibility, devices, system bus and network by **kernel** primitives and narrowly designed host services.
 - [ ] No writable mount of host root, A/B store, boot files, EFI, host network state or host-only service sockets inside the user environment.
 - [ ] Audit inherited file descriptors, proc/sysfs interfaces, mount propagation, device nodes, namespace transitions and seccomp/LSM/cgroups where applicable.
@@ -199,9 +233,9 @@ Record relevant commit IDs, CI runs, guest serial logs and failure modes for eac
 
 ## Immediate execution order
 
-1. Stage 0: finish PR #8 audit, CI gates and review.
-2. Stage 1: productionize the QEMU-proven start/status/stop/crash and manager-exit cleanup path; integrate persistent rootfs, login, service configuration and retained **multi-ID** mapping proof.
-3. Stage 2: prove `sudo` cannot escape the environment.
+1. **Stage 0 prototype complete and merged**: PR #8 QEMU/static gates verified; continue its unfinished threat-model work under Stage 2.
+2. **Stage 1 QEMU milestone complete and merged**: PRs #9–13; **next** productionize the tested system manager as a real OpenRC service, finalize persistent rootfs outside A/B, add normal login/auth and trusted cleanup.
+3. Stage 2: adversarially prove the production inner `sudo` cannot escape or control host kernel/devices/boot/network/services; extend inherited-FD/cgroup/LSM audits.
 4. Stage 3: controlled user internet and VPN while host network stays independent.
 5. In parallel, Stage 7: complete the real A -> B -> A QEMU cycle.
 6. Stages 4–5: pair KDE runtime and route all application launch paths.
