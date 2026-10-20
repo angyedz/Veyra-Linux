@@ -1,6 +1,6 @@
 # Stage 1: persistent user rootfs and independent init — QEMU prototype
 
-**Status:** the QEMU lifecycle and rootfs-validation milestone passed in [PR #10 QEMU CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39312323358) and [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39312323395). The [PR #11 manager-exit cleanup follow-up](https://github.com/angyedz/Veyra-Linux/pull/11) passed [QEMU](https://github.com/angyedz/Veyra-Linux/actions/runs/39318056661) and [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39318056566). The [PR #12 rootfs launch validation follow-up](https://github.com/angyedz/Veyra-Linux/pull/12) passed [QEMU](https://github.com/angyedz/Veyra-Linux/actions/runs/39320831998) and [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39320831889), including both inode-comparator outcomes and rejection of an init symlink that points outside the user rootfs. **Not enabled** by installed Veyra or Live ISO; this remains a disposable prototype, not production security validation.
+**Status:** the trusted-stage rootfs binding and descriptor-hardening milestone **passed** in [two-boot QEMU CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39404374568) and [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39404374542). This remains test-only and is not enabled by the installed Veyra or Live ISO. Earlier, the QEMU lifecycle and rootfs-validation milestone passed in [PR #10 QEMU CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39312323358) and [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39312323395). The [PR #11 manager-exit cleanup follow-up](https://github.com/angyedz/Veyra-Linux/pull/11) passed [QEMU](https://github.com/angyedz/Veyra-Linux/actions/runs/39318056661) and [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39318056566). The [PR #12 rootfs launch validation follow-up](https://github.com/angyedz/Veyra-Linux/pull/12) passed [QEMU](https://github.com/angyedz/Veyra-Linux/actions/runs/39320831998) and [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39320831889), including both inode-comparator outcomes and rejection of an init symlink that points outside the user rootfs. **Not enabled** by installed Veyra or Live ISO; this remains a disposable prototype, not production security validation.
 This prototype is stacked on [Stage 0](DUAL-ENVIRONMENT.md) in PR #8.
 Track product requirements and future steps in [ROADMAP.md](ROADMAP.md).
 
@@ -147,10 +147,14 @@ and [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/3931805
 - [x] Keep the existing inner UID 1000 and sudo proof mapped to outside UIDs
       101000 and 100000 respectively.
 - [x] Retain serial evidence for the manager and rootfs validation checks.
-- [ ] QEMU verify that replacing the rootfs mount name after descriptor
-      pinning cannot redirect the bind mount.
-- [ ] QEMU assert descriptor sanitizer preserves only approved FDs and
-      reports closure of system-only descriptors.
+- [x] QEMU verify that replacing the rootfs mount name after descriptor
+      pinning cannot redirect the bind mount (actual source-name swap fixture
+      and a trusted system-side staged mount).
+- [x] QEMU assert descriptor sanitizer preserves only approved FDs, and
+      fails closed if a forbidden descriptor survives. The child closes all
+      descriptors >=3 before running user code.
+
+**Recent evidence:** [QEMU Stage 1 CI run 39404374568](https://github.com/angyedz/Veyra-Linux/actions/runs/39404374568) recorded both clean guest boots, persistent counts 3 → 6 and manager crash recovery. The [integration CI run 39404374542](https://github.com/angyedz/Veyra-Linux/actions/runs/39404374542) passed. A preceding QEMU run exposed a guest shutdown race; the manager now refuses to signal initial-namespace PID 1 or its own PID and reports the signal target for diagnosis.
 
 None of these prove **production** host security. This remains a disposable
 prototype in Stage 1 of the full [roadmap](ROADMAP.md).
