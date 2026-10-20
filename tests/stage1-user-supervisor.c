@@ -491,16 +491,20 @@ static int test_fd_close_policy(void) {
     pid_t pid = fork();
     if (pid < 0) return 2;
     if (!pid) {
-        int allowed[2], rejected[2];
-        if (pipe2(allowed, O_CLOEXEC) < 0 ||
-            pipe2(rejected, O_CLOEXEC) < 0) _exit(2);
-        int keep[] = { allowed[1] };
+        int rejected[2];
+        int allowed = open("/dev/null", O_WRONLY | O_CLOEXEC);
+        if (allowed < 3 || pipe2(rejected, O_CLOEXEC) < 0) _exit(2);
+        int keep[] = { allowed };
         close_unlisted_fds(keep, 1);
-        if (fcntl(keep[0], F_GETFD) < 0 ||
+        if (fcntl(allowed, F_GETFD) < 0 ||
             fcntl(rejected[0], F_GETFD) != -1 || errno != EBADF ||
             fcntl(rejected[1], F_GETFD) != -1 || errno != EBADF)
             _exit(1);
-        if (write_all(keep[0], "K", 1) < 0) _exit(1);
+        /* A pipe with its only read end closed would trigger SIGPIPE here,
+         * falsely failing descriptor sanitization. /dev/null gives a
+         * safe writable, still-open allowlisted descriptor instead.
+         */
+        if (write_all(allowed, "K", 1) < 0) _exit(1);
         _exit(0);
     }
     int status;
@@ -742,7 +746,10 @@ static int start_environment(char *response, size_t response_size) {
         launch_user(&args);
         _exit(1);
     }
-    close(ready[1]); close(proceed[0]); close(pid_pipe[1]); close(rootfd);
+    close(ready[1]); close(proceed[0]); close(pid_pipe[1]);
+    /* Hold the validated directory FD throughout readiness checks.
+     * Re-opening ROOT_PATH here would reintroduce path-replacement TOCTOU.
+     */
     launcher_pid = pid;
     state = STATE_STARTING;
     char signal = 0;
@@ -752,6 +759,7 @@ static int start_environment(char *response, size_t response_size) {
         (void)wait_for_child(STOP_TIMEOUT_MS);
         state = STATE_FAILED;
         snprintf(response, response_size, "ERROR launch: user-namespace launcher failed");
+        close(rootfd);
         return -1;
     }
     close(ready[0]);
@@ -772,6 +780,7 @@ static int start_environment(char *response, size_t response_size) {
         (void)wait_for_child(STOP_TIMEOUT_MS);
         state = STATE_FAILED;
         snprintf(response, response_size, "ERROR launch: user PID 1 did not start");
+        close(rootfd);
         return -1;
     }
     user_pid1 = (pid_t)nested_pid;
@@ -780,14 +789,11 @@ static int start_environment(char *response, size_t response_size) {
         reap_child();
         if (!launcher_pid) {
             snprintf(response, response_size, "ERROR launch: user PID 1 exited before readiness");
+            close(rootfd);
             return -1;
         }
-        int count = -1;
-        int checkfd = open(ROOT_PATH, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
-        if (checkfd >= 0) {
-            count = read_boot_count(checkfd);
-            if (count == baseline + 1 && check_proofs(checkfd, error, sizeof(error)) == 0) {
-                close(checkfd);
+        int count = read_boot_count(rootfd);
+        if (count == baseline + 1 && check_proofs(rootfd, error, sizeof(error)) == 0) {
                 boot_count = count;
                 state = STATE_RUNNING;
                 printf("VEYRA_STAGE1_SUDO_READY count=%d inside-uid=0 outside-uid=100000\n",
@@ -796,15 +802,15 @@ static int start_environment(char *response, size_t response_size) {
                 fflush(stdout);
                 snprintf(response, response_size, "RUNNING pid=%ld count=%d",
                          (long)user_pid1, boot_count);
+                close(rootfd);
                 return 0;
-            }
-            close(checkfd);
         }
         if (count > baseline + 1) {
             (void)kill(user_pid1, SIGKILL);
             (void)wait_for_child(STOP_TIMEOUT_MS);
             state = STATE_FAILED;
             snprintf(response, response_size, "ERROR launch: persistent boot counter jumped unexpectedly");
+            close(rootfd);
             return -1;
         }
         usleep(100000);
@@ -813,6 +819,7 @@ static int start_environment(char *response, size_t response_size) {
     (void)wait_for_child(STOP_TIMEOUT_MS);
     state = STATE_FAILED;
     snprintf(response, response_size, "ERROR launch: OpenRC readiness timed out");
+    close(rootfd);
     return -1;
 }
 static const char *state_name(void) {

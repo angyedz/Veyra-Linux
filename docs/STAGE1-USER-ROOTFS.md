@@ -147,6 +147,10 @@ and [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/3931805
 - [x] Keep the existing inner UID 1000 and sudo proof mapped to outside UIDs
       101000 and 100000 respectively.
 - [x] Retain serial evidence for the manager and rootfs validation checks.
+- [ ] QEMU verify that replacing the rootfs mount name after descriptor
+      pinning cannot redirect the bind mount.
+- [ ] QEMU assert descriptor sanitizer preserves only approved FDs and
+      reports closure of system-only descriptors.
 
 None of these prove **production** host security. This remains a disposable
 prototype in Stage 1 of the full [roadmap](ROADMAP.md).
@@ -161,18 +165,20 @@ This prototype deliberately has the following gaps:
    D-Bus, sockets, ptys, and host bridges in real desktop use. Here, the
    environment is deliberately offline and minimal. The virtual disk and
    its block device belong exclusively to the test system side.
-3. The child inherits **serial console file descriptors** for diagnostic
-   output; a real Veyra supervisor must sanitize inherited FDs and grant
-   only narrowly reviewed communication endpoints.
-4. The validator checks mount and ownership structure at start. The launcher
-   retains the validated directory descriptor and compares its device/inode
-   with the bind-mounted rootfs before pivoting, but still uses the configured
-   mountpoint as the bind source. The QEMU self-test exercises the comparator
-   with the rootfs and system `/run`; it does not simulate a concurrent
-   mountpoint replacement. This is not an atomic descriptor-based bind and
-   does not authenticate or freeze mutable contents against a privileged
-   concurrent writer. Production mount policy and the full storage lifecycle
-   need a separate review.
+3. The QEMU supervisor now closes all system FDs >=3 in the launcher
+   except strictly required launch channels, and closes all remaining FDs
+   >=3 in nested PID 1 before executing user code. A regression self-test
+   checks allowlisted and forbidden FDs. **Console FDs 0–2** are still
+   inherited from the VM system for serial diagnostics and need explicitly
+   controlled replacement in production.
+4. The launcher binds the validated rootfs using its already-open directory
+   FD via `/proc/self/fd/N` and checks the mounted inode before pivot.
+   The QEMU self-test deliberately replaces a bind-mounted source name
+   and confirms the original directory is selected. The system manager also
+   uses the original validated FD to check OpenRC readiness instead of
+   re-opening the mutable rootfs path. **This mitigates pathname-substitution
+   TOCTOU**, not concurrent mutation of the files inside that inode.
+   Production storage policy and the full lifecycle still need review.
 5. **Normal interactive user login, password policy, vpkg and KDE** are *not* integrated. `sudo` is validated **only inside this controlled disposable guest**, with an explicit temporary NOPASSWD test rule. User-side sudo maps to outside UID 100000; it does not control the system-side manager. This does not prevent a shared-kernel exploit.
 6. System-owned Plasma/KWin and user-side plasmashell/KRunner, session bus,
    graphics access, VPN traffic and A/B integration are separate future
