@@ -7,6 +7,7 @@
 #include <fcntl.h>
 #include <grp.h>
 #include <limits.h>
+#include <stdint.h>
 #include <linux/magic.h>
 #include <linux/openat2.h>
 #include <poll.h>
@@ -31,6 +32,12 @@
 #define ROOT_PATH "/mnt/veyra-user"
 #define RUN_DIR "/run/veyra-user-manager"
 #define SOCKET_PATH RUN_DIR "/control.sock"
+/* Root-owned (0711) staging parent: the namespace user can traverse
+ * but cannot change the mount name. The initial-namespace manager
+ * mounts the already-validated directory FD here before fork.
+ */
+#define PIN_PARENT "/run/veyra-user-rootfs-pin"
+#define PIN_PATH PIN_PARENT "/rootfs"
 #define OUTER_ROOT_UID 100000U
 #define OUTER_NORMAL_UID 101000U
 #define MAPPED_ID_LIMIT 165536U
@@ -42,7 +49,7 @@ enum manager_state { STATE_STOPPED, STATE_STARTING, STATE_RUNNING,
                      STATE_STOPPING, STATE_FAILED };
 struct child_args {
     int ready_write, proceed_read, pid_write;
-    const char *root;
+    int root_fd;
     pid_t expected_parent;
 };
 struct scan_state {
@@ -387,7 +394,191 @@ static void proof_user_sudo(void) {
     if (waitpid(pid, &status, 0) != pid || !WIFEXITED(status) ||
         WEXITSTATUS(status) != 0) die("inner sudo privilege elevation failed");
 }
-static void inner_pid_one(const char *root, int ready_fd) {
+static int directory_identity_matches(int validated_fd, const char *path) {
+    struct stat validated_st, candidate_st;
+    if (fstat(validated_fd, &validated_st) < 0 || stat(path, &candidate_st) < 0)
+        return -1;
+    return validated_st.st_dev == candidate_st.st_dev &&
+           validated_st.st_ino == candidate_st.st_ino;
+}
+/* Bind mount from a validated, open directory FD, never from the
+ * mutable configured rootfs pathname. The procfd refers to the pinned
+ * opened mount/dentry even if the original name is replaced meanwhile.
+ * Production still needs immutable content and storage policy.
+ */
+static int bind_directory_fd(int fd, const char *target) {
+    char pinned_source[64];
+    int n = snprintf(pinned_source, sizeof(pinned_source),
+                     "/proc/self/fd/%d", fd);
+    if (n <= 0 || n >= (int)sizeof(pinned_source)) {
+        errno = EINVAL;
+        return -1;
+    }
+    return mount(pinned_source, target, NULL, MS_BIND, NULL);
+}
+
+/* Deny inheritance of ALL system-side descriptor capabilities except
+ * explicitly needed startup descriptors. This is deliberately fail-closed
+ * if close_range(2) is unavailable on the running kernel.
+ */
+static void close_unlisted_fds(const int *allow, size_t allowed) {
+    unsigned int first = 3;
+    for (;;) {
+        unsigned int next = UINT_MAX;
+        for (size_t i = 0; i < allowed; i++) {
+            if (allow[i] >= 3 && (unsigned int)allow[i] >= first &&
+                (unsigned int)allow[i] < next)
+                next = (unsigned int)allow[i];
+        }
+        if (next == UINT_MAX) {
+            if (syscall(SYS_close_range, first, UINT_MAX, 0) < 0)
+                die("close untrusted inherited descriptors");
+            return;
+        }
+        if (next > first &&
+            syscall(SYS_close_range, first, next - 1, 0) < 0)
+            die("close system descriptors before namespace launch");
+        first = next + 1;
+    }
+}
+
+/* Actual hostile-name-swap test: pin the first mount via FD, cover the
+ * exposed name with a DIFFERENT bind mount, and prove the FD bind still
+ * selects the original inode. Only runs in the disposable QEMU system.
+ */
+static int test_fd_bind_after_name_swap(void) {
+    char workspace[] = RUN_DIR "/.fd-bind-XXXXXX";
+    if (!mkdtemp(workspace)) { perror("mkdtemp fd-bind"); return 1; }
+    char original[PATH_MAX], alternate[PATH_MAX], visible[PATH_MAX], target[PATH_MAX];
+    if (snprintf(original, sizeof(original), "%s/original", workspace) >= (int)sizeof(original) ||
+        snprintf(alternate, sizeof(alternate), "%s/alternate", workspace) >= (int)sizeof(alternate) ||
+        snprintf(visible, sizeof(visible), "%s/visible", workspace) >= (int)sizeof(visible) ||
+        snprintf(target, sizeof(target), "%s/target", workspace) >= (int)sizeof(target))
+        return 2;
+    if (mkdir(original, 0700) < 0 || mkdir(alternate, 0700) < 0 ||
+        mkdir(visible, 0700) < 0 || mkdir(target, 0700) < 0)
+        { perror("fd-bind fixture mkdir"); return 2; }
+
+    if (mount(original, visible, NULL, MS_BIND, NULL) < 0)
+        { perror("original mount"); return 2; }
+    int validated = open(visible, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    if (validated < 0) { perror("pin original mount"); return 2; }
+    if (mount(alternate, visible, NULL, MS_BIND, NULL) < 0)
+        { perror("replace original mount"); return 2; }
+    if (directory_identity_matches(validated, visible) != 0) {
+        fprintf(stderr, "VEYRA_STAGE1_FAILURE: mount name swap fixture did not replace inode\n");
+        return 1;
+    }
+    if (bind_directory_fd(validated, target) < 0) {
+        perror("bind pinned original descriptor");
+        return 1;
+    }
+    if (directory_identity_matches(validated, target) != 1 ||
+        directory_identity_matches(validated, visible) != 0) {
+        fprintf(stderr, "VEYRA_STAGE1_FAILURE: FD bind selected swapped rootfs mount\n");
+        return 1;
+    }
+    close(validated);
+    if (umount(target) < 0 || umount(visible) < 0 ||
+        umount(visible) < 0)
+        { perror("fd-bind cleanup unmount"); return 2; }
+    if (rmdir(original) < 0 || rmdir(alternate) < 0 ||
+        rmdir(visible) < 0 || rmdir(target) < 0 ||
+        rmdir(workspace) < 0)
+        { perror("fd-bind cleanup dirs"); return 2; }
+    puts("VEYRA_STAGE1_ROOTFS_FD_BIND_SWAP_PASS");
+    return 0;
+}
+
+/* Unit-test the deny-by-default inherited descriptor policy while keeping
+ * only a single explicitly approved communication FD.
+ */
+static int test_fd_close_policy(void) {
+    pid_t pid = fork();
+    if (pid < 0) return 2;
+    if (!pid) {
+        int rejected[2];
+        int allowed = open("/dev/null", O_WRONLY | O_CLOEXEC);
+        if (allowed < 3 || pipe2(rejected, O_CLOEXEC) < 0) _exit(2);
+        int keep[] = { allowed };
+        close_unlisted_fds(keep, 1);
+        if (fcntl(allowed, F_GETFD) < 0 ||
+            fcntl(rejected[0], F_GETFD) != -1 || errno != EBADF ||
+            fcntl(rejected[1], F_GETFD) != -1 || errno != EBADF)
+            _exit(1);
+        /* A pipe with its only read end closed would trigger SIGPIPE here,
+         * falsely failing descriptor sanitization. /dev/null gives a
+         * safe writable, still-open allowlisted descriptor instead.
+         */
+        if (write_all(allowed, "K", 1) < 0) _exit(1);
+        _exit(0);
+    }
+    int status;
+    if (waitpid(pid, &status, 0) != pid || !WIFEXITED(status) ||
+        WEXITSTATUS(status) != 0) return 1;
+    puts("VEYRA_STAGE1_FD_SANITIZATION_PASS");
+    return 0;
+}
+
+/* A pinned procfd source cannot be bind-mounted directly by the
+ * unprivileged user namespace on our tested Alpine kernel (EINVAL).
+ * Instead, initial-namespace root prepares the mount from the validated
+ * FD in a trusted root-owned directory before creating the child.
+ * The user namespace receives a locked inherited mount and may bind
+ * only this staged path. No untrusted user may rename the stage path.
+ */
+static int ensure_pin_directory(void) {
+    if (mkdir(PIN_PARENT, 0711) < 0 && errno != EEXIST) return -1;
+    struct stat st;
+    if (lstat(PIN_PARENT, &st) < 0 || !S_ISDIR(st.st_mode) ||
+        st.st_uid != 0 || (st.st_mode & 07777) != 0711) {
+        errno = EPERM;
+        return -1;
+    }
+    if (mkdir(PIN_PATH, 0700) < 0 && errno != EEXIST) return -1;
+    return 0;
+}
+static int stage_validated_rootfs(int rootfd) {
+    /* A killed manager may leave a previous system-side staging mount.
+     * Detach just that controlled mountpoint; never the real root disk.
+     */
+    if (umount2(PIN_PATH, MNT_DETACH) < 0 && errno != EINVAL)
+        return -1;
+    struct stat st;
+    if (lstat(PIN_PATH, &st) < 0 || !S_ISDIR(st.st_mode) ||
+        st.st_uid != 0 || (st.st_mode & 07777) != 0700) {
+        errno = EPERM;
+        return -1;
+    }
+    if (bind_directory_fd(rootfd, PIN_PATH) < 0) return -1;
+    if (directory_identity_matches(rootfd, PIN_PATH) != 1) {
+        (void)umount2(PIN_PATH, MNT_DETACH);
+        errno = ESTALE;
+        return -1;
+    }
+    return 0;
+}
+static int test_directory_identity_guard(void) {
+    if (geteuid() != 0) {
+        fprintf(stderr, "rootfs inode guard test requires system-side UID 0\n");
+        return 2;
+    }
+    int rootfd = open(ROOT_PATH, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    if (rootfd < 0) { perror("open validated rootfs for inode guard test"); return 2; }
+    int same = directory_identity_matches(rootfd, ROOT_PATH);
+    int different = directory_identity_matches(rootfd, "/run");
+    close(rootfd);
+    if (same != 1 || different != 0) {
+        fprintf(stderr, "VEYRA_STAGE1_FAILURE: rootfs inode identity guard self-test failed\n");
+        return 1;
+    }
+    puts("VEYRA_STAGE1_ROOTFS_INODE_GUARD_PASS");
+    if (test_fd_bind_after_name_swap() != 0 ||
+        test_fd_close_policy() != 0)
+        return 1;
+    return 0;
+}
+static void inner_pid_one(int root_fd, int ready_fd) {
     /* The launcher waits for this acknowledgment before reporting the PID.
      * If the launcher dies before this signal is armed, the pipe is closed
      * and this process exits instead of becoming an orphaned environment.
@@ -407,7 +598,19 @@ static void inner_pid_one(const char *root, int ready_fd) {
     if (mount("tmpfs", bootstrap, "tmpfs", MS_NOSUID | MS_NODEV, "mode=0700") < 0)
         die("mount private intermediate tmpfs root");
     if (mkdir(newroot, 0700) < 0) die("create temporary newroot");
-    if (mount(root, newroot, NULL, MS_BIND, NULL) < 0) die("bind persistent user rootfs");
+    /* The system manager attached the pinned descriptor to this
+     * protected mountpoint before fork. Using a procfd as the source
+     * here can fail in a less-privileged mount namespace with EINVAL.
+     */
+    if (mount(PIN_PATH, newroot, NULL, MS_BIND, NULL) < 0)
+        die("bind trusted system-staged rootfs");
+    int identity_matches = directory_identity_matches(root_fd, newroot);
+    if (identity_matches != 1) {
+        if (identity_matches < 0) die("inspect bound user rootfs identity");
+        errno = ESTALE;
+        die("bound user rootfs is not the validated directory inode");
+    }
+    close(root_fd);
     if (mkdir(oldroot, 0700) < 0 && errno != EEXIST) die("create oldroot directory");
     if (chroot(bootstrap) < 0 || chdir("/") < 0) die("enter intermediate root");
     if (syscall(SYS_pivot_root, "/root", "/root/.veyra-stage1-oldroot") < 0)
@@ -425,16 +628,24 @@ static void inner_pid_one(const char *root, int ready_fd) {
         die("mount user /run");
     if (mount("tmpfs", "/tmp", "tmpfs", MS_NODEV | MS_NOSUID, "mode=1777") < 0)
         die("mount user /tmp");
+    /* No manager socket, validated rootfs FD, mount FD, startup pipe or
+     * unrelated system capability may reach ordinary user-side processes.
+     */
+    close_unlisted_fds(NULL, 0);
     proof_ordinary_user();
     proof_user_sudo();
+    close_unlisted_fds(NULL, 0);
     printf("VEYRA_STAGE1_USER_PID1_STARTED pid=%ld\n", (long)getpid());
     fflush(stdout);
     execl("/sbin/init", "init", (char *)NULL);
     die("execute user BusyBox init");
 }
 static void launch_user(const struct child_args *ctx) {
-    if (listener_fd >= 0) close(listener_fd);
-    if (client_fd >= 0) close(client_fd);
+    const int permitted_fds[] = {
+        ctx->ready_write, ctx->proceed_read, ctx->pid_write, ctx->root_fd
+    };
+    close_unlisted_fds(permitted_fds,
+                       sizeof(permitted_fds) / sizeof(permitted_fds[0]));
     if (setgroups(0, NULL) < 0 || setgid(OUTER_ROOT_UID) < 0 ||
         setuid(OUTER_ROOT_UID) < 0) die("drop to unprivileged outside UID 100000");
     /* Credential changes clear PR_SET_PDEATHSIG, so arm it again after the
@@ -465,10 +676,11 @@ static void launch_user(const struct child_args *ctx) {
     if (!pid1) {
         close(init_ready[0]);
         close(ctx->pid_write);
-        inner_pid_one(ctx->root, init_ready[1]);
+        inner_pid_one(ctx->root_fd, init_ready[1]);
         _exit(1);
     }
     close(init_ready[1]);
+    close(ctx->root_fd);
     char init_ready_signal = 0;
     if (read_one_timeout(init_ready[0], &init_ready_signal, 10000) < 0 ||
         init_ready_signal != 'D') {
@@ -519,8 +731,22 @@ static int wait_for_child(int timeout_ms) {
 static int stop_environment(void) {
     reap_child();
     if (!launcher_pid) return state == STATE_FAILED ? -1 : 0;
+    /* A host PID 1/manager signalling bug must NEVER trigger a system-wide
+     * shutdown. Refuse dangerous target PIDs and leave the environment
+     * visibly FAILED, rather than signalling the initial PID namespace.
+     */
+    if (user_pid1 <= 1 || user_pid1 == getpid()) {
+        state = STATE_FAILED;
+        fprintf(stderr, "VEYRA_STAGE1_STOP_REFUSED_INVALID_PID target=%ld manager=%ld\n",
+                (long)user_pid1, (long)getpid());
+        fflush(stderr);
+        return -1;
+    }
+    fprintf(stderr, "VEYRA_STAGE1_STOP_TARGET pid=%ld manager=%ld\n",
+            (long)user_pid1, (long)getpid());
+    fflush(stderr);
     state = STATE_STOPPING;
-    if (user_pid1 > 0 && kill(user_pid1, SIGTERM) < 0 && errno != ESRCH) {
+    if (kill(user_pid1, SIGTERM) < 0 && errno != ESRCH) {
         state = STATE_RUNNING;
         return -1;
     }
@@ -549,6 +775,12 @@ static int start_environment(char *response, size_t response_size) {
         snprintf(response, response_size, "ERROR rootfs: %s", error);
         return -1;
     }
+    if (stage_validated_rootfs(rootfd) < 0) {
+        close(rootfd);
+        snprintf(response, response_size,
+                 "ERROR rootfs: cannot mount validated FD into trusted system stage");
+        return -1;
+    }
     int baseline = read_boot_count(rootfd);
     if (baseline < 0) {
         close(rootfd);
@@ -573,16 +805,19 @@ static int start_environment(char *response, size_t response_size) {
         if (prctl(PR_SET_PDEATHSIG, SIGKILL) < 0 ||
             getppid() != expected_parent)
             _exit(1);
-        close(ready[0]); close(proceed[1]); close(pid_pipe[0]); close(rootfd);
+        close(ready[0]); close(proceed[1]); close(pid_pipe[0]);
         struct child_args args = {
             .ready_write = ready[1], .proceed_read = proceed[0],
-            .pid_write = pid_pipe[1], .root = ROOT_PATH,
+            .pid_write = pid_pipe[1], .root_fd = rootfd,
             .expected_parent = expected_parent,
         };
         launch_user(&args);
         _exit(1);
     }
-    close(ready[1]); close(proceed[0]); close(pid_pipe[1]); close(rootfd);
+    close(ready[1]); close(proceed[0]); close(pid_pipe[1]);
+    /* Hold the validated directory FD throughout readiness checks.
+     * Re-opening ROOT_PATH here would reintroduce path-replacement TOCTOU.
+     */
     launcher_pid = pid;
     state = STATE_STARTING;
     char signal = 0;
@@ -592,6 +827,7 @@ static int start_environment(char *response, size_t response_size) {
         (void)wait_for_child(STOP_TIMEOUT_MS);
         state = STATE_FAILED;
         snprintf(response, response_size, "ERROR launch: user-namespace launcher failed");
+        close(rootfd);
         return -1;
     }
     close(ready[0]);
@@ -612,6 +848,7 @@ static int start_environment(char *response, size_t response_size) {
         (void)wait_for_child(STOP_TIMEOUT_MS);
         state = STATE_FAILED;
         snprintf(response, response_size, "ERROR launch: user PID 1 did not start");
+        close(rootfd);
         return -1;
     }
     user_pid1 = (pid_t)nested_pid;
@@ -620,14 +857,11 @@ static int start_environment(char *response, size_t response_size) {
         reap_child();
         if (!launcher_pid) {
             snprintf(response, response_size, "ERROR launch: user PID 1 exited before readiness");
+            close(rootfd);
             return -1;
         }
-        int count = -1;
-        int checkfd = open(ROOT_PATH, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
-        if (checkfd >= 0) {
-            count = read_boot_count(checkfd);
-            if (count == baseline + 1 && check_proofs(checkfd, error, sizeof(error)) == 0) {
-                close(checkfd);
+        int count = read_boot_count(rootfd);
+        if (count == baseline + 1 && check_proofs(rootfd, error, sizeof(error)) == 0) {
                 boot_count = count;
                 state = STATE_RUNNING;
                 printf("VEYRA_STAGE1_SUDO_READY count=%d inside-uid=0 outside-uid=100000\n",
@@ -636,15 +870,15 @@ static int start_environment(char *response, size_t response_size) {
                 fflush(stdout);
                 snprintf(response, response_size, "RUNNING pid=%ld count=%d",
                          (long)user_pid1, boot_count);
+                close(rootfd);
                 return 0;
-            }
-            close(checkfd);
         }
         if (count > baseline + 1) {
             (void)kill(user_pid1, SIGKILL);
             (void)wait_for_child(STOP_TIMEOUT_MS);
             state = STATE_FAILED;
             snprintf(response, response_size, "ERROR launch: persistent boot counter jumped unexpectedly");
+            close(rootfd);
             return -1;
         }
         usleep(100000);
@@ -653,6 +887,7 @@ static int start_environment(char *response, size_t response_size) {
     (void)wait_for_child(STOP_TIMEOUT_MS);
     state = STATE_FAILED;
     snprintf(response, response_size, "ERROR launch: OpenRC readiness timed out");
+    close(rootfd);
     return -1;
 }
 static const char *state_name(void) {
@@ -753,7 +988,8 @@ static int manager_service(void) {
         return -1;
     }
     close(rootfd);
-    if (prepare_socket() < 0) return -1;
+    if (ensure_pin_directory() < 0 || prepare_socket() < 0)
+        return -1;
     struct sigaction action = {0};
     action.sa_handler = on_signal;
     sigemptyset(&action.sa_mask);
@@ -779,6 +1015,11 @@ static int manager_service(void) {
     if (launcher_pid > 0) (void)stop_environment();
     if (client_fd >= 0) close(client_fd);
     if (listener_fd >= 0) close(listener_fd);
+    /* Normal shutdown drops the trusted mount. A SIGKILL leaves it
+     * to be safely detached on the next start.
+     */
+    if (umount2(PIN_PATH, MNT_DETACH) < 0 && errno != EINVAL)
+        perror("detach trusted rootfs stage");
     (void)unlink(SOCKET_PATH);
     return 0;
 }
@@ -805,6 +1046,8 @@ static int manager_client(const char *command) {
     return !strncmp(response, "ERROR", 5) ? 1 : 0;
 }
 int main(int argc, char **argv) {
+    if (argc == 2 && !strcmp(argv[1], "test-inode-guard"))
+        return test_directory_identity_guard();
     if (argc == 3 && !strcmp(argv[1], "serve") &&
         !strcmp(argv[2], ROOT_PATH)) {
         if (manager_service() < 0) die("system-side user manager failed");
@@ -818,4 +1061,3 @@ int main(int argc, char **argv) {
             argv[0], ROOT_PATH);
     return 2;
 }
-
