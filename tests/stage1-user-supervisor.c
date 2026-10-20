@@ -64,6 +64,8 @@ static volatile sig_atomic_t terminate_requested;
 static enum manager_state state = STATE_STOPPED;
 static pid_t launcher_pid;
 static pid_t user_pid1;
+/* Stable kernel process handle: do not signal a recycled numeric PID. */
+static int user_pidfd = -1;
 static int last_exit_code = -1;
 static int boot_count;
 
@@ -520,6 +522,42 @@ static int test_fd_close_policy(void) {
     return 0;
 }
 
+
+/* Exercise both live pidfd signalling and the stale/dead-process case.
+ * A reaped PID may be reused; its OLD pidfd must never signal a replacement.
+ */
+static int test_pidfd_signals(void) {
+    pid_t child = fork();
+    if (child < 0) return 2;
+    if (child == 0) {
+        for (;;) pause();
+    }
+    int fd = (int)syscall(SYS_pidfd_open, child, 0);
+    if (fd < 0) {
+        (void)kill(child, SIGKILL); (void)waitpid(child, NULL, 0);
+        perror("pidfd_open test");
+        return 2;
+    }
+    int sent = (int)syscall(SYS_pidfd_send_signal, fd, SIGTERM, NULL, 0);
+    int status = 0;
+    if (sent < 0 || waitpid(child, &status, 0) != child ||
+        !WIFSIGNALED(status) || WTERMSIG(status) != SIGTERM) {
+        close(fd);
+        fprintf(stderr, "VEYRA_STAGE1_FAILURE: pidfd did not terminate its pinned child\n");
+        return 1;
+    }
+    errno = 0;
+    int stale = (int)syscall(SYS_pidfd_send_signal, fd, SIGKILL, NULL, 0);
+    int stale_errno = errno;
+    close(fd);
+    if (stale != -1 || stale_errno != ESRCH) {
+        fprintf(stderr, "VEYRA_STAGE1_FAILURE: stale pidfd did not fail closed\n");
+        return 1;
+    }
+    puts("VEYRA_STAGE1_PIDFD_STALE_SIGNAL_REJECTED");
+    return 0;
+}
+
 /* A pinned procfd source cannot be bind-mounted directly by the
  * unprivileged user namespace on our tested Alpine kernel (EINVAL).
  * Instead, initial-namespace root prepares the mount from the validated
@@ -574,7 +612,8 @@ static int test_directory_identity_guard(void) {
     }
     puts("VEYRA_STAGE1_ROOTFS_INODE_GUARD_PASS");
     if (test_fd_bind_after_name_swap() != 0 ||
-        test_fd_close_policy() != 0)
+        test_fd_close_policy() != 0 ||
+        test_pidfd_signals() != 0)
         return 1;
     return 0;
 }
@@ -701,6 +740,23 @@ static void launch_user(const struct child_args *ctx) {
     if (WIFEXITED(status)) _exit(WEXITSTATUS(status));
     _exit(1);
 }
+static void close_user_pidfd(void) {
+    if (user_pidfd >= 0) {
+        close(user_pidfd);
+        user_pidfd = -1;
+    }
+}
+/* The manager must NEVER signal a mere numeric PID returned over a pipe.
+ * pidfd_send_signal targets the kernel-pinned task, not a future PID reuse.
+ */
+static int signal_user_pid1(int signo) {
+    if (user_pid1 <= 1 || user_pid1 == getpid() || user_pidfd < 0) {
+        errno = EPERM;
+        return -1;
+    }
+    return (int)syscall(SYS_pidfd_send_signal, user_pidfd, signo, NULL, 0);
+}
+
 static void reap_child(void) {
     if (launcher_pid <= 0) return;
     int status = 0;
@@ -712,6 +768,7 @@ static void reap_child(void) {
         else if (WIFSIGNALED(status)) last_exit_code = 128 + WTERMSIG(status);
         else last_exit_code = 1;
     }
+    close_user_pidfd();
     launcher_pid = 0;
     user_pid1 = 0;
     if (state == STATE_STOPPING) state = STATE_STOPPED;
@@ -735,7 +792,7 @@ static int stop_environment(void) {
      * shutdown. Refuse dangerous target PIDs and leave the environment
      * visibly FAILED, rather than signalling the initial PID namespace.
      */
-    if (user_pid1 <= 1 || user_pid1 == getpid()) {
+    if (user_pid1 <= 1 || user_pid1 == getpid() || user_pidfd < 0) {
         state = STATE_FAILED;
         fprintf(stderr, "VEYRA_STAGE1_STOP_REFUSED_INVALID_PID target=%ld manager=%ld\n",
                 (long)user_pid1, (long)getpid());
@@ -746,7 +803,7 @@ static int stop_environment(void) {
             (long)user_pid1, (long)getpid());
     fflush(stderr);
     state = STATE_STOPPING;
-    if (kill(user_pid1, SIGTERM) < 0 && errno != ESRCH) {
+    if (signal_user_pid1(SIGTERM) < 0 && errno != ESRCH) {
         state = STATE_RUNNING;
         return -1;
     }
@@ -754,7 +811,7 @@ static int stop_environment(void) {
         state = STATE_STOPPED;
         return 0;
     }
-    if (user_pid1 > 0) (void)kill(user_pid1, SIGKILL);
+    if (user_pidfd >= 0) (void)signal_user_pid1(SIGKILL);
     if (wait_for_child(STOP_TIMEOUT_MS) == 0) {
         state = STATE_STOPPED;
         return 0;
@@ -851,7 +908,28 @@ static int start_environment(char *response, size_t response_size) {
         close(rootfd);
         return -1;
     }
+    /* pidfd_open is mandatory, not an optional optimisation. If the nested
+     * PID disappeared already, fail closed and terminate its launcher.
+     */
+    if (nested_pid <= 1 || nested_pid == (long)getpid()) {
+        if (launcher_pid > 0) (void)kill(launcher_pid, SIGKILL);
+        (void)wait_for_child(STOP_TIMEOUT_MS);
+        state = STATE_FAILED;
+        snprintf(response, response_size, "ERROR launch: invalid user PID 1");
+        close(rootfd);
+        return -1;
+    }
+    int pinned_pid = (int)syscall(SYS_pidfd_open, (pid_t)nested_pid, 0);
+    if (pinned_pid < 0) {
+        if (launcher_pid > 0) (void)kill(launcher_pid, SIGKILL);
+        (void)wait_for_child(STOP_TIMEOUT_MS);
+        state = STATE_FAILED;
+        snprintf(response, response_size, "ERROR launch: cannot pin user PID 1");
+        close(rootfd);
+        return -1;
+    }
     user_pid1 = (pid_t)nested_pid;
+    user_pidfd = pinned_pid;
     state = STATE_STARTING;
     for (int elapsed = 0; elapsed < START_TIMEOUT_MS; elapsed += 100) {
         reap_child();
@@ -874,7 +952,7 @@ static int start_environment(char *response, size_t response_size) {
                 return 0;
         }
         if (count > baseline + 1) {
-            (void)kill(user_pid1, SIGKILL);
+            (void)signal_user_pid1(SIGKILL);
             (void)wait_for_child(STOP_TIMEOUT_MS);
             state = STATE_FAILED;
             snprintf(response, response_size, "ERROR launch: persistent boot counter jumped unexpectedly");
@@ -883,7 +961,7 @@ static int start_environment(char *response, size_t response_size) {
         }
         usleep(100000);
     }
-    (void)kill(user_pid1, SIGKILL);
+    (void)signal_user_pid1(SIGKILL);
     (void)wait_for_child(STOP_TIMEOUT_MS);
     state = STATE_FAILED;
     snprintf(response, response_size, "ERROR launch: OpenRC readiness timed out");
