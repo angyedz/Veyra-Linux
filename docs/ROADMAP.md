@@ -58,6 +58,8 @@ Record relevant commit IDs, CI runs, guest serial logs and failure modes for eac
 
 **QEMU lifecycle milestone (PR #10):** the system-side test manager passed start/status/stop, restart and nested PID 1 crash detection; rootfs checks rejected entries outside mapped ownership, an unapproved setuid file, a nested mount and a block device. Two guest boots reused one disk and finished with counts 2 then 4. [QEMU evidence](https://github.com/angyedz/Veyra-Linux/actions/runs/39312323358) · [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39312323395) · [Stage 1 prototype details](STAGE1-USER-ROOTFS.md). This remains a disposable prototype, not a production login path or security sign-off.
 
+**Manager-exit cleanup milestone (PR #11):** QEMU killed the system-side manager while the user environment was running, verified that launcher death terminated nested PID 1, then restarted the manager and confirmed STOPPED plus stale-socket recovery. The same persistent disk passed two guest boots with counts 3 then 6. [QEMU evidence](https://github.com/angyedz/Veyra-Linux/actions/runs/39318056661) · [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39318056566). This is still a prototype lifecycle check, not production crash recovery or a host security sign-off.
+
 - [ ] Decide persistent rootfs/state layout outside system A/B; preserve user package DB, services, `/home` and `/nix` across system rollback.
 - [ ] Build a clean Alpine rootfs with its own init/service configuration and suitable `/dev`, `/run`, `/proc`, `/sys` exposure.
 - [ ] Implement **multi-ID UID/GID mappings** and ordinary user accounts plus a working inner `sudo`. Rootless `--map-root-user` by itself cannot provide this.
@@ -196,7 +198,7 @@ Record relevant commit IDs, CI runs, guest serial logs and failure modes for eac
 ## Immediate execution order
 
 1. Stage 0: finish PR #8 audit, CI gates and review.
-2. Stage 1: supervise start/status/stop/crash of separate user init, validate persistent rootfs ownership and device contents, and retain the **multi-ID** mapping proof in disposable QEMU.
+2. Stage 1: productionize the QEMU-proven start/status/stop/crash and manager-exit cleanup path; integrate persistent rootfs, login, service configuration and retained **multi-ID** mapping proof.
 3. Stage 2: prove `sudo` cannot escape the environment.
 4. Stage 3: controlled user internet and VPN while host network stays independent.
 5. In parallel, Stage 7: complete the real A -> B -> A QEMU cycle.
@@ -215,3 +217,4 @@ environment must not prevent the system's maintenance/recovery path.
 
 No checklist item may be marked complete solely because a script or a
 GitHub Actions workflow exists; attach actual test evidence.
+

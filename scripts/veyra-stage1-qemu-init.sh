@@ -142,7 +142,7 @@ second=$(/host-supervisor start)
 case "$second" in RUNNING\ pid=*\ count=*) ;; *) fail "restart failed: $second" ;; esac
 user_pid=$(/bin/busybox printf '%s\n' "$second" | /bin/busybox cut -d' ' -f2 | /bin/busybox cut -d= -f2)
 second_count=$(/bin/busybox printf '%s\n' "$second" | /bin/busybox cut -d' ' -f3 | /bin/busybox cut -d= -f2)
-expected_count=$((expected * 2))
+expected_count=$((expected * 3 - 1))
 if [ "$second_count" -ne "$expected_count" ]; then
     fail "persistent boot counter was $second_count, expected $expected_count"
 fi
@@ -155,6 +155,53 @@ for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
 done
 if [ "$crash_seen" -ne 1 ]; then fail 'manager did not detect nested PID 1 crash'; fi
 echo "VEYRA_STAGE1_LIFECYCLE_PASS boot=$expected starts=2 final-count=$second_count crash=detected"
+
+# A manager crash must not leave its user PID namespace running unattended.
+third=$(/host-supervisor start)
+case "$third" in RUNNING\ pid=*\ count=*) ;; *) fail "third start failed: $third" ;; esac
+user_pid=$(/bin/busybox printf '%s\n' "$third" | /bin/busybox cut -d' ' -f2 | /bin/busybox cut -d= -f2)
+third_count=$(/bin/busybox printf '%s\n' "$third" | /bin/busybox cut -d' ' -f3 | /bin/busybox cut -d= -f2)
+expected_third_count=$((expected * 3))
+if [ "$third_count" -ne "$expected_third_count" ]; then
+    fail "manager-crash test boot counter was $third_count, expected $expected_third_count"
+fi
+/bin/busybox kill -KILL "$manager_pid"
+wait "$manager_pid" 2>/dev/null || :
+manager_pid=0
+user_gone=0
+for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+    process_state=""
+    if [ -r "/proc/$user_pid/stat" ]; then
+        process_state=$(/bin/busybox sed 's/^.*) //' "/proc/$user_pid/stat" | /bin/busybox cut -d' ' -f1)
+    fi
+    case "$process_state" in
+        Z|X) user_gone=1; break ;;
+    esac
+    if ! /bin/busybox kill -0 "$user_pid" 2>/dev/null; then user_gone=1; break; fi
+    /bin/busybox sleep 1
+done
+if [ "$user_gone" -ne 1 ]; then
+    fail "user PID 1 $user_pid survived system-side manager death"
+fi
+echo "VEYRA_STAGE1_MANAGER_DEATH_CLEANUP_PASS boot=$expected count=$third_count environment=stopped"
+
+# Restart also exercises stale control-socket cleanup after an unclean exit.
+/host-supervisor serve /mnt/veyra-user &
+manager_pid=$!
+manager_ready=0
+manager_status=""
+for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+    if manager_status=$(/host-supervisor status 2>/dev/null); then
+        manager_ready=1
+        break
+    fi
+    /bin/busybox sleep 1
+done
+if [ "$manager_ready" -ne 1 ] || [ "$manager_status" != "STOPPED" ]; then
+    fail "manager did not recover cleanly after crash: $manager_status"
+fi
+echo 'VEYRA_STAGE1_MANAGER_RECOVERY_PASS state=STOPPED stale-socket=cleared'
 echo "VEYRA_STAGE1_QEMU_SUCCESS: user environment lifecycle and persistence boot $expected"
 /bin/busybox sync
 /bin/busybox poweroff -f
+

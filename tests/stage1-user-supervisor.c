@@ -16,6 +16,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mount.h>
+#include <sys/prctl.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/statfs.h>
@@ -42,6 +43,7 @@ enum manager_state { STATE_STOPPED, STATE_STARTING, STATE_RUNNING,
 struct child_args {
     int ready_write, proceed_read, pid_write;
     const char *root;
+    pid_t expected_parent;
 };
 struct scan_state {
     dev_t device;
@@ -385,7 +387,15 @@ static void proof_user_sudo(void) {
     if (waitpid(pid, &status, 0) != pid || !WIFEXITED(status) ||
         WEXITSTATUS(status) != 0) die("inner sudo privilege elevation failed");
 }
-static void inner_pid_one(const char *root) {
+static void inner_pid_one(const char *root, int ready_fd) {
+    /* The launcher waits for this acknowledgment before reporting the PID.
+     * If the launcher dies before this signal is armed, the pipe is closed
+     * and this process exits instead of becoming an orphaned environment.
+     */
+    if (prctl(PR_SET_PDEATHSIG, SIGKILL) < 0 ||
+        write_all(ready_fd, "D", 1) < 0)
+        _exit(1);
+    close(ready_fd);
     if (geteuid() != 0 || getegid() != 0 || getpid() != 1)
         die("inner UID/GID or PID 1 mismatch");
     if (sethostname("veyra-user", 10) < 0) die("namespace hostname");
@@ -427,6 +437,12 @@ static void launch_user(const struct child_args *ctx) {
     if (client_fd >= 0) close(client_fd);
     if (setgroups(0, NULL) < 0 || setgid(OUTER_ROOT_UID) < 0 ||
         setuid(OUTER_ROOT_UID) < 0) die("drop to unprivileged outside UID 100000");
+    /* Credential changes clear PR_SET_PDEATHSIG, so arm it again after the
+     * drop and verify that the system-side manager is still our parent.
+     */
+    if (prctl(PR_SET_PDEATHSIG, SIGKILL) < 0 ||
+        getppid() != ctx->expected_parent)
+        _exit(1);
     if (geteuid() != OUTER_ROOT_UID) die("launcher remains privileged");
     if (unshare(CLONE_NEWUSER) < 0) die("create user namespace");
     write_text(ctx->ready_write, "R");
@@ -436,16 +452,32 @@ static void launch_user(const struct child_args *ctx) {
         die("system manager did not install UID/GID mappings");
     close(ctx->proceed_read);
     if (geteuid() != 0 || getegid() != 0) die("mapped namespace root unavailable");
+    if (prctl(PR_SET_PDEATHSIG, SIGKILL) < 0 ||
+        getppid() != ctx->expected_parent)
+        _exit(1);
     if (unshare(CLONE_NEWNS | CLONE_NEWNET | CLONE_NEWIPC |
                 CLONE_NEWUTS | CLONE_NEWPID) < 0)
         die("create mount/network/IPC/UTS/PID namespaces");
+    int init_ready[2];
+    if (pipe2(init_ready, O_CLOEXEC) < 0) die("create PID 1 death-signal handshake");
     pid_t pid1 = fork();
     if (pid1 < 0) die("fork nested PID 1");
     if (!pid1) {
+        close(init_ready[0]);
         close(ctx->pid_write);
-        inner_pid_one(ctx->root);
+        inner_pid_one(ctx->root, init_ready[1]);
         _exit(1);
     }
+    close(init_ready[1]);
+    char init_ready_signal = 0;
+    if (read_one_timeout(init_ready[0], &init_ready_signal, 10000) < 0 ||
+        init_ready_signal != 'D') {
+        close(init_ready[0]);
+        (void)kill(pid1, SIGKILL);
+        (void)waitpid(pid1, NULL, 0);
+        die("nested PID 1 death-signal setup failed");
+    }
+    close(init_ready[0]);
     char value[48];
     int n = snprintf(value, sizeof(value), "%ld\n", (long)pid1);
     if (n <= 0 || n >= (int)sizeof(value)) die("format user PID 1");
@@ -530,6 +562,7 @@ static int start_environment(char *response, size_t response_size) {
         snprintf(response, response_size, "ERROR manager: cannot create launch pipes");
         return -1;
     }
+    pid_t expected_parent = getpid();
     pid_t pid = fork();
     if (pid < 0) {
         close(rootfd);
@@ -537,10 +570,14 @@ static int start_environment(char *response, size_t response_size) {
         return -1;
     }
     if (!pid) {
+        if (prctl(PR_SET_PDEATHSIG, SIGKILL) < 0 ||
+            getppid() != expected_parent)
+            _exit(1);
         close(ready[0]); close(proceed[1]); close(pid_pipe[0]); close(rootfd);
         struct child_args args = {
             .ready_write = ready[1], .proceed_read = proceed[0],
             .pid_write = pid_pipe[1], .root = ROOT_PATH,
+            .expected_parent = expected_parent,
         };
         launch_user(&args);
         _exit(1);
@@ -781,3 +818,4 @@ int main(int argc, char **argv) {
             argv[0], ROOT_PATH);
     return 2;
 }
+
