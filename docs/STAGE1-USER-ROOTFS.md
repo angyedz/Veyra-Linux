@@ -171,14 +171,19 @@ This prototype deliberately has the following gaps:
    checks allowlisted and forbidden FDs. **Console FDs 0–2** are still
    inherited from the VM system for serial diagnostics and need explicitly
    controlled replacement in production.
-4. The launcher binds the validated rootfs using its already-open directory
-   FD via `/proc/self/fd/N` and checks the mounted inode before pivot.
-   The QEMU self-test deliberately replaces a bind-mounted source name
-   and confirms the original directory is selected. The system manager also
-   uses the original validated FD to check OpenRC readiness instead of
-   re-opening the mutable rootfs path. **This mitigates pathname-substitution
-   TOCTOU**, not concurrent mutation of the files inside that inode.
-   Production storage policy and the full lifecycle still need review.
+4. The system-side manager uses its already-open validated directory FD
+   (`/proc/self/fd/N`) to create a bind mount under a root-owned, non-writable
+   staging parent. The unprivileged child binds this **system-controlled
+   staging mount**, not the mutable original rootfs pathname. It verifies
+   the directory inode before pivoting. A QEMU self-test replaces a bind
+   mount's visible name and proves that a system-side FD bind still selects
+   the original directory. This avoids trying to bind a privileged procfd
+   directly from a less-privileged user namespace (which returned EINVAL
+   in QEMU). The manager also keeps its validated FD during OpenRC readiness.
+   **This mitigates pathname substitution**, not changes to content within
+   a rootfs by another privileged writer. An unclean manager exit may leave
+   the protected stage mount until the next start or VM reboot.
+   Production storage policy and lifecycle still require review.
 5. **Normal interactive user login, password policy, vpkg and KDE** are *not* integrated. `sudo` is validated **only inside this controlled disposable guest**, with an explicit temporary NOPASSWD test rule. User-side sudo maps to outside UID 100000; it does not control the system-side manager. This does not prevent a shared-kernel exploit.
 6. System-owned Plasma/KWin and user-side plasmashell/KRunner, session bus,
    graphics access, VPN traffic and A/B integration are separate future

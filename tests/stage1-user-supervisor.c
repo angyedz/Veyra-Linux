@@ -32,6 +32,12 @@
 #define ROOT_PATH "/mnt/veyra-user"
 #define RUN_DIR "/run/veyra-user-manager"
 #define SOCKET_PATH RUN_DIR "/control.sock"
+/* Root-owned (0711) staging parent: the namespace user can traverse
+ * but cannot change the mount name. The initial-namespace manager
+ * mounts the already-validated directory FD here before fork.
+ */
+#define PIN_PARENT "/run/veyra-user-rootfs-pin"
+#define PIN_PATH PIN_PARENT "/rootfs"
 #define OUTER_ROOT_UID 100000U
 #define OUTER_NORMAL_UID 101000U
 #define MAPPED_ID_LIMIT 165536U
@@ -514,6 +520,44 @@ static int test_fd_close_policy(void) {
     return 0;
 }
 
+/* A pinned procfd source cannot be bind-mounted directly by the
+ * unprivileged user namespace on our tested Alpine kernel (EINVAL).
+ * Instead, initial-namespace root prepares the mount from the validated
+ * FD in a trusted root-owned directory before creating the child.
+ * The user namespace receives a locked inherited mount and may bind
+ * only this staged path. No untrusted user may rename the stage path.
+ */
+static int ensure_pin_directory(void) {
+    if (mkdir(PIN_PARENT, 0711) < 0 && errno != EEXIST) return -1;
+    struct stat st;
+    if (lstat(PIN_PARENT, &st) < 0 || !S_ISDIR(st.st_mode) ||
+        st.st_uid != 0 || (st.st_mode & 07777) != 0711) {
+        errno = EPERM;
+        return -1;
+    }
+    if (mkdir(PIN_PATH, 0700) < 0 && errno != EEXIST) return -1;
+    return 0;
+}
+static int stage_validated_rootfs(int rootfd) {
+    /* A killed manager may leave a previous system-side staging mount.
+     * Detach just that controlled mountpoint; never the real root disk.
+     */
+    if (umount2(PIN_PATH, MNT_DETACH) < 0 && errno != EINVAL)
+        return -1;
+    struct stat st;
+    if (lstat(PIN_PATH, &st) < 0 || !S_ISDIR(st.st_mode) ||
+        st.st_uid != 0 || (st.st_mode & 07777) != 0700) {
+        errno = EPERM;
+        return -1;
+    }
+    if (bind_directory_fd(rootfd, PIN_PATH) < 0) return -1;
+    if (directory_identity_matches(rootfd, PIN_PATH) != 1) {
+        (void)umount2(PIN_PATH, MNT_DETACH);
+        errno = ESTALE;
+        return -1;
+    }
+    return 0;
+}
 static int test_directory_identity_guard(void) {
     if (geteuid() != 0) {
         fprintf(stderr, "rootfs inode guard test requires system-side UID 0\n");
@@ -554,8 +598,12 @@ static void inner_pid_one(int root_fd, int ready_fd) {
     if (mount("tmpfs", bootstrap, "tmpfs", MS_NOSUID | MS_NODEV, "mode=0700") < 0)
         die("mount private intermediate tmpfs root");
     if (mkdir(newroot, 0700) < 0) die("create temporary newroot");
-    if (bind_directory_fd(root_fd, newroot) < 0)
-        die("bind pinned validated user rootfs descriptor");
+    /* The system manager attached the pinned descriptor to this
+     * protected mountpoint before fork. Using a procfd as the source
+     * here can fail in a less-privileged mount namespace with EINVAL.
+     */
+    if (mount(PIN_PATH, newroot, NULL, MS_BIND, NULL) < 0)
+        die("bind trusted system-staged rootfs");
     int identity_matches = directory_identity_matches(root_fd, newroot);
     if (identity_matches != 1) {
         if (identity_matches < 0) die("inspect bound user rootfs identity");
@@ -711,6 +759,12 @@ static int start_environment(char *response, size_t response_size) {
     char error[256] = {0};
     if (validate_rootfs(&rootfd, error, sizeof(error)) < 0) {
         snprintf(response, response_size, "ERROR rootfs: %s", error);
+        return -1;
+    }
+    if (stage_validated_rootfs(rootfd) < 0) {
+        close(rootfd);
+        snprintf(response, response_size,
+                 "ERROR rootfs: cannot mount validated FD into trusted system stage");
         return -1;
     }
     int baseline = read_boot_count(rootfd);
@@ -920,7 +974,8 @@ static int manager_service(void) {
         return -1;
     }
     close(rootfd);
-    if (prepare_socket() < 0) return -1;
+    if (ensure_pin_directory() < 0 || prepare_socket() < 0)
+        return -1;
     struct sigaction action = {0};
     action.sa_handler = on_signal;
     sigemptyset(&action.sa_mask);
@@ -946,6 +1001,11 @@ static int manager_service(void) {
     if (launcher_pid > 0) (void)stop_environment();
     if (client_fd >= 0) close(client_fd);
     if (listener_fd >= 0) close(listener_fd);
+    /* Normal shutdown drops the trusted mount. A SIGKILL leaves it
+     * to be safely detached on the next start.
+     */
+    if (umount2(PIN_PATH, MNT_DETACH) < 0 && errno != EINVAL)
+        perror("detach trusted rootfs stage");
     (void)unlink(SOCKET_PATH);
     return 0;
 }
