@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import random
 import subprocess
 import sys
 import tempfile
@@ -33,6 +34,7 @@ class SnapCoreTests(unittest.TestCase):
     def reopen(self) -> SnapCoreVolume:
         self.volume.close()
         self.volume = SnapCoreVolume.open(self.store)
+        self.addCleanup(self.volume.close)
         return self.volume
 
     def test_sparse_partial_writes_and_bounds(self) -> None:
@@ -97,6 +99,53 @@ class SnapCoreTests(unittest.TestCase):
         self.reopen()
         self.assertEqual(self.volume.read(0, 8), b"new-head")
         self.assertEqual(len(self.volume.snapshots(verify=True)), 2)
+
+    def test_deterministic_operation_history_matches_reference_volume(self) -> None:
+        randomizer = random.Random(0x5A17)
+        expected = bytearray(self.volume.size_bytes)
+        retained: dict[str, bytes] = {}
+
+        for step in range(160):
+            operation = randomizer.randrange(10)
+            if operation < 6 or not retained:
+                offset = randomizer.randrange(self.volume.size_bytes)
+                limit = min(64, self.volume.size_bytes - offset)
+                payload = bytes(
+                    randomizer.randrange(256)
+                    for _ in range(randomizer.randrange(1, limit + 1))
+                )
+                previous_generation = self.volume.head_generation
+                self.volume.write(offset, payload)
+                expected[offset : offset + len(payload)] = payload
+                self.assertEqual(self.volume.head_generation, previous_generation + 1)
+            elif operation < 8 and len(retained) < 12:
+                name = f"generated-{step}"
+                previous_generation = self.volume.head_generation
+                self.volume.snapshot(name)
+                retained[name] = bytes(expected)
+                self.assertEqual(self.volume.head_generation, previous_generation)
+            else:
+                name = randomizer.choice(sorted(retained))
+                previous_generation = self.volume.head_generation
+                self.volume.rollback(name)
+                expected = bytearray(retained[name])
+                self.assertEqual(self.volume.head_generation, previous_generation + 1)
+
+            self.assertEqual(self.volume.read(0, len(expected)), bytes(expected))
+            if step % 32 == 0:
+                self.volume.verify()
+            if step in (31, 79, 127):
+                self.reopen()
+                self.assertEqual(self.volume.read(0, len(expected)), bytes(expected))
+
+        self.assertEqual(
+            {item["name"] for item in self.volume.snapshots(verify=True)},
+            set(retained),
+        )
+        for name, contents in sorted(retained.items()):
+            self.volume.rollback(name)
+            self.assertEqual(self.volume.read(0, len(contents)), contents)
+        self.volume.verify()
 
     def test_snapshot_names_and_duplicate_names_fail_safely(self) -> None:
         for invalid in ("", ".", "..", "../escape", "has space", "slash/name"):
