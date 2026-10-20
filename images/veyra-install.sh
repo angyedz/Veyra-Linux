@@ -37,8 +37,11 @@ fi
 
 log="${XDG_CACHE_HOME:-$HOME/.cache}/veyra-calamares.log"
 mkdir -p "$(dirname "$log")"
-if sudo -n --preserve-env=DISPLAY,WAYLAND_DISPLAY,XDG_RUNTIME_DIR,DBUS_SESSION_BUS_ADDRESS,QT_QPA_PLATFORM,XAUTHORITY \
-    /usr/bin/calamares >"$log" 2>&1; then
+run_calamares() {
+    sudo -n --preserve-env=DISPLAY,WAYLAND_DISPLAY,XDG_RUNTIME_DIR,DBUS_SESSION_BUS_ADDRESS,QT_QPA_PLATFORM,XAUTHORITY \
+        /usr/bin/calamares
+}
+if run_calamares >"$log" 2>&1; then
     exit 0
 fi
 
