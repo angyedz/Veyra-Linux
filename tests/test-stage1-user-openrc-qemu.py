@@ -35,6 +35,7 @@ def guest_boot(qemu, kernel, initramfs, user_disk, qemu_boot, logfile):
             b"VEYRA_STAGE1_ROOTFS_INODE_GUARD_PASS",
             b"VEYRA_STAGE1_ROOTFS_FD_BIND_SWAP_PASS",
             b"VEYRA_STAGE1_FD_SANITIZATION_PASS",
+            b"VEYRA_STAGE1_PIDFD_STALE_SIGNAL_REJECTED",
             b"VEYRA_STAGE1_ROOTFS_REJECT_NESTED_MOUNT",
             b"VEYRA_STAGE1_ROOTFS_REJECT_UNMAPPED_OWNER",
             b"VEYRA_STAGE1_ROOTFS_REJECT_BLOCK_DEVICE",

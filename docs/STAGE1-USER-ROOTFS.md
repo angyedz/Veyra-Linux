@@ -154,6 +154,13 @@ and [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/3931805
       fails closed if a forbidden descriptor survives. The child closes all
       descriptors >=3 before running user code.
 
+- [x] QEMU assert pidfd-based process signalling: a live child receives its
+      signal and a pidfd referring to the reaped child rejects further
+      signals with ESRCH. The Stage 1 manager must acquire a pidfd before
+      reporting the user environment running, uses that handle for TERM/KILL,
+      and closes it when the supervised launcher exits. A missing pidfd is a
+      failed start, not a fallback to signalling a numeric PID.
+
 **Recent evidence:** [QEMU Stage 1 CI run 39404374568](https://github.com/angyedz/Veyra-Linux/actions/runs/39404374568) recorded both clean guest boots, persistent counts 3 → 6 and manager crash recovery. The [integration CI run 39404374542](https://github.com/angyedz/Veyra-Linux/actions/runs/39404374542) passed. A preceding QEMU run exposed a guest shutdown race; the manager now refuses to signal initial-namespace PID 1 or its own PID and reports the signal target for diagnosis.
 
 None of these prove **production** host security. This remains a disposable
@@ -203,3 +210,9 @@ This prototype deliberately has the following gaps:
 updates or boot control through user `sudo`. The nested user environment
 must be independently recoverable.
 
+
+**PID lifecycle hardening:** `pidfd_open` and `pidfd_send_signal` require
+a sufficiently recent Linux kernel (supported by the QEMU kernel in CI).
+This is a test-only Stage 1 improvement and **does not** replace cgroup
+service ownership, time-of-check synchronization, host security isolation,
+or a production signal policy.
