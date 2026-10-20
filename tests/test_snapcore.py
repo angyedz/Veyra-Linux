@@ -6,11 +6,13 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 import random
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -156,7 +158,7 @@ class SnapCoreTests(unittest.TestCase):
         self.volume.verify()
 
     def test_seeded_prune_gc_histories_match_reference_volume(self) -> None:
-        for seed in (0xC0A1, 0xC0A2, 0xC0A3, 0xC0A4):
+        for seed in range(0xC0A1, 0xC0B1):
             with self.subTest(seed=seed), tempfile.TemporaryDirectory(
                 prefix="veyra-snapcore-model-"
             ) as temp:
@@ -236,6 +238,44 @@ class SnapCoreTests(unittest.TestCase):
                             volume.verify()
                 finally:
                     volume.close()
+
+    def test_shared_handle_serializes_threaded_partial_writes_and_reads(self) -> None:
+        writer_count = 4
+        writes_per_writer = 60
+        barrier = threading.Barrier(writer_count + 2)
+
+        def writer(index: int) -> None:
+            barrier.wait(timeout=10)
+            value = bytes([ord("A") + index])
+            for _ in range(writes_per_writer):
+                self.volume.write(index, value)
+
+        def reader() -> None:
+            barrier.wait(timeout=10)
+            allowed = {0, *(ord("A") + index for index in range(writer_count))}
+            for _ in range(300):
+                observed = self.volume.read(0, writer_count)
+                self.assertEqual(len(observed), writer_count)
+                self.assertTrue(set(observed).issubset(allowed), observed)
+
+        def checkpoint_writer() -> None:
+            barrier.wait(timeout=10)
+            for index in range(6):
+                self.volume.snapshot(f"thread-checkpoint-{index}")
+
+        with ThreadPoolExecutor(max_workers=writer_count + 2) as workers:
+            futures = [workers.submit(writer, index) for index in range(writer_count)]
+            futures.extend((workers.submit(reader), workers.submit(checkpoint_writer)))
+            for future in futures:
+                future.result(timeout=30)
+
+        self.assertEqual(self.volume.read(0, writer_count), b"ABCD")
+        self.assertEqual(
+            self.volume.head_generation,
+            1 + writer_count * writes_per_writer,
+        )
+        self.assertEqual(len(self.volume.snapshots(verify=True)), 6)
+        self.volume.verify()
 
     def test_independent_writers_serialize_on_the_volume_lock(self) -> None:
         self.volume.close()

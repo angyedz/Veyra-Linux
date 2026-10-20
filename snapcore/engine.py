@@ -9,11 +9,13 @@ block device, a filesystem-consistent snapshot service, or a security boundary.
 from __future__ import annotations
 
 import fcntl
+from functools import wraps
 import hashlib
 import json
 import os
 import re
 import stat
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -29,6 +31,16 @@ _HEX = re.compile(r"^[0-9a-f]{64}$")
 _SNAPSHOT_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 _NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
 _FAULT_HOOK = Optional[Callable[[str], None]]
+
+
+def _synchronized(method: Callable[..., Any]) -> Callable[..., Any]:
+    """Serialize operations sharing one open volume handle across threads."""
+    @wraps(method)
+    def wrapper(self: "SnapCoreVolume", *args: Any, **kwargs: Any) -> Any:
+        with self._thread_lock:
+            return method(self, *args, **kwargs)
+
+    return wrapper
 
 
 class SnapCoreError(Exception):
@@ -179,6 +191,7 @@ class SnapCoreVolume:
         self.root = root
         self._lock_fd = lock_fd
         self._fault_hook = fault_hook
+        self._thread_lock = threading.RLock()
         self._closed = False
         self._poisoned = False
         self._state: dict[str, Any] = {}
@@ -293,6 +306,7 @@ class SnapCoreVolume:
             os.close(lock_fd)
             raise
 
+    @_synchronized
     def close(self) -> None:
         if not self._closed:
             self._closed = True
@@ -301,37 +315,45 @@ class SnapCoreVolume:
             finally:
                 os.close(self._lock_fd)
 
+    @_synchronized
     def __enter__(self) -> "SnapCoreVolume":
         self._ensure_open()
         return self
 
+    @_synchronized
     def __exit__(self, exc_type: Any, exc: Any, traceback: Any) -> None:
         self.close()
 
     @property
+    @_synchronized
     def size_bytes(self) -> int:
         self._ensure_open()
         return self._state["format"]["size_bytes"]
 
     @property
+    @_synchronized
     def block_size(self) -> int:
         self._ensure_open()
         return self._state["format"]["block_size"]
 
     @property
+    @_synchronized
     def head_generation(self) -> int:
         self._ensure_open()
         return self._state["head_generation"]
 
     @property
+    @_synchronized
     def volume_id(self) -> str:
         self._ensure_open()
         return self._state["format"]["volume_id"]
 
+    @_synchronized
     def generations(self) -> list[dict[str, Any]]:
         self._ensure_open()
         return [dict(item) for item in self._state["generations"]]
 
+    @_synchronized
     def snapshots(self, *, verify: bool = False) -> list[dict[str, Any]]:
         self._ensure_open()
         result = [
@@ -344,6 +366,7 @@ class SnapCoreVolume:
                 self._verify_root(generation["root_id"], verify_extents=True)
         return result
 
+    @_synchronized
     def snapshot(self, name: str) -> dict[str, Any]:
         self._ensure_open()
         self._validate_snapshot_name(name)
@@ -365,6 +388,7 @@ class SnapCoreVolume:
         )
         return dict(self._state["snapshots"][name])
 
+    @_synchronized
     def write(self, offset: int, data: bytes | bytearray | memoryview) -> int:
         """Write bytes into a new immutable map generation using block CoW."""
         self._ensure_open()
@@ -413,6 +437,7 @@ class SnapCoreVolume:
         )
         return new_generation
 
+    @_synchronized
     def read(self, offset: int, length: int) -> bytes:
         """Read logical bytes, returning zeroes for unmapped sparse blocks."""
         self._ensure_open()
@@ -448,6 +473,7 @@ class SnapCoreVolume:
             ]
         return bytes(output)
 
+    @_synchronized
     def rollback(self, name: str) -> int:
         """Create a new writable head based on a retained immutable snapshot."""
         self._ensure_open()
@@ -470,6 +496,7 @@ class SnapCoreVolume:
         )
         return generation_id
 
+    @_synchronized
     def delete_snapshot(self, name: str) -> None:
         """Remove a checkpoint name without pruning its immutable generation."""
         self._ensure_open()
@@ -496,6 +523,7 @@ class SnapCoreVolume:
             snapshot_generation=snapshot["generation_id"],
         )
 
+    @_synchronized
     def prune_generations(self, keep_last: int) -> dict[str, Any]:
         """Compact history while retaining the head and every named checkpoint."""
         self._ensure_open()
@@ -576,6 +604,7 @@ class SnapCoreVolume:
             "compacted": True,
         }
 
+    @_synchronized
     def collect_garbage(self) -> dict[str, int]:
         """Remove only unreferenced immutable objects and abandoned temp files.
 
@@ -657,6 +686,7 @@ class SnapCoreVolume:
         _fsync_directory(candidates[0][0].parent)
         return removed_objects, removed_temps
 
+    @_synchronized
     def verify(self) -> dict[str, Any]:
         """Verify every retained generation, snapshot root, and referenced extent."""
         self._ensure_open()
