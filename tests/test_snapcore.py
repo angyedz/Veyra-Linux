@@ -250,6 +250,40 @@ class SnapCoreTests(unittest.TestCase):
                     self.assertEqual(reopened.read(0, 9), b"old-state")
                     reopened.verify()
 
+    def test_crash_after_first_extent_of_multiblock_write_keeps_old_head(self) -> None:
+        script = (
+            "import os,sys; "
+            "from snapcore import SnapCoreVolume; "
+            "v=SnapCoreVolume.open(sys.argv[1], "
+            "_fault_hook=lambda point: os._exit(87) if point == 'extent_fsync' else None); "
+            "v.write(0, bytes.fromhex(sys.argv[2])); "
+            "os._exit(0)"
+        )
+        with tempfile.TemporaryDirectory(prefix="veyra-snapcore-multiblock-") as temp:
+            store = Path(temp) / "volume"
+            with SnapCoreVolume.format(
+                store, size_bytes=8 * self.block_size, block_size=self.block_size
+            ) as baseline:
+                baseline.write(0, b"old-state")
+                baseline.snapshot("last-known-good")
+                old_head = baseline.head_generation
+
+            payload = bytes(range(2 * self.block_size))
+            child = subprocess.run(
+                [sys.executable, "-c", script, str(store), payload.hex()],
+                cwd=ROOT,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(child.returncode, 87, child.stderr)
+            with SnapCoreVolume.open(store) as recovered:
+                self.assertEqual(recovered.head_generation, old_head)
+                self.assertEqual(recovered.read(0, 9), b"old-state")
+                self.assertEqual(len(recovered.generations()), old_head)
+                self.assertEqual(len(recovered.snapshots(verify=True)), 1)
+                recovered.verify()
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
