@@ -1,6 +1,6 @@
 # Veyra SnapCore — protected block-level snapshots of the user environment
 
-**Status (2026-10-21): experimental file-backed engine prototype v0.2 in review.** The Python prototype and rootless replay tests live in `snapcore/` and `tests/test_snapcore.py`. Commit `01b0c20` passed all 20 then-current tests in [dedicated SnapCore CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39505545512) and [full integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39505545541). The current follow-up adds atomic journal compaction, protected checkpoint retention and crash replay tests; all 25 tests pass locally while CI for this follow-up is pending. It remains disconnected from boot, user storage, VRE and Guardian and is not production-ready. Related: [Veyra Resilience](VEYRA-RESILIENCE.md), [VRE](VEYRA-RECOVERY.md), [Roadmap](ROADMAP.md).
+**Status (2026-10-21): experimental file-backed engine prototype v0.2 in review.** The Python prototype and rootless replay tests live in `snapcore/` and `tests/test_snapcore.py`. Commit `d34e353` adds format-v2 journal compaction and checkpoint-preserving pruning; all 25 tests pass in [dedicated SnapCore CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39508181476) and [full integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39508181500). It remains disconnected from boot, user storage, VRE and Guardian and is not production-ready. Related: [Veyra Resilience](VEYRA-RESILIENCE.md), [VRE](VEYRA-RECOVERY.md), [Roadmap](ROADMAP.md).
 
 ## Decision and objectives
 
@@ -114,7 +114,7 @@ The common [Recovery Engine](VEYRA-RESILIENCE.md) accepts only authorized reques
 - [ ] Test separate user-root and `/home` volumes: destroy user-root files, restore user OS, and prove a newer personal document remains.
 - [ ] Test ENOSPC, metadata corruption, malicious snapshot catalog, invalid keys, damaged current head, backend crash, repeated rollback and interrupted restore.
 - [ ] Verify SnapCore can be activated **inside independently booted VRE** with a corrupted installed user/system root, including format compatibility across A/B.
-- [ ] Test quota/retention/pruning and prohibit automatic deletion of the only verified last-known-good snapshot.
+- [ ] Test production space reservation and quota/age-based retention policy; prohibit automatic deletion of the only verified last-known-good snapshot. Prototype pruning/replay tests are complete as listed above.
 - [ ] Require adversarial review and repeatable QEMU recovery evidence **before production default enablement**.
 
 **Do not tick these boxes until actual code and reproducible test results exist.**
