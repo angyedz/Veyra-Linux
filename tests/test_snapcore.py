@@ -106,7 +106,7 @@ class SnapCoreTests(unittest.TestCase):
         retained: dict[str, bytes] = {}
 
         for step in range(160):
-            operation = randomizer.randrange(10)
+            operation = randomizer.randrange(12)
             if operation < 6 or not retained:
                 offset = randomizer.randrange(self.volume.size_bytes)
                 limit = min(64, self.volume.size_bytes - offset)
@@ -124,16 +124,24 @@ class SnapCoreTests(unittest.TestCase):
                 self.volume.snapshot(name)
                 retained[name] = bytes(expected)
                 self.assertEqual(self.volume.head_generation, previous_generation)
-            else:
+            elif operation < 10:
                 name = randomizer.choice(sorted(retained))
                 previous_generation = self.volume.head_generation
                 self.volume.rollback(name)
                 expected = bytearray(retained[name])
                 self.assertEqual(self.volume.head_generation, previous_generation + 1)
+            else:
+                name = randomizer.choice(sorted(retained))
+                previous_generation = self.volume.head_generation
+                self.volume.delete_snapshot(name)
+                del retained[name]
+                self.assertEqual(self.volume.head_generation, previous_generation)
 
             self.assertEqual(self.volume.read(0, len(expected)), bytes(expected))
             if step % 32 == 0:
                 self.volume.verify()
+            if step in (63, 127):
+                self.volume.collect_garbage()
             if step in (31, 79, 127):
                 self.reopen()
                 self.assertEqual(self.volume.read(0, len(expected)), bytes(expected))
@@ -146,6 +154,37 @@ class SnapCoreTests(unittest.TestCase):
             self.volume.rollback(name)
             self.assertEqual(self.volume.read(0, len(contents)), contents)
         self.volume.verify()
+
+    def test_independent_writers_serialize_on_the_volume_lock(self) -> None:
+        self.volume.close()
+        self.volume = None
+        script = (
+            "import sys,time; "
+            "from snapcore import SnapCoreVolume; "
+            "with_error=False; "
+            "v=SnapCoreVolume.open(sys.argv[1]); "
+            "time.sleep(0.25); "
+            "generation=v.write(0, bytes.fromhex(sys.argv[2])); "
+            "print(generation); v.close()"
+        )
+        commands = [
+            [sys.executable, "-c", script, str(self.store), (bytes([value]) * 8).hex()]
+            for value in (ord("A"), ord("B"))
+        ]
+        processes = [
+            subprocess.Popen(command, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            for command in commands
+        ]
+        results = [process.communicate(timeout=10) + (process.returncode,) for process in processes]
+        for stdout, stderr, returncode in results:
+            self.assertEqual(returncode, 0, stderr)
+            self.assertIn(stdout.strip(), {"2", "3"})
+
+        with SnapCoreVolume.open(self.store) as recovered:
+            self.assertEqual(recovered.head_generation, 3)
+            self.assertEqual([item["generation_id"] for item in recovered.generations()], [1, 2, 3])
+            self.assertIn(recovered.read(0, 8), (b"A" * 8, b"B" * 8))
+            recovered.verify()
 
     def test_snapshot_names_and_duplicate_names_fail_safely(self) -> None:
         for invalid in ("", ".", "..", "../escape", "has space", "slash/name"):
