@@ -13,6 +13,11 @@ done
 [ -f scripts/test-iso.sh ]
 [ -f images/packages-desktop.txt ]
 [ -f calamares/settings.conf ]
+grep -q 'check: \[ ram, internet \]' calamares/modules/welcome.conf
+if grep -q 'requiredStorage:' calamares/modules/welcome.conf; then
+    echo 'Calamares must allow installation to begin on a blank drive' >&2
+    exit 1
+fi
 grep -qx linux-lts images/packages-desktop.txt
 if grep -Eq '^grub(-bios|-efi)?$' images/packages-desktop.txt; then
     echo 'GRUB must only be installed on the disk-backed target' >&2
@@ -22,17 +27,31 @@ grep -q 'apk add --no-cache grub grub-bios grub-efi' scripts/installer-prepare.s
 grep -qx plasma-desktop images/packages-desktop.txt
 grep -qx qt6-qtwayland images/packages-desktop.txt
 grep -qx sddm-openrc images/packages-desktop.txt
-test -f calamares/modules/packagechooser-desktop.conf
+grep -qx dialog images/packages-desktop.txt
+grep -q 'DIALOGRC=/etc/veyra/dialogrc' scripts/installer-tui.sh
+grep -q 'veyra-wheel' scripts/installer-tui.sh
+grep -q 'visudo -c -f /etc/sudoers.d/veyra-wheel' scripts/installer-tui.sh
+grep -q 'etc/skel/.config/autostart' images/genapkovl-veyra.sh
+grep -q 'etc/skel/.config/kwinrc' images/genapkovl-veyra.sh
 test -f scripts/hardware-detect.sh
 grep -q 'Session=plasma.desktop' images/genapkovl-veyra.sh
 grep -q 'NOPASSWD: ALL' images/genapkovl-veyra.sh
+grep -q 'QT_QPA_PLATFORM XAUTHORITY' images/genapkovl-veyra.sh
+grep -q 'QT_QPA_PLATFORM,XAUTHORITY' images/veyra-install.sh
+grep -q 'installer-tui.sh' images/genapkovl-veyra.sh
+grep -q 'slideshow: "show.qml"' calamares/branding/veyra/branding.desc
+grep -q 'productLogo: "veyra-logo.png"' calamares/branding/veyra/branding.desc
+grep -q 'branding/veyra/show.qml' images/genapkovl-veyra.sh
+grep -q 'branding/veyra/veyra-logo.png' images/genapkovl-veyra.sh
 grep -qx zram-init images/packages-desktop.txt
 grep -q 'HardwareAcceleration.*false' images/genapkovl-veyra.sh
 grep -q 'plasma-watchdog.sh' images/veyra-live-user.sh
 grep -qF "rm -f \"\$target/etc/sudoers.d/veyra-live\"" scripts/installer-prepare.sh
-grep -qF "rm -f \"\$target/etc/firefox/policies/policies.json\"" scripts/installer-prepare.sh
-grep -q '49-veyra-live.rules' images/genapkovl-veyra.sh
 grep -qF "rm -f \"\$target/etc/polkit-1/rules.d/49-veyra-live.rules\"" scripts/installer-prepare.sh
+grep -qF "rm -f \"\$target/etc/firefox/policies/policies.json\"" scripts/installer-prepare.sh
+grep -qF 'chmod 1777 "$target/tmp"' scripts/installer-prepare.sh
+grep -q '49-veyra-live.rules' images/genapkovl-veyra.sh
+grep -q 'dbus-uuidgen --ensure=/etc/machine-id' scripts/installer-prepare.sh
 grep -q 'GLENV_REF' scripts/bootstrap.sh
 grep -q 'apk add nix nix-openrc' scripts/bootstrap.sh
 grep -q 'extra-experimental-features = nix-command flakes' scripts/bootstrap.sh
@@ -63,6 +82,7 @@ trap 'rm -rf "$tmpdir"' EXIT HUP INT TERM
 printf '%s\n' 'public-key-fixture' > "$tmpdir/iso.rsa.pub"
 (cd "$tmpdir" && VEYRA_ISO_REPO_PUBLIC_KEY="$tmpdir/iso.rsa.pub" sh "$root/images/genapkovl-veyra.sh" veyra)
 tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/hostname'
+tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/veyra/dialogrc'
 tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/apk/keys/veyra-iso.rsa.pub'
 tar -xOf "$tmpdir/veyra.apkovl.tar.gz" etc/apk/keys/veyra-iso.rsa.pub | grep -qx 'public-key-fixture'
 tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'usr/local/bin/veyra-setup'
@@ -77,7 +97,14 @@ tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/init.d/veyra-live'
 tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'usr/local/lib/veyra/plasma-watchdog.sh'
 tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/calamares/settings.conf'
 tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/calamares/branding/veyra/desktop-plasma.svg'
+tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/calamares/branding/veyra/show.qml'
+tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/calamares/branding/veyra/veyra-logo.png'
 tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'usr/local/lib/veyra/installer-hardware.sh'
+tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'usr/local/bin/veyra-install-tui'
+tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'usr/share/applications/veyra-install-tui.desktop'
+tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/skel/.config/kwinrc'
+tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/skel/.config/autostart/veyra-plasma-watchdog.desktop'
+tar -xOf "$tmpdir/veyra.apkovl.tar.gz" etc/skel/.config/kwinrc | grep -qx 'Enabled=false'
 tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'usr/local/lib/veyra/installer-desktop.sh'
 tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'usr/local/lib/veyra/installer-copy.sh'
 

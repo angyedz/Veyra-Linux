@@ -6,7 +6,7 @@ The built image includes KDE Plasma 6 with a Wayland session, SDDM, PipeWire, co
 
 The temporary live account has no password, and both `sudo` and Polkit administrator actions work without one. The live root exists only in memory and its changes are discarded at reboot. The installer removes the live privilege rules before preparing the installed system; choose a password for the regular account in Calamares.
 
-The live image uses compressed zram swap and software rendering in Firefox to reduce memory and virtual GPU failures. Plasma is configured without desktop compositing in the live session, and a small session watchdog restarts `plasmashell` if it exits. These are live-session compatibility measures; they do not replace testing the VM or physical hardware.
+The live image uses compressed zram swap and software rendering in Firefox to reduce memory and virtual GPU failures. Plasma is configured without desktop compositing in the live session, and a small session watchdog restarts `plasmashell` if it exits. If Calamares cannot start, use **Install Veyra Linux (text mode)** from the KDE menu or `sudo veyra-install-tui` in a terminal.
 
 ## Memory and media
 
@@ -27,4 +27,4 @@ Use `-display vnc=:1` in headless environments and connect a VNC viewer on the h
 
 ## Installing
 
-The live image build pipeline compiles and bundles a native Qt6 Calamares package with Veyra's installation configuration. The QEMU tests cover the installation scripts and first boot on disposable blank virtual disks. The installer remains experimental: the Calamares GUI flow and physical hardware are not covered by those tests.
+The live image bundles Calamares and the guided terminal installer. Automated QEMU checks cover live boot and the Calamares executable in offscreen mode; they do not replace a visual Wayland session check or a physical-hardware install.

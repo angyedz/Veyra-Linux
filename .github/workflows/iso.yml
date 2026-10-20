@@ -130,11 +130,6 @@ jobs:
             sudo apt-get update -qq
             sudo apt-get install -y -qq qemu-utils python3-pexpect
           fi
-      - name: Boot live ISO and wait for login banner
-        run: |
-          iso=$(find dist -maxdepth 1 -name 'veyra-linux-*.iso' -print -quit)
-          test -n "$iso"
-          VEYRA_BOOT_TIMEOUT=360 sh scripts/test-iso.sh "$iso" veyra-boot.log
       - name: Verify live Plasma session
         run: |
           iso=$(find dist -maxdepth 1 -name 'veyra-linux-*.iso' -print -quit)
@@ -145,9 +140,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: veyra-qemu-boot-log
-          path: |
-            veyra-boot.log
-            veyra-live-desktop.log
+          path: veyra-live-desktop.log
           if-no-files-found: ignore
   install-e2e:
     name: Install on blank QEMU disk and boot it

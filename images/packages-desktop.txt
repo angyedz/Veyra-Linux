@@ -4,6 +4,7 @@ plasma-desktop
 linux-lts
 zram-init
 veyra-calamares
+dialog
 rsync
 util-linux
 plasma-workspace

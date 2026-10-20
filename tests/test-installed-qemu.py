@@ -93,6 +93,10 @@ mount --rbind /sys "$target/sys"
 mount --make-rslave "$target/sys"
 mount -t tmpfs tmpfs "$target/run"
 /usr/local/lib/veyra/installer-prepare.sh "$target"
+test ! -e "$target/etc/polkit-1/rules.d/49-veyra-live.rules"
+test "$(stat -c %a "$target/tmp")" -eq 1777
+test "$(wc -c < "$target/etc/machine-id")" -eq 33
+grep -Eq '^[0-9a-f]{32}$' "$target/etc/machine-id"
 chroot "$target" apk info -e vpkg
 chroot "$target" apk info -e veyra-glenv
 /usr/local/lib/veyra/installer-desktop.sh "$target" DESKTOP
@@ -100,6 +104,20 @@ chroot "$target" apk info -e veyra-glenv
 echo 'root:veyra-test' | chroot "$target" chpasswd
 chroot "$target" adduser -D -s /bin/ash e2euser
 echo 'e2euser:veyra-test' | chroot "$target" chpasswd
+if [ "DESKTOP" = plasma ]; then
+    test -s "$target/home/e2euser/.config/kwinrc"
+    test -s "$target/home/e2euser/.config/autostart/veyra-plasma-watchdog.desktop"
+    grep -q '^Enabled=false$' "$target/home/e2euser/.config/kwinrc"
+    grep -q '^Exec=/usr/local/lib/veyra/plasma-watchdog.sh$' "$target/home/e2euser/.config/autostart/veyra-plasma-watchdog.desktop"
+    # Enable automatic login only on this disposable test disk so the test
+    # exercises the graphical session without keyboard or display automation.
+    cat > "$target/etc/sddm.conf.d/90-veyra-e2e.conf" <<'SDDM'
+[Autologin]
+User=e2euser
+Session=plasma.desktop
+Relogin=false
+SDDM
+fi
 # Mirror Calamares' services-openrc step for this script-driven install.
 for service in dbus elogind networkmanager nix-daemon; do
     chroot "$target" rc-update add "$service" default
@@ -278,7 +296,6 @@ def main():
                 run_command(child, "sh /tmp/e2e-install.sh", timeout=1500)
                 run_command(child, "test -s /mnt/veyra-e2e/boot/grub/grub.cfg", 30)
                 run_command(child, "test ! -e /mnt/veyra-e2e/etc/sudoers.d/veyra-live", 30)
-                run_command(child, "test ! -e /mnt/veyra-e2e/etc/polkit-1/rules.d/49-veyra-live.rules", 30)
                 print("Installation completed: target grub.cfg, kernel and services verified", flush=True)
             finally:
                 child.close(force=True)
@@ -291,10 +308,18 @@ def main():
                 run_command(child, "test -r /etc/veyra/desktop && cat /etc/veyra/desktop", 30)
                 run_command(child, "test -x /usr/bin/vpkg && vpkg --version", 30)
                 run_command(child, "test -x /usr/bin/veyra-glenv", 30)
+                run_command(child, "test ! -e /etc/polkit-1/rules.d/49-veyra-live.rules", 30)
                 run_command(child, "test -s /boot/grub/grub.cfg", 30)
+                run_command(child, "grep -Eq '^[0-9a-f]{32}$' /etc/machine-id", 30)
                 if args.firmware == "uefi":
                     run_command(child, "test -d /sys/firmware/efi", 30)
                     run_command(child, "test -s /boot/efi/EFI/BOOT/BOOTX64.EFI", 30)
+                if args.desktop == "plasma":
+                    run_command(
+                        child,
+                        "found=0; for i in $(seq 1 45); do if ps -ef | grep -Eq '[k]win_(wayland|x11)' && ps -ef | grep -q '[p]lasmashell'; then found=1; break; fi; sleep 2; done; if test \"$found\" = 1; then echo 'Installed Plasma compositor and shell are running'; else echo 'Installed Plasma compositor or shell did not start'; cat /home/e2euser/.local/share/sddm/wayland-session.log 2>&1 || true; ps -ef | grep -E 'sddm|kwin|plasma|startplasma' || true; false; fi",
+                        110,
+                    )
                 print(f"VEYRA_E2E_SUCCESS: clean virtual disk boots installed {args.desktop}", flush=True)
             finally:
                 child.close(force=True)

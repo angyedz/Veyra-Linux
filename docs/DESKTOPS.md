@@ -12,7 +12,7 @@ Veyra uses Calamares. Choose your language and keyboard, select Plasma (default)
 | LXQt | X11 | SDDM |
 | Minimal (console only) | Text console | None |
 
-Calamares' `packagechooser` uses one required choice stored in `packagechooser_desktop`. The install phase passes that value to an allowlisted desktop installer script. The graphical live session remains Plasma, regardless of the desktop installed on disk.
+The user-facing Calamares wizard installs Plasma without asking the user to choose a desktop. The other profiles remain available to scripted installs and automated compatibility checks; they are not offered in the graphical wizard.
 
 The hardware detector inspects CPU vendor and PCI display-class devices, including multi-GPU machines. On Intel it selects Intel microcode and Mesa/Intel firmware; AMD uses AMD microcode and Radeon/Mesa; NVIDIA uses Mesa Nouveau and NVIDIA firmware. NVIDIA proprietary modules are **not** offered, since Alpine's musl stable repositories do not provide a matching supported proprietary package.
 

@@ -11,7 +11,9 @@ profile_veyra() {
     apkovl="images/genapkovl-veyra.sh"
     kernel_cmdline="console=tty0 console=ttyS0,115200 rootflags=size=90%"
     syslinux_serial="0 115200"
-    syslinux_timeout="50"
+    # Boot the default live entry automatically; PROMPT 1 leaves users at `boot:`.
+    syslinux_prompt="0"
+    syslinux_timeout="10"
     # Alpine boots diskless: its writable root lives in RAM (tmpfs).
     # Kernel modules and offline package cache still use the boot medium.
     # Drop the legacy VLAN helper; NetworkManager handles networking.

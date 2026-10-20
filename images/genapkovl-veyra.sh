@@ -4,9 +4,9 @@ set -eu
 host="${1:-veyra}"
 root=$(CDPATH='' cd "$(dirname "$0")/.." && pwd)
 
-mkdir -p etc/apk etc/sddm.conf.d etc/skel/Desktop etc/sudoers.d \
+mkdir -p etc/apk etc/sddm.conf.d etc/skel/Desktop etc/skel/.config/autostart etc/sudoers.d \
     etc/conf.d etc/firefox/policies etc/polkit-1/rules.d \
-    etc/nix \
+    etc/nix etc/veyra \
     etc/init.d etc/runlevels/sysinit etc/runlevels/boot etc/runlevels/default \
     etc/calamares/modules etc/calamares/branding/veyra \
     usr/local/bin usr/local/lib/veyra usr/share/applications
@@ -29,6 +29,22 @@ printf '%s\n' 'Veyra Linux development live image' > etc/veyra-release
 cat > etc/nix/nix.conf <<'NIX'
 extra-experimental-features = nix-command flakes
 NIX
+cat > etc/veyra/dialogrc <<'DIALOGRC'
+use_colors = ON
+use_shadow = OFF
+screen_color = (WHITE,BLACK,OFF)
+shadow_color = (BLACK,BLACK,OFF)
+dialog_color = (WHITE,BLACK,OFF)
+title_color = (WHITE,BLUE,ON)
+border_color = (CYAN,BLACK,ON)
+button_active_color = (WHITE,BLUE,ON)
+button_inactive_color = (CYAN,BLACK,OFF)
+button_key_active_color = (YELLOW,BLUE,ON)
+button_key_inactive_color = (RED,BLACK,OFF)
+button_label_active_color = (WHITE,BLUE,ON)
+button_label_inactive_color = (WHITE,BLACK,OFF)
+inputbox_color = (WHITE,BLACK,OFF)
+DIALOGRC
 cat > etc/conf.d/zram-init <<'ZRAM'
 load_on_start=yes
 unload_on_stop=no
@@ -66,18 +82,22 @@ cp "$root/images/veyra-live.initd" etc/init.d/veyra-live
 cp "$root/images/veyra-live-user.sh" usr/local/lib/veyra/live-user.sh
 cp "$root/images/veyra-plasma-watchdog.sh" usr/local/lib/veyra/plasma-watchdog.sh
 cp "$root/images/veyra-install.sh" usr/local/bin/veyra-install
+cp "$root/scripts/installer-tui.sh" usr/local/bin/veyra-install-tui
 cp "$root/scripts/installer-copy.sh" usr/local/lib/veyra/installer-copy.sh
 cp "$root/scripts/installer-prepare.sh" usr/local/lib/veyra/installer-prepare.sh
 cp "$root/scripts/installer-desktop.sh" usr/local/lib/veyra/installer-desktop.sh
 cp "$root/scripts/installer-hardware.sh" usr/local/lib/veyra/installer-hardware.sh
 cp "$root/scripts/hardware-detect.sh" usr/local/lib/veyra/hardware-detect.sh
 cp "$root/calamares/branding/veyra/"*.svg etc/calamares/branding/veyra/
+cp "$root/calamares/branding/veyra/veyra-logo.png" etc/calamares/branding/veyra/veyra-logo.png
 cp "$root/calamares/settings.conf" etc/calamares/settings.conf
 cp "$root/calamares/modules/"*.conf etc/calamares/modules/
 cp "$root/calamares/branding/veyra/branding.desc" etc/calamares/branding/veyra/branding.desc
+cp "$root/calamares/branding/veyra/show.qml" etc/calamares/branding/veyra/show.qml
 chmod 755 etc/init.d/veyra-live usr/local/lib/veyra/live-user.sh \
     usr/local/lib/veyra/plasma-watchdog.sh \
     usr/local/bin/veyra-install \
+    usr/local/bin/veyra-install-tui \
     usr/local/lib/veyra/installer-copy.sh usr/local/lib/veyra/installer-prepare.sh \
     usr/local/lib/veyra/installer-desktop.sh usr/local/lib/veyra/installer-hardware.sh \
     usr/local/lib/veyra/hardware-detect.sh
@@ -102,10 +122,25 @@ SDDM
 # needs full passwordless administration for package tools and setup tasks.
 # installer-prepare.sh removes this rule before the disk system is finalized.
 cat > etc/sudoers.d/veyra-live <<'SUDO'
-Defaults:veyra env_keep += "DISPLAY WAYLAND_DISPLAY XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS QT_QPA_PLATFORM"
+Defaults:veyra env_keep += "DISPLAY WAYLAND_DISPLAY XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS QT_QPA_PLATFORM XAUTHORITY"
 veyra ALL=(ALL:ALL) NOPASSWD: ALL
 SUDO
 chmod 0440 etc/sudoers.d/veyra-live
+
+# Seed a stable Plasma session for newly created installed accounts. These
+# files are copied from /etc/skel by both Calamares and the guided installer.
+cat > etc/skel/.config/kwinrc <<'KWIN'
+[Compositing]
+Enabled=false
+KWIN
+cat > etc/skel/.config/autostart/veyra-plasma-watchdog.desktop <<'AUTOSTART'
+[Desktop Entry]
+Type=Application
+Name=Veyra Plasma recovery
+Comment=Restart the desktop shell if it exits
+Exec=/usr/local/lib/veyra/plasma-watchdog.sh
+Terminal=false
+AUTOSTART
 
 cat > usr/share/applications/veyra-install.desktop <<'DESKTOP'
 [Desktop Entry]
@@ -119,6 +154,19 @@ Categories=System;
 DESKTOP
 cp usr/share/applications/veyra-install.desktop etc/skel/Desktop/Install\ Veyra\ Linux.desktop
 chmod 755 etc/skel/Desktop/Install\ Veyra\ Linux.desktop
+
+cat > usr/share/applications/veyra-install-tui.desktop <<'DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=Install Veyra Linux (text mode)
+Comment=Guided terminal installer for Veyra Linux
+Exec=konsole -e sudo /usr/local/bin/veyra-install-tui
+Icon=utilities-terminal
+Terminal=false
+Categories=System;
+DESKTOP
+cp usr/share/applications/veyra-install-tui.desktop etc/skel/Desktop/Install\ Veyra\ Linux\ Text.desktop
+chmod 755 etc/skel/Desktop/Install\ Veyra\ Linux\ Text.desktop
 
 # KDE/Wayland needs eudev for input devices, DRM and seat management.
 for svc in udev udev-trigger udev-settle; do

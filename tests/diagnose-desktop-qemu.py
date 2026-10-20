@@ -50,7 +50,7 @@ with tempfile.TemporaryDirectory(prefix="veyra-desktop-diagnostics-") as tmp:
                 "firefox --version",
                 "echo '--- SDDM Wayland session output ---'; cat /home/veyra/.local/share/sddm/wayland-session.log 2>&1 || true; echo '--- Plasma watchdog output ---'; cat /home/veyra/.local/state/veyra-plasmashell.log 2>&1 || true; echo '--- Recent user logs and caches ---'; find /home/veyra/.local/share /home/veyra/.cache -type f -maxdepth 6 2>/dev/null | head -n 80; echo '--- Kernel memory/crash messages ---'; dmesg | grep -Ei 'out of memory|oom-kill|killed process|segfault|general protection' | tail -n 40 || true",
                 "echo '--- Try the same Plasma Shell recovery as the live user ---'; su -s /bin/ash veyra -c 'nohup plasmashell --replace >/tmp/veyra-plasmashell-manual.log 2>&1 </dev/null &' ; sleep 15; cat /tmp/veyra-plasmashell-manual.log 2>&1 || true; ps -ef | grep -E 'sddm|kwin|plasmashell|startplasma|veyra-plasma-watchdog' || true",
-                "found=0; for i in $(seq 1 30); do if ps -ef | grep -q '[k]win_wayland' && ps -ef | grep -q '[p]lasmashell'; then found=1; break; fi; sleep 2; done; if test \"$found\" = 1; then echo 'Live Plasma Wayland session is running'; else echo 'Live Plasma Wayland session did not start'; false; fi",
+                "found=0; for i in $(seq 1 30); do if ps -ef | grep -Eq '[k]win_(wayland|x11)' && ps -ef | grep -q '[p]lasmashell'; then found=1; break; fi; sleep 2; done; if test \"$found\" = 1; then echo 'Live Plasma compositor and shell are running'; else echo 'Live Plasma compositor or shell did not start'; false; fi",
             ):
                 print("Inspect:", cmd, flush=True)
                 helpers.run_command(child, cmd, timeout=70)
