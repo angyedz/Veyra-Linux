@@ -1,0 +1,16 @@
+#!/sbin/openrc-run
+# This is a test-only service started by the NESTED user OpenRC.
+description="Veyra Stage 1 user rootfs persistence smoke test"
+depend() { return 0; }
+start() {
+    ebegin "Check isolated user OpenRC boot and persistence"
+    mkdir -p /var/lib/veyra-user
+    previous=0
+    if [ -f /var/lib/veyra-user/boot-count ]; then
+        previous=$(cat /var/lib/veyra-user/boot-count)
+    fi
+    current=$((previous + 1))
+    printf '%s\n' "$current" > /var/lib/veyra-user/boot-count
+    sync
+    eend 0
+}
