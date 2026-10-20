@@ -155,6 +155,88 @@ class SnapCoreTests(unittest.TestCase):
             self.assertEqual(self.volume.read(0, len(contents)), contents)
         self.volume.verify()
 
+    def test_seeded_prune_gc_histories_match_reference_volume(self) -> None:
+        for seed in (0xC0A1, 0xC0A2, 0xC0A3, 0xC0A4):
+            with self.subTest(seed=seed), tempfile.TemporaryDirectory(
+                prefix="veyra-snapcore-model-"
+            ) as temp:
+                store = Path(temp) / "volume"
+                volume = SnapCoreVolume.format(
+                    store,
+                    size_bytes=8 * self.block_size,
+                    block_size=self.block_size,
+                )
+                expected = bytearray(volume.size_bytes)
+                retained: dict[str, bytes] = {}
+                anchor = f"anchor-{seed:x}"
+                volume.snapshot(anchor)
+                retained[anchor] = bytes(expected)
+                randomizer = random.Random(seed)
+
+                def assert_matches_model() -> None:
+                    self.assertEqual(volume.read(0, len(expected)), bytes(expected))
+                    snapshots = {
+                        item["name"]: item for item in volume.snapshots(verify=True)
+                    }
+                    self.assertEqual(set(snapshots), set(retained))
+                    generation_ids = {
+                        item["generation_id"] for item in volume.generations()
+                    }
+                    self.assertIn(volume.head_generation, generation_ids)
+                    for generation in volume.generations():
+                        parent = generation["parent_generation"]
+                        self.assertTrue(parent is None or parent in generation_ids)
+                    for name, contents in retained.items():
+                        snapshot = snapshots[name]
+                        self.assertIn(snapshot["generation_id"], generation_ids)
+                        mapping = volume._load_root(snapshot["root_id"])
+                        restored = bytearray(volume.size_bytes)
+                        for block, extent_id in mapping.items():
+                            start = int(block) * volume.block_size
+                            restored[start : start + volume.block_size] = (
+                                volume._read_extent(extent_id)
+                            )
+                        self.assertEqual(bytes(restored), contents, name)
+
+                try:
+                    for step in range(96):
+                        operation = randomizer.randrange(10)
+                        if operation < 5:
+                            offset = randomizer.randrange(volume.size_bytes)
+                            limit = min(48, volume.size_bytes - offset)
+                            payload = bytes(
+                                0 if randomizer.randrange(5) == 0 else randomizer.randrange(256)
+                                for _ in range(randomizer.randrange(1, limit + 1))
+                            )
+                            volume.write(offset, payload)
+                            expected[offset : offset + len(payload)] = payload
+                        elif operation == 5 and len(retained) < 8:
+                            name = f"seed-{seed:x}-{step}"
+                            volume.snapshot(name)
+                            retained[name] = bytes(expected)
+                        elif operation == 6:
+                            name = randomizer.choice(sorted(retained))
+                            volume.rollback(name)
+                            expected = bytearray(retained[name])
+                        elif operation == 7 and len(retained) > 1:
+                            name = randomizer.choice(sorted(retained))
+                            volume.delete_snapshot(name)
+                            del retained[name]
+                        elif operation == 8:
+                            volume.prune_generations(randomizer.randrange(1, 5))
+                        elif operation == 9:
+                            volume.collect_garbage()
+
+                        assert_matches_model()
+                        if step % 24 == 23:
+                            volume.close()
+                            volume = SnapCoreVolume.open(store)
+                            assert_matches_model()
+                        if step % 16 == 15:
+                            volume.verify()
+                finally:
+                    volume.close()
+
     def test_independent_writers_serialize_on_the_volume_lock(self) -> None:
         self.volume.close()
         self.volume = None
