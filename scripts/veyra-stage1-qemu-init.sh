@@ -154,6 +154,7 @@ echo 'VEYRA_STAGE1_ROOTFS_REJECT_INIT_ESCAPE'
 
 first=$(/host-supervisor start)
 case "$first" in RUNNING\ pid=*\ count=*) ;; *) fail "first start failed: $first" ;; esac
+echo "VEYRA_STAGE1_FIRST_RUNNING $first"
 status=$(/host-supervisor status)
 if [ "$status" != "$first" ]; then fail "status disagreed with running start: $status"; fi
 echo "VEYRA_STAGE1_STATUS_RUNNING $status"

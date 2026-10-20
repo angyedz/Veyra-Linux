@@ -731,8 +731,22 @@ static int wait_for_child(int timeout_ms) {
 static int stop_environment(void) {
     reap_child();
     if (!launcher_pid) return state == STATE_FAILED ? -1 : 0;
+    /* A host PID 1/manager signalling bug must NEVER trigger a system-wide
+     * shutdown. Refuse dangerous target PIDs and leave the environment
+     * visibly FAILED, rather than signalling the initial PID namespace.
+     */
+    if (user_pid1 <= 1 || user_pid1 == getpid()) {
+        state = STATE_FAILED;
+        fprintf(stderr, "VEYRA_STAGE1_STOP_REFUSED_INVALID_PID target=%ld manager=%ld\n",
+                (long)user_pid1, (long)getpid());
+        fflush(stderr);
+        return -1;
+    }
+    fprintf(stderr, "VEYRA_STAGE1_STOP_TARGET pid=%ld manager=%ld\n",
+            (long)user_pid1, (long)getpid());
+    fflush(stderr);
     state = STATE_STOPPING;
-    if (user_pid1 > 0 && kill(user_pid1, SIGTERM) < 0 && errno != ESRCH) {
+    if (kill(user_pid1, SIGTERM) < 0 && errno != ESRCH) {
         state = STATE_RUNNING;
         return -1;
     }
