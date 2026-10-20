@@ -19,10 +19,12 @@ import uuid
 from pathlib import Path
 from typing import Any, Callable, Iterable, Optional
 
-FORMAT_VERSION = 1
+FORMAT_VERSION = 2
 _MAGIC = "VEYRA-SNAPCORE"
 _MAX_BLOCK_SIZE = 1024 * 1024
 _MAX_RECORD_SIZE = 1024 * 1024
+_MAX_COMPACT_GENERATIONS = 8192
+_MAX_COMPACT_SNAPSHOTS = 4096
 _HEX = re.compile(r"^[0-9a-f]{64}$")
 _SNAPSHOT_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 _NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
@@ -285,6 +287,7 @@ class SnapCoreVolume:
             _checked_directory(root / "extents", "extent store")
             _checked_directory(root / "roots", "mapping root store")
             volume._replay_journal()
+            volume._cleanup_journal_temps()
             return volume
         except BaseException:
             os.close(lock_fd)
@@ -475,6 +478,14 @@ class SnapCoreVolume:
             snapshot = self._state["snapshots"][name]
         except KeyError as exc:
             raise SnapCoreError(f"unknown snapshot: {name}") from exc
+        remaining = [
+            item for other_name, item in self._state["snapshots"].items()
+            if other_name != name
+        ]
+        if not remaining:
+            raise SnapCoreError("refusing to delete the last named recovery checkpoint")
+        for item in remaining:
+            self._verify_root(item["root_id"], verify_extents=True)
         head = self._generation(self.head_generation)
         self._append_event(
             operation="delete_snapshot",
@@ -484,6 +495,86 @@ class SnapCoreVolume:
             snapshot_name=name,
             snapshot_generation=snapshot["generation_id"],
         )
+
+    def prune_generations(self, keep_last: int) -> dict[str, Any]:
+        """Compact history while retaining the head and every named checkpoint."""
+        self._ensure_open()
+        if (
+            isinstance(keep_last, bool)
+            or not isinstance(keep_last, int)
+            or keep_last < 1
+            or keep_last > _MAX_COMPACT_GENERATIONS
+        ):
+            raise ValueError(
+                f"keep_last must be an integer from 1 to {_MAX_COMPACT_GENERATIONS}"
+            )
+        if not self._state["snapshots"]:
+            raise SnapCoreError("refusing to prune without a named recovery checkpoint")
+
+        # Validate the complete source state before making any history unreachable.
+        self.verify()
+        verified_snapshots = self.snapshots(verify=True)
+        retained_ids = {
+            item["generation_id"] for item in self._state["generations"][-keep_last:]
+        }
+        retained_ids.add(self.head_generation)
+        retained_ids.update(item["generation_id"] for item in verified_snapshots)
+        retained = [
+            dict(item)
+            for item in self._state["generations"]
+            if item["generation_id"] in retained_ids
+        ]
+        for item in retained:
+            if item["parent_generation"] not in retained_ids:
+                item["parent_generation"] = None
+        removed = len(self._state["generations"]) - len(retained)
+        if removed == 0:
+            return {
+                "removed_generations": 0,
+                "retained_generations": len(retained),
+                "head_generation": self.head_generation,
+                "snapshots": [item["name"] for item in verified_snapshots],
+                "compacted": False,
+            }
+        if len(retained) > _MAX_COMPACT_GENERATIONS:
+            raise SnapCoreError("retained history exceeds the compacted journal limit")
+
+        body = {
+            "sequence": self._state["sequence"] + 1,
+            "operation": "compact",
+            "volume_id": self.volume_id,
+            "previous_checksum": self._state["last_checksum"],
+            "timestamp_ns": time.time_ns(),
+            "generation_id": self.head_generation,
+            "parent_generation": None,
+            "root_id": self._generation(self.head_generation)["root_id"],
+            "snapshot_name": None,
+            "target_snapshot": None,
+            "snapshot_generation": None,
+            "base_state": {
+                "generations": retained,
+                "snapshots": {
+                    item["name"]: {
+                        "generation_id": item["generation_id"],
+                        "root_id": item["root_id"],
+                        "created_ns": item["created_ns"],
+                    }
+                    for item in verified_snapshots
+                },
+            },
+        }
+        record = {"body": body, "checksum": _sha256(_canonical(body))}
+        encoded = _canonical(record) + b"\n"
+        if len(encoded) > _MAX_RECORD_SIZE:
+            raise SnapCoreError("compacted journal record exceeds prototype size limit")
+        self._replace_journal(encoded, record)
+        return {
+            "removed_generations": removed,
+            "retained_generations": len(self._state["generations"]),
+            "head_generation": self.head_generation,
+            "snapshots": sorted(self._state["snapshots"]),
+            "compacted": True,
+        }
 
     def collect_garbage(self) -> dict[str, int]:
         """Remove only unreferenced immutable objects and abandoned temp files.
@@ -671,6 +762,22 @@ class SnapCoreVolume:
             record = _decode_json(line, f"journal record {line_number}")
             self._apply_record(record, line_number)
 
+    def _cleanup_journal_temps(self) -> None:
+        removed = False
+        for path in self.root.iterdir():
+            if not re.fullmatch(r"\.journal\.pending-[0-9a-f]{32}", path.name):
+                continue
+            try:
+                mode = path.lstat().st_mode
+            except OSError as exc:
+                raise IntegrityError(f"cannot inspect journal temporary: {exc}") from exc
+            if not stat.S_ISREG(mode):
+                raise IntegrityError("journal temporary is not a regular file")
+            os.unlink(path)
+            removed = True
+        if removed:
+            _fsync_directory(self.root)
+
     def _apply_record(self, record: Any, line_number: int) -> None:
         if not isinstance(record, dict) or set(record) != {"body", "checksum"}:
             raise IntegrityError(f"invalid journal envelope at line {line_number}")
@@ -691,13 +798,20 @@ class SnapCoreVolume:
             "target_snapshot",
             "snapshot_generation",
         }
-        if set(body) != required:
+        is_compaction_anchor = (
+            body.get("operation") == "compact"
+            and self._state["sequence"] == 0
+            and line_number == 1
+        )
+        expected_fields = required | ({"base_state"} if is_compaction_anchor else set())
+        if set(body) != expected_fields:
             raise IntegrityError(f"invalid journal fields at line {line_number}")
         expected_sequence = self._state["sequence"] + 1
         if (
             not isinstance(body["sequence"], int)
             or isinstance(body["sequence"], bool)
-            or body["sequence"] != expected_sequence
+            or body["sequence"] < 1
+            or (not is_compaction_anchor and body["sequence"] != expected_sequence)
         ):
             raise IntegrityError(f"journal sequence mismatch at line {line_number}")
         if (
@@ -706,7 +820,14 @@ class SnapCoreVolume:
             or body["timestamp_ns"] < 0
         ):
             raise IntegrityError(f"invalid journal timestamp at line {line_number}")
-        if body["previous_checksum"] != self._state["last_checksum"]:
+        if is_compaction_anchor:
+            if (
+                body["sequence"] < 2
+                or not isinstance(body["previous_checksum"], str)
+                or not _HEX.fullmatch(body["previous_checksum"])
+            ):
+                raise IntegrityError(f"invalid compacted journal anchor at line {line_number}")
+        elif body["previous_checksum"] != self._state["last_checksum"]:
             raise IntegrityError(f"journal chain mismatch at line {line_number}")
         if body["volume_id"] != self.volume_id:
             raise IntegrityError(f"journal volume mismatch at line {line_number}")
@@ -722,6 +843,16 @@ class SnapCoreVolume:
             or generation_id < 1
         ):
             raise IntegrityError(f"invalid generation id at line {line_number}")
+        if is_compaction_anchor:
+            if (
+                parent is not None
+                or body["snapshot_name"] is not None
+                or body["target_snapshot"] is not None
+                or body["snapshot_generation"] is not None
+            ):
+                raise IntegrityError(f"invalid compacted journal anchor at line {line_number}")
+            self._apply_compacted_base(body, checksum, line_number)
+            return
         if operation == "init":
             if (
                 expected_sequence != 1
@@ -810,6 +941,107 @@ class SnapCoreVolume:
         else:
             raise IntegrityError(f"unknown journal operation at line {line_number}")
         self._state["sequence"] = expected_sequence
+        self._state["last_checksum"] = checksum
+
+    def _apply_compacted_base(
+        self, body: dict[str, Any], checksum: str, line_number: int
+    ) -> None:
+        base = body["base_state"]
+        if not isinstance(base, dict) or set(base) != {"generations", "snapshots"}:
+            raise IntegrityError(f"invalid compacted base state at line {line_number}")
+        entries = base["generations"]
+        snapshots = base["snapshots"]
+        if (
+            not isinstance(entries, list)
+            or not entries
+            or len(entries) > _MAX_COMPACT_GENERATIONS
+            or not isinstance(snapshots, dict)
+            or not snapshots
+            or len(snapshots) > _MAX_COMPACT_SNAPSHOTS
+        ):
+            raise IntegrityError(f"invalid compacted history size at line {line_number}")
+
+        generations: list[dict[str, Any]] = []
+        generation_by_id: dict[int, dict[str, Any]] = {}
+        previous_id = 0
+        for item in entries:
+            if not isinstance(item, dict) or set(item) != {
+                "generation_id",
+                "parent_generation",
+                "root_id",
+                "operation",
+                "created_ns",
+            }:
+                raise IntegrityError(f"invalid compacted generation at line {line_number}")
+            generation_id = item["generation_id"]
+            parent = item["parent_generation"]
+            root_id = item["root_id"]
+            created_ns = item["created_ns"]
+            if (
+                not isinstance(generation_id, int)
+                or isinstance(generation_id, bool)
+                or generation_id <= previous_id
+                or not isinstance(root_id, str)
+                or not _HEX.fullmatch(root_id)
+                or not isinstance(item["operation"], str)
+                or item["operation"] not in {"init", "write", "rollback"}
+                or not isinstance(created_ns, int)
+                or isinstance(created_ns, bool)
+                or created_ns < 0
+                or (
+                    parent is not None
+                    and (
+                        not isinstance(parent, int)
+                        or isinstance(parent, bool)
+                        or parent < 1
+                        or parent >= generation_id
+                    )
+                )
+            ):
+                raise IntegrityError(f"invalid compacted generation fields at line {line_number}")
+            self._load_root(root_id)
+            generation = dict(item)
+            generations.append(generation)
+            generation_by_id[generation_id] = generation
+            previous_id = generation_id
+
+        head = generations[-1]
+        if (
+            head["generation_id"] != body["generation_id"]
+            or head["root_id"] != body["root_id"]
+        ):
+            raise IntegrityError(f"compacted head mismatch at line {line_number}")
+
+        validated_snapshots: dict[str, dict[str, Any]] = {}
+        for name, item in snapshots.items():
+            self._validate_snapshot_name_from_journal(name, line_number)
+            if not isinstance(item, dict) or set(item) != {
+                "generation_id",
+                "root_id",
+                "created_ns",
+            }:
+                raise IntegrityError(f"invalid compacted snapshot at line {line_number}")
+            generation_id = item["generation_id"]
+            root_id = item["root_id"]
+            created_ns = item["created_ns"]
+            if not isinstance(generation_id, int) or isinstance(generation_id, bool):
+                raise IntegrityError(f"invalid compacted snapshot fields at line {line_number}")
+            generation = generation_by_id.get(generation_id)
+            if (
+                generation is None
+                or root_id != generation["root_id"]
+                or not isinstance(created_ns, int)
+                or isinstance(created_ns, bool)
+                or created_ns < 0
+            ):
+                raise IntegrityError(f"invalid compacted snapshot fields at line {line_number}")
+            validated_snapshots[name] = dict(item)
+
+        self._state["generations"] = generations
+        self._state["generation_by_id"] = generation_by_id
+        self._state["snapshots"] = validated_snapshots
+        self._state["head_generation"] = head["generation_id"]
+        self._state["sequence"] = body["sequence"]
         self._state["last_checksum"] = checksum
 
     def _require_new_generation(
@@ -929,6 +1161,37 @@ class SnapCoreVolume:
         )
         if created:
             self._fault("root_fsync")
+
+    def _replace_journal(self, encoded: bytes, record: dict[str, Any]) -> None:
+        temporary = self.root / f".journal.pending-{uuid.uuid4().hex}"
+        fd = os.open(
+            temporary,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | _NOFOLLOW,
+            0o600,
+        )
+        try:
+            _write_all(fd, encoded)
+            self._fault("compact_journal_write")
+            os.fsync(fd)
+            self._fault("compact_journal_fsync")
+        finally:
+            os.close(fd)
+
+        # The rename is the point after which replay may select the compacted
+        # history. Block all access until the directory entry is synced and the
+        # in-memory state has been rebuilt from the new anchor record.
+        self._poisoned = True
+        try:
+            os.replace(temporary, self.root / "journal.log")
+            self._fault("compact_journal_replace")
+            _fsync_directory(self.root)
+            self._fault("compact_journal_directory_fsync")
+            self._poisoned = False
+            self._load_format()
+            self._apply_record(record, 1)
+        except BaseException:
+            self._poisoned = True
+            raise
 
     def _append_event(
         self,

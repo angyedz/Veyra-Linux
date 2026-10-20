@@ -238,6 +238,166 @@ class SnapCoreTests(unittest.TestCase):
         self.assertEqual(len(self.volume.generations()), generation_count + 1)
         self.assertEqual(self.volume.read(0, 14), b"generation-one")
 
+    def test_prune_compacts_history_and_preserves_head_and_checkpoints(self) -> None:
+        self.volume.write(0, b"safe")
+        good = self.volume.snapshot("good")
+        self.volume.write(0, b"stale")
+        stale_generation = self.volume.head_generation
+        stale_root = self.volume._generation(stale_generation)["root_id"]
+        self.volume.write(0, b"head")
+        current = self.volume.snapshot("current")
+        self.volume.write(0, b"latest")
+        active_generation = self.volume.head_generation
+
+        result = self.volume.prune_generations(1)
+        retained_ids = [item["generation_id"] for item in self.volume.generations()]
+        self.assertEqual(result["removed_generations"], 2)
+        self.assertEqual(
+            retained_ids,
+            [good["generation_id"], current["generation_id"], active_generation],
+        )
+        retained_set = set(retained_ids)
+        self.assertTrue(
+            all(
+                item["parent_generation"] is None
+                or item["parent_generation"] in retained_set
+                for item in self.volume.generations()
+            )
+        )
+        self.assertEqual(self.volume.head_generation, active_generation)
+        self.assertEqual(self.volume.read(0, 6), b"latest")
+        self.assertEqual(
+            {item["name"] for item in self.volume.snapshots(verify=True)},
+            {"good", "current"},
+        )
+        self.assertTrue((self.store / "roots" / f"{stale_root}.json").exists())
+
+        collected = self.volume.collect_garbage()
+        self.assertGreaterEqual(collected["removed_roots"], 1)
+        self.assertFalse((self.store / "roots" / f"{stale_root}.json").exists())
+        self.volume.verify()
+        self.reopen()
+        self.assertEqual(
+            [item["generation_id"] for item in self.volume.generations()], retained_ids
+        )
+        self.assertEqual(self.volume.rollback("good"), active_generation + 1)
+        self.assertEqual(self.volume.read(0, 4), b"safe")
+        self.volume.verify()
+
+    def test_prune_requires_checkpoint_and_protects_the_last_checkpoint(self) -> None:
+        original_generations = self.volume.generations()
+        with self.assertRaisesRegex(SnapCoreError, "named recovery checkpoint"):
+            self.volume.prune_generations(1)
+        self.assertEqual(self.volume.generations(), original_generations)
+        for invalid in (0, -1, True, 1.5):
+            with self.subTest(keep_last=invalid), self.assertRaises(ValueError):
+                self.volume.prune_generations(invalid)
+
+        self.volume.write(0, b"known-good")
+        self.volume.snapshot("only-checkpoint")
+        with self.assertRaisesRegex(SnapCoreError, "last named recovery checkpoint"):
+            self.volume.delete_snapshot("only-checkpoint")
+        self.assertEqual(
+            [item["name"] for item in self.volume.snapshots(verify=True)],
+            ["only-checkpoint"],
+        )
+
+    def test_prune_compaction_recovers_after_process_crash(self) -> None:
+        script = (
+            "import os,sys; "
+            "from snapcore import SnapCoreVolume; "
+            "v=SnapCoreVolume.open(sys.argv[1], "
+            "_fault_hook=lambda point: os._exit(96) if point == sys.argv[2] else None); "
+            "v.prune_generations(1); os._exit(0)"
+        )
+        for point in (
+            "compact_journal_fsync",
+            "compact_journal_replace",
+            "compact_journal_directory_fsync",
+        ):
+            with self.subTest(point=point), tempfile.TemporaryDirectory(
+                prefix="veyra-snapcore-prune-crash-"
+            ) as temp:
+                store = Path(temp) / "volume"
+                with SnapCoreVolume.format(
+                    store, size_bytes=8 * self.block_size, block_size=self.block_size
+                ) as baseline:
+                    baseline.write(0, b"safe")
+                    baseline.snapshot("good")
+                    baseline.write(0, b"stale")
+                    baseline.write(0, b"head")
+                    original_count = len(baseline.generations())
+
+                child = subprocess.run(
+                    [sys.executable, "-c", script, str(store), point],
+                    cwd=ROOT,
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                )
+                self.assertEqual(child.returncode, 96, child.stderr)
+                with SnapCoreVolume.open(store) as recovered:
+                    ids = [item["generation_id"] for item in recovered.generations()]
+                    if point == "compact_journal_fsync":
+                        self.assertEqual(len(ids), original_count)
+                    else:
+                        self.assertEqual(len(ids), 2)
+                    self.assertEqual(recovered.head_generation, 4)
+                    self.assertEqual(recovered.read(0, 4), b"head")
+                    self.assertEqual(recovered.snapshots(verify=True)[0]["name"], "good")
+                    self.assertFalse(
+                        any(path.name.startswith(".journal.pending-") for path in store.iterdir())
+                    )
+                    recovered.verify()
+
+    def test_prune_uncertain_replace_requires_replay(self) -> None:
+        self.volume.write(0, b"safe")
+        self.volume.snapshot("good")
+        self.volume.write(0, b"stale")
+        self.volume.write(0, b"head")
+        self.volume.close()
+        self.volume = None
+
+        def fail_after_replace(point: str) -> None:
+            if point == "compact_journal_replace":
+                raise OSError("injected journal replacement failure")
+
+        volume = SnapCoreVolume.open(self.store, _fault_hook=fail_after_replace)
+        with self.assertRaisesRegex(OSError, "injected journal replacement failure"):
+            volume.prune_generations(1)
+        with self.assertRaisesRegex(SnapCoreError, "close and reopen"):
+            volume.read(0, 4)
+        volume.close()
+
+        with SnapCoreVolume.open(self.store) as recovered:
+            self.assertEqual(len(recovered.generations()), 2)
+            self.assertEqual(recovered.read(0, 4), b"head")
+            self.assertEqual(recovered.snapshots(verify=True)[0]["name"], "good")
+            recovered.verify()
+
+    def test_compacted_journal_rejects_snapshot_to_missing_generation(self) -> None:
+        self.volume.write(0, b"safe")
+        self.volume.snapshot("good")
+        self.volume.write(0, b"head")
+        self.volume.prune_generations(1)
+        self.volume.close()
+        self.volume = None
+
+        journal_path = self.store / "journal.log"
+        record = json.loads(journal_path.read_text(encoding="ascii"))
+        record["body"]["base_state"]["snapshots"]["good"]["generation_id"] = 999
+        body = json.dumps(
+            record["body"], sort_keys=True, separators=(",", ":"), ensure_ascii=True
+        ).encode("ascii")
+        record["checksum"] = hashlib.sha256(body).hexdigest()
+        journal_path.write_text(
+            json.dumps(record, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+            + "\n",
+            encoding="ascii",
+        )
+        with self.assertRaises(IntegrityError):
+            SnapCoreVolume.open(self.store)
+
     def test_snapshot_deletion_journal_crashes_replay_atomically(self) -> None:
         script = (
             "import os,sys; "
@@ -255,6 +415,7 @@ class SnapCoreTests(unittest.TestCase):
                     store, size_bytes=8 * self.block_size, block_size=self.block_size
                 ) as baseline:
                     baseline.write(0, b"keep-current")
+                    baseline.snapshot("retain-me")
                     baseline.snapshot("remove-me")
                     head = baseline.head_generation
                 child = subprocess.run(
@@ -268,11 +429,14 @@ class SnapCoreTests(unittest.TestCase):
                 with SnapCoreVolume.open(store) as recovered:
                     names = {item["name"] for item in recovered.snapshots(verify=True)}
                     if point == "journal_partial":
-                        self.assertEqual(names, {"remove-me"})
+                        self.assertEqual(names, {"retain-me", "remove-me"})
                     else:
-                        self.assertIn(names, (set(), {"remove-me"}))
+                        self.assertIn(
+                            names,
+                            ({"retain-me"}, {"retain-me", "remove-me"}),
+                        )
                     if point == "journal_fsync":
-                        self.assertEqual(names, set())
+                        self.assertEqual(names, {"retain-me"})
                     self.assertEqual(recovered.head_generation, head)
                     self.assertEqual(recovered.read(0, 12), b"keep-current")
                     recovered.verify()
@@ -417,11 +581,14 @@ class SnapCoreTests(unittest.TestCase):
         run("delete-snapshot", str(store), "discard")
         run("rollback", str(store), "before")
         gc = json.loads(run("gc", str(store)).stdout)
+        prune = json.loads(run("prune", str(store), "--keep-last", "1").stdout)
         self.assertEqual(run("read", str(store), "0", "3").stdout.strip(), "616263")
         status = json.loads(run("status", str(store), "--verify").stdout)
         self.assertEqual(status["head_generation"], 4)
         self.assertEqual(len(status["snapshots"]), 1)
+        self.assertEqual(len(status["generations"]), 2)
         self.assertEqual(gc["removed_extents"], 0)
+        self.assertEqual(prune["removed_generations"], 2)
 
     def test_extent_corruption_is_detected_before_restore_is_offered(self) -> None:
         self.volume.write(0, b"important")

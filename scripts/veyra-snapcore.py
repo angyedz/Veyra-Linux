@@ -56,6 +56,12 @@ def _parser() -> argparse.ArgumentParser:
     gc = subparsers.add_parser("gc", help="remove unreferenced immutable objects")
     gc.add_argument("store", type=Path)
 
+    prune = subparsers.add_parser(
+        "prune", help="compact old generations while preserving checkpoints"
+    )
+    prune.add_argument("store", type=Path)
+    prune.add_argument("--keep-last", required=True, type=int)
+
     verify = subparsers.add_parser("verify", help="verify all retained generations")
     verify.add_argument("store", type=Path)
     return parser
@@ -112,6 +118,10 @@ def main(argv: list[str] | None = None) -> int:
                 print(json.dumps({"deleted_snapshot": args.name}, sort_keys=True))
             elif args.command == "gc":
                 print(json.dumps(volume.collect_garbage(), sort_keys=True))
+            elif args.command == "prune":
+                print(json.dumps(
+                    volume.prune_generations(args.keep_last), sort_keys=True
+                ))
             elif args.command == "verify":
                 print(json.dumps(volume.verify(), sort_keys=True))
         return 0
