@@ -5,7 +5,7 @@
 **Target:** an installed KDE-only, filesystem-neutral, atomic Veyra with **two independently administered Linux environments on one kernel**, plus separately bootable Recovery.
 
 This plan is ordered by **dependencies and acceptance gates**, not by calendar estimates.
-Parallel tracks are intentional; avoid turning prototypes on in the normal boot path until their gates pass. Decisions live in [Architecture](ARCHITECTURE.md), [Dual Environment](DUAL-ENVIRONMENT.md), [Recovery](VEYRA-RECOVERY.md), and this roadmap. Existing installed/Live paths remain supported during migration.
+Parallel tracks are intentional; avoid turning prototypes on in the normal boot path until their gates pass. Decisions live in [Architecture](ARCHITECTURE.md), [Dual Environment](DUAL-ENVIRONMENT.md), [Recovery](VEYRA-RECOVERY.md), [SnapCore](VEYRA-SNAPCORE.md), [Resilience/Guardian](VEYRA-RESILIENCE.md), and this roadmap. Existing installed/Live paths remain supported during migration.
 
 ## Immutable design rules
 
@@ -17,6 +17,8 @@ Parallel tracks are intentional; avoid turning prototypes on in the normal boot 
 6. **Filesystem-independent A/B:** distinct directory trees, generation-specific package database and kernel/initramfs, independently persistent user state; ext4, XFS, F2FS and Btrfs without required snapshots, reflinks, CoW or A/B partitions.
 7. **Two different recovery scopes:** user-environment repair when the system boots; independent Veyra Recovery Environment (VRE) when the system does not. VRE has its own kernel/initramfs and runs *instead of* the main installation.
 8. **No untested product claims:** source, scripts, probes, QEMU boot and production readiness are different milestones. Default enablement requires reproducible tests.
+9. **Independent smooth recovery:** Guardian and a system TTY survive user-shell loss; independent VRE can recover either system A/B or user SnapCore state. A single shared, privileged Recovery Engine enforces consent and isolation.
+10. **User snapshots without mandatory CoW filesystem:** future SnapCore block-level CoW generations must work below ordinary ext4/XFS/F2FS (filesystem support verified separately). A/B boot/rollback must continue to work without snapshots. Personal data needs a separately restorable volume; never silently roll back `/home`.
 
 ## Verified code baseline versus unfinished features
 
@@ -30,7 +32,9 @@ Parallel tracks are intentional; avoid turning prototypes on in the normal boot 
 | KDE cross-boundary launch | Design and experimental KRunner preflight in PR #8 | System-selected read-only KDE runtime, user session, safe Alt+F2, D-Bus/Wayland integration |
 | vpkg | APK-derived prototype plus early Go frontend | Final installed-engine replacement, user root integration, inactive-generation updater |
 | glenv/Nix | Signed runtime pairing and Nix prototypes | Full lifecycle/integration in user root and system generations |
-| VRE | Separate console Recovery boot in diskless QEMU | Manual GRUB entry, authenticated artifacts, actual repair UI and automatic recovery |
+| VRE | Separate console Recovery boot in diskless QEMU | Manual GRUB entry, authenticated artifacts, shared dual-scope restore backend, real repair UI and automatic recovery |
+| SnapCore user snapshots | **Design only**: [block-level CoW engine](VEYRA-SNAPCORE.md), no directory-copy snapshots or required Btrfs | On-disk engine, kernel block interface, crash-consistent snapshots, preservation/rollback QEMU proofs |
+| Guardian / Resilience | **Design only**: [independent health, UI and recovery policy](VEYRA-RESILIENCE.md) | System OpenRC monitor, trusted graphics/TTY, shared transaction engine and end-to-end disaster recovery |
 
 **Last verified `main` baseline (2026-10-20):** commit [`1754933`](https://github.com/angyedz/Veyra-Linux/commit/1754933123564d621081788f7a6ca41a29dd5dd3), PRs [#8](https://github.com/angyedz/Veyra-Linux/pull/8), [#9](https://github.com/angyedz/Veyra-Linux/pull/9), [#10](https://github.com/angyedz/Veyra-Linux/pull/10), [#11](https://github.com/angyedz/Veyra-Linux/pull/11), [#12](https://github.com/angyedz/Veyra-Linux/pull/12), [#13](https://github.com/angyedz/Veyra-Linux/pull/13) merged. [Integration CI passed](https://github.com/angyedz/Veyra-Linux/actions/runs/39452117275); [Stage 1 QEMU lifecycle passed](https://github.com/angyedz/Veyra-Linux/actions/runs/39452117206). These prove the **test-only** implementation's stated assertions, not an installed dual-environment system or a general host-escape security review. Continue recording failures and guest serial logs for future gates.
 
@@ -40,13 +44,14 @@ Parallel tracks are intentional; avoid turning prototypes on in the normal boot 
 | --- | --- | --- |
 | **0 — Experimental audit/CI** | **Merged QEMU/static baseline** | PR #8; threat model still incomplete |
 | **1 — Persistent user environment** | **QEMU prototype milestones passed**, not deployed | PRs #9–13; production OpenRC service, default login and A/B-independent storage pending |
+| **1S — SnapCore snapshots (parallel research)** | **Architecture only; no prototype** | CoW block-map engine, immutable generations, FS-specific tests and safe user rollback pending |
 | **2 — System/user isolation** | **Partial defensive proofs only** | Rootfs validation, FD filtering and pidfd tests; full adversarial host boundary unproven |
 | **3 — User network/VPN** | Not integrated | Virtual link, independent routing/DNS/TUN and VPN tests pending |
 | **4–5 — KDE/launch paths** | Architecture and early launcher preflight | Version-locked system KDE with user-executed Plasma/KRunner still pending |
 | **6 — vpkg/glenv/Nix** | Existing component prototypes | User-root and A/B integration pending |
 | **7 — Filesystem-neutral A/B** | Independent experimental staging/boot track | Installed A → B → A with fault injection still pending |
 | **8 — Coherent KDE A/B** | Planned | Matched runtime activation/rollback pending |
-| **9 — Recovery** | Independent console VRE QEMU proof | Fully integrated boot entry and real repair workflows pending |
+| **9 — Recovery** | Independent console VRE QEMU proof; **Guardian/Resilience design recorded** | Shared online/VRE repair engine, system A/B + user SnapCore restore, independent TTY and trusted graphical UI pending |
 | **10–12 — Installer, QA, release** | Not release-ready | Dual-root installed path and qualification pending |
 
 ## Stage 0 — Audit experimental PR #8 and establish gates
@@ -99,6 +104,23 @@ Parallel tracks are intentional; avoid turning prototypes on in the normal boot 
 - [ ] Auto-enter the user environment at normal login; prove service lifecycle, shutdown, reboot and persistent user state in a **clean installed VM** rather than a custom initramfs harness.
 
 **Gate:** the **disposable QEMU prototype portion passed** (two user OpenRC guest boots, mapped `sudo`, persistent state, manager lifecycle and focused safety tests). **Stage 1 as an installed feature is still OPEN**: normal interactive login, production supervision, system A/B-independent storage, security review and boot integration are unproven.
+
+## Stage 1S — SnapCore protected user-environment snapshots (parallel R&D)
+
+**Status:** **all proposed / unimplemented** as of 2026-10-20. [SnapCore architecture contract](VEYRA-SNAPCORE.md). This work is separate from system A/B and must not block its snapshot-free filesystem neutrality.
+
+- [ ] Design a versioned **block-level CoW** snapshot format, immutable mapping roots, transactional commit/journal/replay, reference-safe reclamation, integrity and recovery compatibility; **do not substitute copied file trees**.
+- [ ] Build a file-backed simulated block-volume engine; prove create/read/write/fork/restore/new-head/delete with overlapping writes, immutable historical points and no full filesystem copy.
+- [ ] Property/fuzz and power-cut/`SIGKILL` tests for metadata journaling, flush ordering, ENOSPC, corruption, deletion/pruning and last-known-good protection.
+- [ ] Evaluate kernel `ublk` (or reviewed alternative) as a trusted block interface controlled by system OpenRC; prevent user `sudo` accessing backing storage, raw device, metadata or control socket.
+- [ ] QEMU mount ext4 over SnapCore, create a **filesystem-consistent** checkpoint (safe freeze/thaw or stopped user init), damage only disposable user-root data, roll back and prove retained historical generations.
+- [ ] Validate XFS, F2FS and optionally Btrfs **as ordinary filesystems on the virtual block volume**, with per-FS freeze/flush/restore tests; no filesystem snapshot feature may be required.
+- [ ] Design and prove independently restorable user **root OS**, `/home` and other durable state. Restoring user root must preserve a newer personal document by default.
+- [ ] Keep SnapCore catalog/store independent of system A/B; boot the recovery reader in independently booted VRE and test snapshot compatibility across system A→B→A.
+- [ ] Test space reservation and retention, backend crash, raw device permissions, bad keys, interrupted restore, immutable snapshot protection and external backup limitations.
+
+**Gate:** repeatable QEMU demonstration of genuine block-level CoW, crash-safe snapshots, failed-user-root recovery with unchanged host state and newer personal data, plus independent VRE accessibility and security review. **No box above is implemented yet.**
+
 
 ## Stage 2 — Enforced system/user privilege boundary
 
@@ -184,17 +206,36 @@ Parallel tracks are intentional; avoid turning prototypes on in the normal boot 
 
 **Gate:** GUI works after A -> B -> A, with recorded binary and loaded-library provenance for each generation.
 
-## Stage 9 — Two recovery scopes
+## Stage 9 — Veyra Resilience: Guardian, user repair and independent VRE
 
-**Depends on:** Stages 1–2 and 7.
+**Depends on:** Stage 1, Stage 1S (for block-snapshot restore), Stage 2 and Stage 7 (for A/B repair). **Status: design only** for Guardian/SnapCore/shared restore UI; independent console VRE boot has an earlier QEMU proof. Specs: [Resilience](VEYRA-RESILIENCE.md), [SnapCore](VEYRA-SNAPCORE.md), [VRE](VEYRA-RECOVERY.md).
 
-- [ ] Add user-environment repair/recreate/restore workflows without requiring a working user `plasmashell`.
-- [ ] Preserve data and the old damaged rootfs where possible; `/home` cannot be restored without a prior backup.
-- [ ] Integrate independent VRE into GRUB with authenticated kernel/initramfs and a usable text-first interface.
-- [ ] Implement real system rollback/repair, reliable logs, offline update status and optional later framebuffer GUI using official `branding/veyra-logo.svg`.
-- [ ] Never erase disks or reset user state without explicit authorization.
+### Independent failure detection and display
 
-**Gate:** intentional user-root damage and system-generation failure can be recovered independently in disposable QEMU guests.
+- [ ] Implement **system OpenRC-owned Veyra Guardian**, independent of user `/usr`, user D-Bus, `plasmashell`, KRunner and inner PID 1, consuming trustworthy lifecycle, session-heartbeat and storage signals.
+- [ ] Differentiate a single `plasmashell` crash (bounded restart) from a user PID 1 death, missing rootfs files, a hung session and SnapCore/FS corruption; do **not** auto-rollback on one heartbeat.
+- [ ] Provide an independent **system TTY recovery UI** with clear diagnostics and safe offline-VRE handoff when KWin is unavailable.
+- [ ] Prototype a **system-owned trusted graphical Guardian recovery surface** when KWin/compositor still works, without user Plasma/D-Bus; design anti-spoofed input and fall back to TTY reliably.
+- [ ] Design user-visible statuses and actions (“Рабочее окружение недоступно”, retry, diagnose, select verified snapshot, restore); never claim a snapshot is available before validation.
+
+### One trusted Recovery Engine, two restore scopes
+
+- [ ] Specify **one shared durable Recovery Engine** usable from online Guardian or separately booted VRE; typed, authorized and journaled operations, no privileged arbitrary shell actions from user root.
+- [ ] Add **user-root-only SnapCore restore**, requiring stop/quiesce/unmount and verification; preserve newer separate `/home` by default and offer optional full-data restore only with informed confirmation.
+- [ ] Save a **pre-restore damaged-state checkpoint** where safe/capacity permits; otherwise explicitly explain risk and refuse or request fresh consent. Do not erase user files automatically.
+- [ ] Expose **system A/B rollback, boot repair, user SnapCore restore and diagnostics** in one independent VRE text menu, without requiring binaries from either damaged installed environment.
+- [ ] Integrate independent VRE as a manually selectable, authenticated GRUB boot target with working filesystem drivers and signed/verified recovery artifacts; graphics are optional and test separately.
+- [ ] Implement generation repair and durable logs without changing protected user rootfs, `/home`, `/nix` or SnapCore catalog as an incidental effect of a system A/B rollback.
+- [ ] Never format or reset storage automatically; require explicit authority and confirmation, test clean recovery of failed/aborted transactions.
+
+### Adversarial recovery gates
+
+- [ ] Disposable QEMU: destroy user `/usr` under inner `sudo`; keep **system OpenRC and independent Guardian/TTY** responsive; restore previous SnapCore user-root generation without reverting newer personal files.
+- [ ] Disposable QEMU: force crash of `plasmashell` alone; verify bounded shell restart or non-destructive notice, **not** full user-volume rollback.
+- [ ] Disposable QEMU: corrupt system A/B generation, then both system and user; boot independent VRE and repair the two environments **separately**.
+- [ ] Fail-inject broken KWin, broken user bus, missing/corrupt snapshot, ENOSPC, power loss during rollback, lost decryption key and incompatible recovery versions; show accurate failures and preserve last-known-good recovery data.
+
+**Gate:** independent user-failure notification and recovery despite destroyed user rootfs; system A/B restoration from a separately booted VRE; no unintended rollback of personal data, no silent destructive actions. **Not yet passed.**
 
 ## Stage 10 — KDE-only two-environment installer
 
@@ -203,6 +244,7 @@ Parallel tracks are intentional; avoid turning prototypes on in the normal boot 
 - [ ] Update Calamares/TUI to create system deployment trees and independent persistent user rootfs while retaining user's ext4/XFS/F2FS/Btrfs choice.
 - [ ] Replace *legacy experimental* GNOME/Xfce/LXQt installer choices with fixed KDE-only installed-session policy **after** the new path is validated.
 - [ ] Provision identity mappings, separate package databases, signed repositories, boot state, recovery entry and system-KDE runtime.
+- [ ] Provision protected SnapCore snapshot/backing-store metadata and separately restorable user-root vs personal-data domains **only after** actual CoW/Recovery Engine gates pass; keep basic installation functional if SnapCore is not enabled.
 - [ ] Keep Live bootstrap simple and functional; avoid forcing installation-related changes into it.
 
 **Gate:** unattended and graphical install on clean disposable disk, reboot, login, KDE, package install, VPN, update, rollback and repair succeed.
@@ -214,6 +256,7 @@ Parallel tracks are intentional; avoid turning prototypes on in the normal boot 
 - [ ] Verify `sudo`, host kernel and device boundaries; install alternate kernel/DE packages as ordinary files without activating them at host level.
 - [ ] Fuzz D-Bus/Wayland/portal boundaries and check inherited socket/FD leakage; simulate hostile user root.
 - [ ] Stress resource isolation, network failures, interrupted updates, disk full, power cuts, package signature failures and broken init.
+- [ ] Fault-inject SnapCore write/journal/GC failures, power cuts, interrupted restore, bad catalog and user-root destruction; prove Guardian, TTY and offline VRE fail safely without overwriting verified snapshots.
 - [ ] Test multiple GPUs/drivers, firmware, BIOS/UEFI, filesystem matrix and physical hardware after VM checks.
 - [ ] Review and triage identified escape risks and reproducible logs.
 
@@ -235,12 +278,13 @@ Parallel tracks are intentional; avoid turning prototypes on in the normal boot 
 
 1. **Stage 0 prototype complete and merged**: PR #8 QEMU/static gates verified; continue its unfinished threat-model work under Stage 2.
 2. **Stage 1 QEMU milestone complete and merged**: PRs #9–13; **next** productionize the tested system manager as a real OpenRC service, finalize persistent rootfs outside A/B, add normal login/auth and trusted cleanup.
-3. Stage 2: adversarially prove the production inner `sudo` cannot escape or control host kernel/devices/boot/network/services; extend inherited-FD/cgroup/LSM audits.
-4. Stage 3: controlled user internet and VPN while host network stays independent.
-5. In parallel, Stage 7: complete the real A -> B -> A QEMU cycle.
-6. Stages 4–5: pair KDE runtime and route all application launch paths.
-7. Stages 6 and 8: stabilize user package management and paired system KDE upgrades.
-8. Stages 9–12: recovery, installer, security qualification and release.
+3. **In parallel Stage 1S:** prototype SnapCore genuine block-level CoW with crash-consistent mapping roots, power-cut tests and independent root vs `/home` recovery; preserve system A/B's snapshot-free contract.
+4. Stage 2: adversarially prove the production inner `sudo` cannot escape or control host kernel/devices/boot/network/services; extend inherited-FD/cgroup/LSM audits.
+5. Stage 3: controlled user internet and VPN while host network stays independent.
+6. In parallel, Stage 7: complete the real A -> B -> A QEMU cycle.
+7. Stages 4–5: pair KDE runtime and route all application launch paths.
+8. Stages 6 and 8: stabilize user package management and paired system KDE upgrades.
+9. Stages 9–12: build system-side Guardian, trusted TTY/graphics fallback and a **shared Recovery Engine** for user SnapCore and system A/B in VRE; then installer, destruction/recovery tests and release qualification.
 
 ## First integrated alpha acceptance gate
 
@@ -249,7 +293,7 @@ boots system + user init, starts system-owned KDE with user-side
 `plasmashell` and KRunner, confines `sudo`, installs normal user packages,
 runs a user VPN without touching host networking, persists user rootfs across
 reboot and successfully rolls back system A/B independently. A broken user
-environment must not prevent the system's maintenance/recovery path.
+environment must not prevent the system's maintenance/recovery path. Before advertising snapshots or automatic recovery, a later end-to-end gate must also prove that destroying the disposable user environment triggers **independent Guardian/TTY or VRE**, restores a verified user-root snapshot without rolling back newer separate `/home` data, and that VRE independently repairs a failed system A/B generation. These are **future tasks**, not current alpha claims.
 
 No checklist item may be marked complete solely because a script or a
 GitHub Actions workflow exists; attach actual test evidence.

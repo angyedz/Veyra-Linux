@@ -57,3 +57,29 @@ No GRUB-only graphical animation should be mistaken for actual progress. VRE sho
 7. Test power interruption at every state transition and each supported filesystem.
 
 **Non-goal:** replacing GRUB with a new bootloader immediately. "Veyra Boot" is the branded boot experience; GRUB remains its tested underlying bootloader.
+
+
+## Veyra Resilience: one Recovery Engine for system and user repair (new design, 2026-10-20)
+
+See [Resilience/Guardian architecture](VEYRA-RESILIENCE.md), [SnapCore design](VEYRA-SNAPCORE.md), and [Roadmap](ROADMAP.md). **None of the following user-facing rescue flows are implemented yet.** The present VRE milestone is an independent console kernel/initramfs boot in diskless QEMU, **not** an installed dual-environment recovery utility.
+
+VRE must provide **two independent restoration scopes in the same text-first interface**:
+1. **System:** validate boot/generation state, choose the last verified A/B generation, repair boot and retry. This path is separate from SnapCore and never implicitly rewinds user root, personal files or snapshot metadata.
+2. **User:** validate available SnapCore snapshots and damage, stop/mount exclusively or operate offline, choose a user-root snapshot and restore into a new writable head while retaining a separate newer `/home` volume. Full personal-data rollback requires separately listed volumes and explicit informed confirmation.
+
+**The same Recovery Engine** supplies typed, authorized, crash-consistent transactions to VRE and to **online system-side Guardian** where online unmount/repair can be proven safe. VRE must carry its own compatible SnapCore reader/backend, not use software in a damaged installed rootfs, and refuse mutation if its storage format is unsupported, catalog invalid or mount exclusivity cannot be guaranteed.
+
+### Independent failure notification and safe UI
+
+- System Guardian must detect nested PID 1 failure and independently observe `plasmashell`/session health; a single shell crash triggers bounded restart, **not** whole-volume rollback.
+- When user environment is missing, the **system-side** graphics surface (if KWin remains healthy) shows a calm “Рабочее окружение недоступно”; it cannot depend on user KDE, `/usr`, user D-Bus or `/home`. Its trusted input path needs review. **Always provide system TTY fallback**, then offline VRE when system graphics or boot cannot run.
+- Expose only **verified** snapshot/generation choices and real repair stages. Preserve the damaged user-state head as a checkpoint if possible, explain any loss if impossible, and get confirmation **before** destructive writes.
+- VRE must remain bootable when both installed environments fail; do not assume local snapshots survive physical disk failure. Provide external backup/recovery-media guidance.
+
+### Required validation (all pending)
+
+- [ ] Common Recovery Engine durable format/API for both online and offline repair; explicit system vs user privilege scopes and operation confirmation.
+- [ ] Guardian OpenRC service and independent TTY UX with bounded desktop-restart, user-init-crash and storage-failure detection.
+- [ ] Offline VRE menu that restores **user SnapCore** and **system A/B** without either installed environment or Plasma.
+- [ ] QEMU: delete files inside a **disposable** user-root under inner `sudo`, verify Guardian notification, restore user root while preserving newer personal data; force separate system damage and dual damage with VRE repair.
+- [ ] Simulated power interruption, missing snapshots, ENOSPC, wrong keys, failed compositor and incompatible SnapCore catalog; no loss of the last verified rescue point.

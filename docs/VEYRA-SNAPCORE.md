@@ -1,0 +1,88 @@
+# Veyra SnapCore — protected block-level snapshots of the user environment
+
+**Status (2026-10-20): DESIGN PROPOSAL ONLY. No SnapCore engine, snapshot storage format, QEMU rollback or installed integration exists.** Related: [Veyra Resilience](VEYRA-RESILIENCE.md), [VRE](VEYRA-RECOVERY.md), [Roadmap](ROADMAP.md).
+
+## Decision and objectives
+
+Veyra should have a **Veyra-owned copy-on-write (CoW) block-volume snapshot engine** that does **not** depend on Btrfs subvolumes, reflinks, directory-tree copies, or mandatory LVM snapshots. A snapshot records an immutable version of a *logical block mapping*; new writes to the active volume allocate new extents while still-referenced old extents remain available. Snapshot creation is primarily metadata work, **not** duplication of `/usr`, `/etc` or `/home` into other folders. Storage consumption grows with changed blocks, metadata and fragmentation; no promise of zero overhead, compression, unlimited snapshots, or instantaneous full-volume verification.
+
+The engine sits **below an ordinary filesystem**. Test ext4 first, then XFS, F2FS and optionally Btrfs used as an ordinary filesystem. Do not claim compatibility without independent filesystem-specific tests. **System A/B** remains the pre-existing filesystem-neutral, directory-generation mechanism and must work without SnapCore, block CoW or snapshots.
+
+The storage service and controller belong to the **system environment**, not the user's own root (inner `sudo`). Its metadata and backing device must not be accessible via guest device nodes, writable mounts, inherited FDs, control sockets, host D-Bus or raw storage operations.
+
+## Logical architecture
+
+`SYSTEM OPENRC / TRUSTED SNAPCORE SERVICE
+    ├── snapshot catalog + generation maps + protected physical extent store
+    ├── durable transactions / recovery metadata
+    └── narrowly authorized virtual block device (candidate: Linux ublk)
+          └── ext4 / XFS / F2FS (filesystem compatibility tested separately)
+                └── persistent user-root logical volume
+                    └── user PID 1 / OpenRC / applications / inner sudo
+
+INDEPENDENT VRE (separate kernel + initramfs)
+    └── compatible SnapCore recovery reader/engine and A/B recovery engine`
+
+`ublk` is a *candidate*, not a committed production dependency; evaluate kernel versions, failure semantics, I/O flush/ordering, security and Recovery availability. The SnapCore service must be started **before** the user rootfs is mounted, and VRE must be able to open the on-disk format without loading any binaries from a broken installed user environment.
+
+### Snapshot representation
+
+- The active logical volume has a writable *head mapping* from logical block numbers to physical extents in a protected store.
+- Snapshot `S1` references a durable immutable mapping root, volume identity, creation sequence and consistency metadata. Unmodified extents are shared **by reference**.
+- A later overwrite writes to a new extent and commits an updated active map. Data reachable through `S1` must remain unchanged.
+- Historical snapshots are **read-only**. Rollback selects a snapshot into a **new writable head**, never edits the snapshot or silently destroys later checkpoints.
+- Delete/prune reclaims only extents no longer reachable from any active head, rollback checkpoint or retained snapshot. Define quotas, reserve metadata space, reference counting/reachability, safe garbage collection and last-known-good retention before release.
+- Test-only first implementation may use a file-backed append-only extent store and a CoW map tree; choose the actual tree/segment structure after measurement and crash-safety review.
+
+A block snapshot is not a filesystem copy, but it is also **not an off-disk backup**. Physical drive loss, lost keys or privileged corruption of the shared store can destroy current data and local snapshots.
+
+## Personal files and snapshot scope
+
+**Critical user promise:** “Restore user environment” must **not silently restore an old version of newer personal files**.
+
+Block CoW snapshots operate on **whole logical volumes**, not arbitrary directories. Therefore decide and provision independently restorable domains, at minimum:
+- **User OS/root volume:** `/usr`, `/etc`, user OpenRC, user package database and environment-specific files.
+- **Personal files volume:** `/home`, with its own backup/snapshot policy and a deliberately separate restore choice.
+- **Other durable state:** user Nix profiles, application data, downloads or package caches may need further explicitly documented domains; do not assume all `/var` is disposable.
+
+An optional separate, carefully audited file-extraction tool may help retrieve documents, but **file copying is not SnapCore's snapshot mechanism**. No automatic migration/rollback of `/home` during system A/B rollback. User rootfs and SnapCore catalogs must remain outside system A/B generations. Define generation/format compatibility for A→B→A and independent VRE.
+
+## Consistency, power loss and format contract
+
+Nothing here is implemented yet. Before presenting SnapCore as safe, specify and test:
+
+1. A versioned on-disk volume format with durable generation identifiers, protected mapping roots, checksums, replayable journal/intents, duplicate/rotating superblocks or recovery headers, bounded parsers, and explicit compatibility policy.
+2. A clearly defined **atomic commit boundary** for writes, snapshot create/delete and restore; use correct write ordering, barrier/flush/FUA and `fsync` semantics. A power cut must reveal either a fully committed prior state or a valid new state, never a half-published map.
+3. Immutable extent preservation under concurrent writes and reclamation, including partial-block writes, discards/TRIM, sparse extents, ENOSPC, crash during garbage collection and catalog damage.
+4. At least **filesystem crash consistency**. For a filesystem-consistent checkpoint, quiesce or stop user services and freeze/unmount the filesystem while committing a stable mapping-root; always thaw on timeout/failure, never leave the active user volume frozen after a manager crash. Validate freeze support per filesystem. Application/database-consistent snapshots require extra hooks, not just freeze.
+5. Snapshot integrity verification (catalog/mapping/extent reachability, checksums, optional signed metadata where meaningful, filesystem checks) **before** advertising availability. Do not mark a corrupted or missing point as safe.
+6. A reserved recovery capacity budget, safe retention, explicit cost/space warning, optional encryption and recoverable key handling, and refusal to overwrite last known-good points when out of space.
+7. Fail-closed behavior on store service crash, bad I/O, full disk and incompatible format (e.g. remount active volume read-only, stop workload, offer offline VRE) rather than bypassing CoW.
+
+## Restore transaction and safety requirements
+
+The common [Recovery Engine](VEYRA-RESILIENCE.md) accepts only authorized requests from system-side Guardian or offline VRE.
+
+- Stop and reap user processes; verify no other writable mounts/FDs access the target logical volume; flush and unmount. Never restore a live writable filesystem. If this cannot be proved in the current system, select **offline VRE**.
+- Show the selected snapshot and volumes; explain exactly what changes would be lost. Default to user OS/root only, **preserving separate newer `/home` data**. Full user-state rollback requires explicit volume selection and informed confirmation.
+- Preserve the damaged pre-restore head as a **separate checkpoint** if space/integrity allow. If this cannot be done, disclose risk and require consent or refuse.
+- Verify a candidate snapshot; atomically commit a *new active head* based on it, re-check filesystem state, and only then bring user PID 1 back. Interrupted recovery must resume or roll back to a known good state.
+- A system environment failure is repaired by the separate **system A/B rollback path**; SnapCore must not grant inner `sudo` access to host recovery, boot or A/B metadata.
+- A healthy local snapshot cannot protect against dead disks or destroyed local keys. Offer/encourage **independent external backup** for these scenarios.
+
+## QEMU implementation and verification tasks — ALL OPEN
+
+- [ ] Define the explicit volume/catalog on-disk format, CoW mapping invariants, atomic journal, error policy, encryption/compatibility strategy and independent reader.
+- [ ] Write an isolated file-backed **simulated block-volume engine** with real immutable CoW snapshot maps, read/overwrite/rollback and correct reference-aware pruning; **no directory-copy implementation**.
+- [ ] Property/fuzz tests: overlapping writes, sparse ranges, concurrent I/O, partial writes, snapshot fork histories, deletion, old/new-map content and reference counts.
+- [ ] Fault-inject power loss/`SIGKILL` at every commit stage; reopen and validate all acknowledged generations after restart.
+- [ ] Evaluate Linux `ublk` (or alternative reviewed virtual block interface), its flush/discard and kernel requirements; keep backend and raw device unexposed to user root.
+- [ ] Boot disposable QEMU with ext4 formatted on SnapCore; create snapshot; destructively mutate **only the disposable user rootfs**; restore the snapshot without filesystem-tree copy.
+- [ ] Test filesystem-consistent checkpoints, freeze/thaw failure recovery, mounted-device safeguards and flush semantics on ext4, XFS, F2FS and optionally Btrfs.
+- [ ] Test separate user-root and `/home` volumes: destroy user-root files, restore user OS, and prove a newer personal document remains.
+- [ ] Test ENOSPC, metadata corruption, malicious snapshot catalog, invalid keys, damaged current head, backend crash, repeated rollback and interrupted restore.
+- [ ] Verify SnapCore can be activated **inside independently booted VRE** with a corrupted installed user/system root, including format compatibility across A/B.
+- [ ] Test quota/retention/pruning and prohibit automatic deletion of the only verified last-known-good snapshot.
+- [ ] Require adversarial review and repeatable QEMU recovery evidence **before production default enablement**.
+
+**Do not tick these boxes until actual code and reproducible test results exist.**

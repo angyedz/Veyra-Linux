@@ -21,6 +21,8 @@ Calamares/TUI installation or A/B boot process.
 The system and user environments share one Linux kernel. A/B changes the
 system deployment, not the persistent user environment.
 
+**Resilience design (2026-10-20, not implemented):** a system OpenRC-owned [Veyra Guardian](VEYRA-RESILIENCE.md) must detect user-init/Plasma failures without depending on the user rootfs. A system-owned TTY and independently bootable [VRE](VEYRA-RECOVERY.md) provide fallback. [SnapCore](VEYRA-SNAPCORE.md) is a proposed block-level CoW user snapshot layer below ext4/XFS/F2FS, **not** directory copies or a Btrfs/LVM requirement. User-root and `/home` must be separately restorable; system A/B rollback must not implicitly touch them.
+
 ## Privileges
 
 A regular user is unprivileged **inside** the user environment. `sudo`
