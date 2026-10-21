@@ -31,6 +31,8 @@
 
 #define PRIMARY_ROOT_PATH "/mnt/veyra-user"
 #define SECONDARY_ROOT_PATH "/mnt/veyra-user-b"
+#define ALICE_STORE_ROOT "/var/lib/veyra-user-store/users/alice"
+#define BOB_STORE_ROOT "/var/lib/veyra-user-store/users/bob"
 #define RUN_DIR "/run/veyra-user-manager"
 #define SOCKET_PATH RUN_DIR "/control.sock"
 /* Root-owned (0711) staging parent: the namespace user can traverse
@@ -885,6 +887,59 @@ static int stop_environment(void) {
     state = STATE_FAILED;
     return -1;
 }
+static int directory_access_as(uid_t uid, gid_t gid, const char *path,
+                                int expect_access) {
+    pid_t pid = fork();
+    if (pid < 0) return -1;
+    if (!pid) {
+        /* Do not give the mapped-ID probe inherited system control FDs. */
+        close_unlisted_fds(NULL, 0);
+        if (setgroups(0, NULL) < 0 ||
+            setresgid(gid, gid, gid) < 0 ||
+            setresuid(uid, uid, uid) < 0)
+            _exit(2);
+        int fd = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+        int saved_errno = errno;
+        if (fd >= 0) close(fd);
+        if (expect_access ? fd >= 0 : fd < 0 && saved_errno == EACCES)
+            _exit(0);
+        _exit(1);
+    }
+    int status = 0;
+    pid_t waited;
+    do {
+        waited = waitpid(pid, &status, 0);
+    } while (waited < 0 && errno == EINTR);
+    if (waited != pid || !WIFEXITED(status) || WEXITSTATUS(status) != 0)
+        return -1;
+    return 0;
+}
+
+static int verify_per_user_root_isolation(char *error, size_t error_size) {
+    struct stat bob_st;
+    if (lstat(BOB_STORE_ROOT, &bob_st) < 0) {
+        if (errno == ENOENT) return 0; /* Legacy single-root QEMU fixture. */
+        set_error(error, error_size, "cannot inspect the secondary account root");
+        return -1;
+    }
+    if (!S_ISDIR(bob_st.st_mode)) {
+        set_error(error, error_size, "secondary account root is not a real directory");
+        return -1;
+    }
+    if (directory_access_as(100000U, 100000U, ALICE_STORE_ROOT, 1) < 0 ||
+        directory_access_as(100000U, 100000U, BOB_STORE_ROOT, 0) < 0 ||
+        directory_access_as(200000U, 200000U, BOB_STORE_ROOT, 1) < 0 ||
+        directory_access_as(200000U, 200000U, ALICE_STORE_ROOT, 0) < 0) {
+        set_error(error, error_size,
+                  "mapped root IDs do not have private cross-account traversal");
+        return -1;
+    }
+    fprintf(stderr, "VEYRA_STAGE1_PER_USER_ROOT_ISOLATION_PASS "
+                    "alice=100000 bob=200000 cross-traverse=denied\\n");
+    fflush(stderr);
+    return 0;
+}
+
 static int start_environment(char *response, size_t response_size) {
     reap_child();
     if (launcher_pid > 0) {
@@ -895,6 +950,12 @@ static int start_environment(char *response, size_t response_size) {
     int rootfd = -1;
     char error[256] = {0};
     if (validate_rootfs(&rootfd, error, sizeof(error)) < 0) {
+        snprintf(response, response_size, "ERROR rootfs: %s", error);
+        return -1;
+    }
+    if (!strcmp(root_path, PRIMARY_ROOT_PATH) &&
+        verify_per_user_root_isolation(error, sizeof(error)) < 0) {
+        close(rootfd);
         snprintf(response, response_size, "ERROR rootfs: %s", error);
         return -1;
     }
