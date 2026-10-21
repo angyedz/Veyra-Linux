@@ -2,7 +2,7 @@
 # Build ext4-capable Alpine initramfs images for disposable SnapCore QEMU tests.
 set -eu
 out=${1:-/out}
-apk add --no-cache linux-lts mkinitfs e2fsprogs cpio gzip build-base
+apk add --no-cache linux-lts mkinitfs e2fsprogs cpio gzip build-base linux-headers
 kernel=$(basename "$(find /lib/modules -mindepth 1 -maxdepth 1 -type d -print -quit)")
 test -n "$kernel"
 
