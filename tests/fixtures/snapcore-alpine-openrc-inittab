@@ -1,0 +1,5 @@
+# Disposable Alpine BusyBox PID 1 that runs real OpenRC runlevels.
+::sysinit:/sbin/openrc sysinit
+::sysinit:/sbin/openrc boot
+::wait:/sbin/openrc default
+::shutdown:/sbin/openrc shutdown

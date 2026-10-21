@@ -35,7 +35,7 @@ jobs:
       - name: Install QEMU, host kernel NBD, NBDKit and serial assertion tools
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq qemu-system-x86 qemu-utils nbdkit nbdkit-plugin-python python3-pexpect
+          sudo apt-get install -y -qq qemu-system-x86 qemu-utils nbdkit nbdkit-plugin-python python3-pexpect e2fsprogs
           nbdkit python --dump-plugin
       - name: Compile SnapCore and QEMU test harness
         run: |
@@ -59,6 +59,7 @@ jobs:
           python3 tests/test-snapcore-booted-root-qemu.py \
             /tmp/veyra-snapcore-qemu/snapcore-ext4-kernel \
             /tmp/veyra-snapcore-qemu/snapcore-booted-root-initramfs \
+            --alpine-root /tmp/veyra-snapcore-qemu/alpine-openrc-root \
             --log /tmp/veyra-snapcore-qemu/booted-root-serial.log
       - name: Print guest serial errors
         if: failure()

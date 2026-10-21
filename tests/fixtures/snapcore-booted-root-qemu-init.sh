@@ -140,7 +140,12 @@ case "$phase" in
             fail 'e2fsck rejected the checkpoint-restored ext4 root'
         echo 'VEYRA_SNAPCORE_BOOTED_ROOT_E2FSCK_PASS'
         ;;
-    mutate-root|delete-root|verify-root) ;;
+    alpine-verify)
+        /sbin/e2fsck -f -n /dev/vda ||
+            fail 'e2fsck rejected the checkpoint-restored Alpine/OpenRC ext4 root'
+        echo 'VEYRA_SNAPCORE_ALPINE_E2FSCK_PASS'
+        ;;
+    mutate-root|delete-root|verify-root|alpine-baseline|alpine-mutate|alpine-delete|alpine-verify) ;;
     *)
         fail "unknown booted-root QEMU phase: $phase"
         ;;
