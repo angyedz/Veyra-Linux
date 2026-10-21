@@ -43,7 +43,7 @@ Parallel tracks are intentional; avoid turning prototypes on in the normal boot 
 | Stage | State as of 2026-10-21 | Evidence / next boundary |
 | --- | --- | --- |
 | **0 — Experimental audit/CI** | **Merged QEMU/static baseline** | PR #8; threat model still incomplete |
-| **1 — Persistent user environment** | **QEMU-only prototypes, not deployed:** PR #20 checks two isolated account roots and two-boot state; draft PR #24 adds manifest-driven root provisioning; draft PR #26 connects that manifest to a test authenticated Eve login and separate `/home` (QEMU runs [39618944444](https://github.com/angyedz/Veyra-Linux/actions/runs/39618944444) and [39618944502](https://github.com/angyedz/Veyra-Linux/actions/runs/39618944502)) | Production provisioner and OpenRC service, PAM/SDDM or other graphical login, SnapCore-backed storage, security review and A/B-independent production data remain pending |
+| **1 — Persistent user environment** | **Production-oriented primitives under draft package PRs #3/#4; QEMU integration remains test-only:** PR #20 checks two isolated account roots and two-boot state; draft PR #24 adds manifest-driven root provisioning; draft PR #26 connects that manifest to a test authenticated Eve login and separate `/home` (QEMU runs [39618944444](https://github.com/angyedz/Veyra-Linux/actions/runs/39618944444) and [39618944502](https://github.com/angyedz/Veyra-Linux/actions/runs/39618944502)). Draft `veyra-pkgrepo` PR #3 adds an account registry; stacked PR #4 adds a system-side account-root provisioner package. Neither package is integrated into the installed image | Installer/profile integration, production OpenRC service, PAM/SDDM or other graphical login, SnapCore-backed storage, security review and A/B-independent production data remain pending |
 | **1S — SnapCore snapshots (parallel research)** | **File-backed CoW prototype and test-only ext4 root/home recovery proof in open PRs**; PR #19 passes six guest boots using host `/dev/nbd0` and `/dev/nbd1`, including a recursive test-volume wipe with separate `/home` mounted and later root/home restores | Storage remains file-backed behind test-only NBDKit; production interface, booted-root integration, physical-device durability, filesystem consistency, VRE and security gates remain open |
 | **2 — System/user isolation** | **Partial defensive proofs only** | Rootfs validation, FD filtering and pidfd tests; full adversarial host boundary unproven |
 | **3 — User network/VPN** | Not integrated | Virtual link, independent routing/DNS/TUN and VPN tests pending |
@@ -304,7 +304,7 @@ Parallel tracks are intentional; avoid turning prototypes on in the normal boot 
 ## Immediate execution order
 
 1. **Stage 0 prototype complete and merged**: PR #8 QEMU/static gates verified; continue its unfinished threat-model work under Stage 2.
-2. **Stage 1 QEMU baseline merged**: PRs #9–13. Open PR #17 tests system OpenRC autostart and serial login; draft PRs #18, #24, #25 and #26 add two-root boot, generic root provisioning, named login and manifest-to-authentication proofs. The system-side registry package is now a partial credential-enrollment primitive. **Next** integrate it with production account creation and root provisioning, implement the installed OpenRC-owned session manager, then integrate graphical login, finalize persistent roots and personal data outside A/B, and add trusted cleanup. This design does not enable the feature or change the legacy installer.
+2. **Stage 1 QEMU baseline merged**: PRs #9–13. Open PR #17 tests system OpenRC autostart and serial login; draft PRs #18, #24, #25 and #26 add two-root boot, generic root provisioning, named login and manifest-to-authentication proofs. Draft `veyra-pkgrepo` PR #3 adds a partial account-enrollment primitive, while stacked PR #4 adds a system-side root-provisioner package; both remain independent of the installed image and login path. **Next** integrate account enrollment and root provisioning with the system OpenRC-owned session manager, then add authenticated TTY login, graphical login, persistent roots outside A/B and trusted cleanup. This design does not enable the feature or change the legacy installer.
 3. **In parallel Stage 1S:** prototype SnapCore genuine block-level CoW with crash-consistent mapping roots, power-cut tests and independent root vs `/home` recovery; preserve system A/B's snapshot-free contract.
 4. Stage 2: adversarially prove the production inner `sudo` cannot escape or control host kernel/devices/boot/network/services; extend inherited-FD/cgroup/LSM audits.
 5. Stage 3: controlled user internet and VPN while host network stays independent.
@@ -344,8 +344,21 @@ authenticate a login or provision installed user roots, homes, sessions, or
 login. PR #3 remains draft pending independent review, so this does not change
 the integrated Alpha count.
 
+**Root-provisioner progress (2026-10-21):** draft
+[veyra-pkgrepo PR #4](https://github.com/angyedz/veyra-pkgrepo/pull/4), stacked
+on PR #3, adds a system-side package that revalidates the registry mapping,
+stages a per-account rootfs, separate home and root-owned identity metadata,
+then atomically publishes the account directory. Head
+`6e0a6b97641c7039884834e1af5e1b538664b422` passed the package build/provisioner
+tests ([run 39663438541](https://github.com/angyedz/veyra-pkgrepo/actions/runs/39663438541))
+and source checks ([run 39663438607](https://github.com/angyedz/veyra-pkgrepo/actions/runs/39663438607)).
+It does not authenticate a login, start or supervise sessions, integrate with
+PAM/SDDM, or activate an installer profile. PR #4 remains draft pending
+independent review and its registry dependency.
+
 The remaining integration blocks are production account enrollment and the
-system OpenRC/session manager; persistent per-user roots and `/home` outside
+system OpenRC/session manager that consumes the registry and provisioner;
+installation and recovery of persistent per-user roots and `/home` outside
 system A/B; the system KDE to user Plasma/KRunner session path and a confined
 inner-`sudo` policy; user-only package installation and VPN/network isolation;
 and a maintenance/recovery path that remains available when the user root fails.
