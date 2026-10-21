@@ -74,9 +74,8 @@ service_entries = {entry["name"]: entry for entry in openrc["services"]}
 for name in ("dbus", "elogind", "networkmanager"):
     assert service_entries[name]["mandatory"] is True
 assert "nix-daemon" in service_entries
-service_loop = re.search(r"for service in ([a-z0-9 -]+); do", qemu_source)
-assert service_loop is not None
-assert set(service_loop.group(1).split()) == set(service_entries)
+service_loops = re.findall(r"for service in ([a-z0-9 -]+); do", qemu_source)
+assert set(service_entries) in [set(loop.split()) for loop in service_loops]
 assert r"[A-Za-z0-9_.()-]+ )?login:" in qemu_source
 
 seq = settings["sequence"]
