@@ -12,13 +12,18 @@ start() {
         esac
     done
     root_source=$($BB awk '$2 == "/" { print $1; exit }' /proc/mounts)
-    if [ "$root_source" != /dev/vda ]; then
-        echo "VEYRA_SNAPCORE_FAILURE: Alpine root is not /dev/vda ($root_source)"
+    if [ "$root_source" != /dev/ublkb0 ]; then
+        echo "VEYRA_SNAPCORE_FAILURE: Alpine root is not /dev/ublkb0 ($root_source)"
         $BB poweroff -f
         return 1
     fi
     if [ "$($BB cat /etc/veyra-snapcore-root-fixture 2>/dev/null || :)" != DISPOSABLE_QEMU_ROOT_V1 ]; then
         echo "VEYRA_SNAPCORE_FAILURE: Alpine root fixture marker is missing"
+        $BB poweroff -f
+        return 1
+    fi
+    if [ -e /dev/vda ] || [ -e /dev/ublk-control ] || [ -e /dev/ublkb0 ]; then
+        echo "VEYRA_SNAPCORE_FAILURE: user root can access a backing or ublk control device"
         $BB poweroff -f
         return 1
     fi
@@ -30,7 +35,7 @@ start() {
                 $BB poweroff -f
                 return 1
             }
-            echo "VEYRA_SNAPCORE_ALPINE_BASELINE_PASS root=/dev/vda openrc=default"
+            echo "VEYRA_SNAPCORE_ALPINE_BASELINE_PASS root=/dev/ublkb0 openrc=default"
             ;;
         alpine-mutate)
             [ "$($BB cat /usr/lib/veyra-snapcore-root-marker 2>/dev/null || :)" = baseline-alpine-openrc-root ] || {
@@ -44,7 +49,7 @@ start() {
                 return 1
             }
             $BB printf '%s\n' removed-usr > /root/veyra-alpine-mutation-marker
-            echo "VEYRA_SNAPCORE_ALPINE_MUTATION_PASS root=/dev/vda removed=/usr openrc=default"
+            echo "VEYRA_SNAPCORE_ALPINE_MUTATION_PASS root=/dev/ublkb0 removed=/usr openrc=default"
             ;;
         alpine-delete)
             [ "$($BB cat /usr/lib/veyra-snapcore-root-marker 2>/dev/null || :)" = baseline-alpine-openrc-root ] || {
@@ -65,7 +70,7 @@ start() {
                 $BB poweroff -f
                 return 1
             }
-            echo "VEYRA_SNAPCORE_ALPINE_RESTORE_PASS root=/dev/vda /usr=restored mutation=absent openrc=default"
+            echo "VEYRA_SNAPCORE_ALPINE_RESTORE_PASS root=/dev/ublkb0 /usr=restored mutation=absent openrc=default"
             ;;
         *)
             echo "VEYRA_SNAPCORE_FAILURE: unexpected Alpine root phase: $phase"

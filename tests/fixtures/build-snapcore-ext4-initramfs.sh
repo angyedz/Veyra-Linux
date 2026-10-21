@@ -2,10 +2,32 @@
 # Build ext4-capable Alpine initramfs images for disposable SnapCore QEMU tests.
 set -eu
 out=${1:-/out}
-apk add --no-cache linux-lts mkinitfs e2fsprogs cpio gzip build-base
+apk add --no-cache linux-lts mkinitfs e2fsprogs cpio gzip build-base \
+    git autoconf automake libtool pkgconf g++ liburing-dev util-linux
 apk add --no-cache alpine-base openrc
 kernel=$(basename "$(find /lib/modules -mindepth 1 -maxdepth 1 -type d -print -quit)")
 test -n "$kernel"
+ublk_module=$(find "/lib/modules/$kernel" -type f -name 'ublk_drv.ko*' -print -quit)
+test -n "$ublk_module"
+mkdir -p /etc/mkinitfs/features.d
+ublk_module_rel=${ublk_module#"/lib/modules/$kernel/"}
+printf '%s\n' "$ublk_module_rel" > /etc/mkinitfs/features.d/snapcore_ublk.modules
+
+# Build the pinned upstream ublk server used only in the disposable QEMU guest.
+ublksrv_ref=6d0d922614ec18e6f2b5d476af8d540a1d9c1de8
+ublksrv_src=/tmp/ublksrv
+rm -rf "$ublksrv_src"
+git clone https://github.com/ublk-org/ublksrv.git "$ublksrv_src"
+git -C "$ublksrv_src" checkout --detach "$ublksrv_ref"
+(
+    cd "$ublksrv_src"
+    autoreconf -i
+    ./configure --prefix=/usr --with-libnfs=no --with-libiscsi=no --with-gnutls=no
+    make -j2
+    make install
+)
+test -x /usr/sbin/ublk
+test -x /usr/sbin/ublk.loop
 
 # Build a disposable Alpine/OpenRC root used only by the SnapCore QEMU test.
 alpine_root=$out/alpine-openrc-root
@@ -35,14 +57,15 @@ printf '%s\n' 'baseline-alpine-openrc-root' \
 printf '%s\n' 'DISPOSABLE_QEMU_ROOT_V1' \
     > "$alpine_root/etc/veyra-snapcore-root-fixture"
 
-mkinitfs -F "base ext4 virtio" \
+mkinitfs -F "base ext4 virtio snapcore_ublk" \
     -i /work/tests/fixtures/snapcore-ext4-qemu-init.sh \
     -o "$out/snapcore-ext4-initramfs" "$kernel"
-mkinitfs -F "base ext4 virtio" \
+mkinitfs -F "base ext4 virtio snapcore_ublk" \
     -i /work/tests/fixtures/snapcore-booted-root-qemu-init.sh \
     -o "$out/snapcore-booted-root-initramfs" "$kernel"
 
-mkdir -p "$out/overlay/sbin" "$out/overlay/etc"
+mkdir -p "$out/overlay/sbin" "$out/overlay/etc" \
+    "$out/overlay/usr/sbin" "$out/overlay/usr/bin"
 cc -static -Os -Wall -Wextra -Werror \
     -o "$out/overlay/sbin/veyra-wipe-root" \
     /work/tests/fixtures/snapcore-wipe-root.c
@@ -57,6 +80,21 @@ for tool in mkfs.ext4 e2fsck; do
 done
 cp /etc/mke2fs.conf "$out/overlay/etc/mke2fs.conf"
 
+cp /work/tests/fixtures/snapcore-ublk-start-inner.sh \
+    "$out/overlay/sbin/veyra-snapcore-ublk-start-inner"
+chmod 0755 "$out/overlay/sbin/veyra-snapcore-ublk-start-inner"
+: > "$out/ublk-ldd-output"
+for binary in /usr/sbin/ublk /usr/sbin/ublk.loop "$(command -v unshare)"; do
+    test -x "$binary"
+    if [ "$binary" = "$(command -v unshare)" ]; then
+        cp -L "$binary" "$out/overlay/usr/bin/unshare"
+    else
+        cp -L "$binary" "$out/overlay$binary"
+    fi
+    ldd "$binary" >> "$out/ublk-ldd-output"
+done
+
+cat "$out/ext4-ldd-output" "$out/ublk-ldd-output" > "$out/initramfs-ldd-output"
 awk '
     index($0, "=> /") { print $3; next }
     {
@@ -65,7 +103,7 @@ awk '
         if (substr(path, 1, 1) == "/" && index(path, ".so") > 0)
             print path
     }
-' "$out/ext4-ldd-output" | sort -u > "$out/ext4-libraries"
+' "$out/initramfs-ldd-output" | sort -u > "$out/ext4-libraries"
 
 while IFS= read -r library; do
     [ -f "$library" ] || continue

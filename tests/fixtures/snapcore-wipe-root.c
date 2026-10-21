@@ -121,6 +121,17 @@ static int has_qemu_fixture_argument(void) {
     return strstr(command_line, "veyra_snapcore_fixture=booted-root-test") != NULL;
 }
 
+static int has_ublk_fixture_argument(void) {
+    int fd = open("/proc/cmdline", O_RDONLY | O_CLOEXEC);
+    if (fd < 0) return 0;
+    char command_line[4096];
+    ssize_t length = read(fd, command_line, sizeof(command_line) - 1);
+    close(fd);
+    if (length <= 0) return 0;
+    command_line[length] = '\0';
+    return strstr(command_line, "veyra_snapcore_ublk_fixture=1") != NULL;
+}
+
 static int is_ext4_qemu_root(void) {
     FILE *mounts = fopen("/proc/mounts", "r");
     if (!mounts) return 0;
@@ -130,7 +141,9 @@ static int is_ext4_qemu_root(void) {
     while (fscanf(mounts, "%255s %255s %63s %1023s %lu %lu",
                   source, target, type, options, &dump, &pass) == 6) {
         if (!strcmp(target, "/")) {
-            valid = !strcmp(source, "/dev/vda") && !strcmp(type, "ext4");
+            int expected_source = !strcmp(source, "/dev/vda") ||
+                (has_ublk_fixture_argument() && !strcmp(source, "/dev/ublkb0"));
+            valid = expected_source && !strcmp(type, "ext4");
             break;
         }
     }
