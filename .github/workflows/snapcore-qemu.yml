@@ -23,7 +23,7 @@ permissions:
 
 jobs:
   ext4-rollback:
-    name: ext4 format, mutation and rollback through host kernel NBD across QEMU boots
+    name: independent ext4 user-root and /home snapshots and rollback through host kernel NBD
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
@@ -45,7 +45,7 @@ jobs:
           mkdir -p /tmp/veyra-snapcore-qemu
           docker run --rm -v "$PWD:/work:ro" -v /tmp/veyra-snapcore-qemu:/out \
             alpine:3.22 sh /work/tests/fixtures/build-snapcore-ext4-initramfs.sh /out
-      - name: Run ext4 checkpoint, mutation and rollback through host kernel NBD and QEMU
+      - name: Run separate user-root and /home checkpoint, mutation and rollback through QEMU
         run: |
           python3 tests/test-snapcore-ext4-qemu.py \
             /tmp/veyra-snapcore-qemu/snapcore-ext4-kernel \
@@ -60,7 +60,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: veyra-snapcore-ext4-serial
+          name: veyra-snapcore-root-home-ext4-serial
           path: /tmp/veyra-snapcore-qemu/serial.log
           retention-days: 7
           if-no-files-found: ignore
