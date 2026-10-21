@@ -154,7 +154,8 @@ def guest_boot(
             "-drive",
             f"file={device.resolve()},if=virtio,format=raw,cache=writeback",
             "-append",
-            f"console=ttyS0,115200 panic=1 veyra_snapcore_phase={phase}",
+            f"console=ttyS0,115200 panic=1 veyra_snapcore_phase={phase} "
+            "veyra_snapcore_fixture=booted-root-test",
         ]
         guest = pexpect.spawn(
             "sudo", ["-n", qemu, *command], encoding=None, timeout=240
