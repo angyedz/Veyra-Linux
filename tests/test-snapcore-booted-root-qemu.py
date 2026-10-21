@@ -248,8 +248,23 @@ def main() -> None:
                 "verify-root", b"VEYRA_SNAPCORE_BOOTED_ROOT_RESTORE_PASS",
                 args.log, work,
             )
-            if b"VEYRA_SNAPCORE_BOOTED_ROOT_E2FSCK_PASS" not in args.log.read_bytes():
+            guest_boot(
+                qemu, qemu_nbd, args.kernel, args.initramfs, socket, device,
+                "delete-root", b"VEYRA_SNAPCORE_BOOTED_ROOT_FULL_DELETE_PASS",
+                args.log, work,
+            )
+            run_cli(store, "rollback", "booted-ext4-root")
+            run_cli(store, "verify")
+            guest_boot(
+                qemu, qemu_nbd, args.kernel, args.initramfs, socket, device,
+                "verify-root", b"VEYRA_SNAPCORE_BOOTED_ROOT_RESTORE_PASS",
+                args.log, work,
+            )
+            serial = args.log.read_bytes()
+            if b"VEYRA_SNAPCORE_BOOTED_ROOT_E2FSCK_PASS" not in serial:
                 raise RuntimeError("the restored ext4 root did not pass e2fsck")
+            if b"VEYRA_SNAPCORE_BOOTED_ROOT_FULL_DELETE_PASS" not in serial:
+                raise RuntimeError("the guest did not verify full root deletion")
             print("VEYRA_SNAPCORE_BOOTED_ROOT_QEMU_PASS")
             print(
                 "NOTE: a minimal PID-1 fixture booted from ext4 through the "
