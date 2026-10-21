@@ -15,14 +15,17 @@ fail() {
 }
 mount_source=$(awk -v target="$store" '$2 == target { print $1; exit }' /proc/mounts)
 mount_type=$(awk -v target="$store" '$2 == target { print $3; exit }' /proc/mounts)
-[ "$mount_source" = /dev/vdb ] && [ "$mount_type" = ext4 ] ||
+if [ "$mount_source" != /dev/vdb ] || [ "$mount_type" != ext4 ]; then
     fail "persistent store must be the ext4 /dev/vdb mount"
-[ -d "$store" ] && [ ! -L "$store" ] ||
+fi
+if [ ! -d "$store" ] || [ -L "$store" ]; then
     fail "persistent user store is missing or a symlink"
-[ -d "$template" ] && [ ! -L "$template" ] &&
-    [ -x "$template/sbin/init" ] &&
-    [ -f "$template/.veyra-stage1-rootfs" ] ||
+fi
+if [ ! -d "$template" ] || [ -L "$template" ] ||
+   [ ! -x "$template/sbin/init" ] ||
+   [ ! -f "$template/.veyra-stage1-rootfs" ]; then
     fail "trusted system user-root template is incomplete"
+fi
 
 if [ -L "$users" ]; then
     fail "user directory is a symlink"
@@ -41,7 +44,8 @@ cleanup() {
     [ -z "$tmp" ] || rm -rf -- "$tmp"
     rmdir "$lock" 2>/dev/null || :
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+trap 'exit 1' INT TERM
 
 provision_one() {
     account=$1
@@ -69,15 +73,18 @@ provision_one() {
         tmp=
         echo "VEYRA_STAGE1_USER_ROOT_PROVISIONED account=$account outer-uid-base=$base"
     else
-        [ -d "$target" ] && [ ! -L "$target" ] ||
+        if [ ! -d "$target" ] || [ -L "$target" ]; then
             fail "$account rootfs is not a real directory"
-        [ -f "$target/.veyra-stage1-rootfs" ] &&
-            [ ! -L "$target/.veyra-stage1-rootfs" ] ||
+        fi
+        if [ ! -f "$target/.veyra-stage1-rootfs" ] ||
+           [ -L "$target/.veyra-stage1-rootfs" ]; then
             fail "$account rootfs is missing its Veyra marker"
-        [ -f "$target/.veyra-stage1-account" ] &&
-            [ ! -L "$target/.veyra-stage1-account" ] &&
-            [ "$(/bin/busybox cat "$target/.veyra-stage1-account")" = "$account" ] ||
+        fi
+        if [ ! -f "$target/.veyra-stage1-account" ] ||
+           [ -L "$target/.veyra-stage1-account" ] ||
+           [ "$(/bin/busybox cat "$target/.veyra-stage1-account")" != "$account" ]; then
             fail "$account rootfs identity does not match its account"
+        fi
         [ "$(/bin/busybox stat -c '%u:%g:%a' "$target")" = "$base:$home_id:710" ] ||
             fail "$account rootfs has an unexpected owner or mode"
         echo "VEYRA_STAGE1_USER_ROOT_REUSED account=$account outer-uid-base=$base"
@@ -99,8 +106,9 @@ bind_root() {
     source=$1
     target=$2
     expected_mount_root=$3
-    [ -d "$target" ] && [ ! -L "$target" ] ||
+    if [ ! -d "$target" ] || [ -L "$target" ]; then
         fail "rootfs mountpoint $target is missing or a symlink"
+    fi
     if awk -v target="$target" '$5 == target { found=1 } END { exit !found }' /proc/self/mountinfo; then
         awk -v target="$target" -v root="$expected_mount_root" \
             '$5 == target && $4 == root { found=1 } END { exit !found }' \
