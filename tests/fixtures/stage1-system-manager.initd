@@ -13,8 +13,16 @@ start_pre() {
 }
 
 start_post() {
-    local attempt=0 start_result count actual
-    if [ "$(/host-supervisor status 2>/dev/null)" != "STOPPED" ]; then
+    local attempt=0 start_result count actual manager_status
+    while [ "$attempt" -lt 15 ]; do
+        manager_status=$(/host-supervisor status 2>/dev/null || :)
+        if [ "$manager_status" = "STOPPED" ]; then
+            break
+        fi
+        attempt=$((attempt + 1))
+        sleep 1
+    done
+    if [ "$manager_status" != "STOPPED" ]; then
         eerror "system-side manager did not enter STOPPED state"
         return 1
     fi
@@ -31,6 +39,7 @@ start_post() {
     case "$count" in
         ''|*[!0-9]*) eerror "invalid user-environment boot count: $count"; return 1 ;;
     esac
+    attempt=0
     while [ "$attempt" -lt 15 ]; do
         actual=$(cat /mnt/veyra-user/home/veyrauser/.veyra-stage1-autologin 2>/dev/null || :)
         if [ "$actual" = "uid=1000 count=$count" ]; then
