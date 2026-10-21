@@ -72,6 +72,15 @@ static int boot_count;
 static void set_error(char *error, size_t size, const char *message) {
     if (size) snprintf(error, size, "%s", message);
 }
+static void route_test_manager_stderr_to_console(void) {
+    int fd = open("/dev/console", O_WRONLY | O_CLOEXEC);
+    if (fd < 0) return;
+    if (dup2(fd, STDERR_FILENO) < 0) {
+        close(fd);
+        return;
+    }
+    close(fd);
+}
 static void die(const char *message) {
     int saved_errno = errno;
     int console_fd = open("/dev/console", O_WRONLY | O_CLOEXEC);
@@ -958,7 +967,9 @@ static int start_environment(char *response, size_t response_size) {
     for (int elapsed = 0; elapsed < START_TIMEOUT_MS; elapsed += 100) {
         reap_child();
         if (!launcher_pid) {
-            snprintf(response, response_size, "ERROR launch: user PID 1 exited before readiness");
+            snprintf(response, response_size,
+                     "ERROR launch: user PID 1 exited before readiness (launcher exit=%d)",
+                     last_exit_code);
             close(rootfd);
             return -1;
         }
@@ -1152,6 +1163,7 @@ int main(int argc, char **argv) {
         return test_directory_identity_guard();
     if (argc == 3 && !strcmp(argv[1], "serve") &&
         !strcmp(argv[2], ROOT_PATH)) {
+        route_test_manager_stderr_to_console();
         if (manager_service() < 0) die("system-side user manager failed");
         return 0;
     }
