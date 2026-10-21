@@ -35,6 +35,8 @@ if [ -z "${XAUTHORITY:-}" ] && [ -r "$HOME/.Xauthority" ]; then
     XAUTHORITY="$HOME/.Xauthority"
     export XAUTHORITY
 fi
+# The invoking user's shell intentionally opens this user-cache log before sudo.
+# shellcheck disable=SC2024
 if sudo -n --preserve-env=DISPLAY,WAYLAND_DISPLAY,XDG_RUNTIME_DIR,DBUS_SESSION_BUS_ADDRESS,QT_QPA_PLATFORM,XAUTHORITY \
     /usr/bin/calamares >"$log" 2>&1; then
     exit 0
