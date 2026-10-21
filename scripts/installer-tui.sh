@@ -122,6 +122,8 @@ collect_account() {
     done
 }
 
+# Passed by name to stage() as an approved installer phase.
+# shellcheck disable=SC2317
 format_and_mount() {
     case "$disk" in
         *nvme*n*|*mmcblk*) p1="${disk}p1"; p2="${disk}p2" ;;
@@ -157,6 +159,8 @@ format_and_mount() {
     mount --rbind /run "$target/run"
 }
 
+# Passed by name to stage() as an approved installer phase.
+# shellcheck disable=SC2317
 configure_account() {
     chroot "$target" adduser -D -s /bin/ash "$username"
     for group in audio video input wheel; do
@@ -184,6 +188,8 @@ SUDOERS
     fi
 }
 
+# Passed by name to stage() as an approved installer phase.
+# shellcheck disable=SC2317
 configure_services_and_bootloader() {
     for service in dbus elogind networkmanager nix-daemon; do
         chroot "$target" rc-update add "$service" default
