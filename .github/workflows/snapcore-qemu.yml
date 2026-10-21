@@ -7,6 +7,7 @@ on:
       - 'scripts/veyra-snapcore.py'
       - 'tests/fixtures/snapcore-*'
       - 'tests/test-snapcore-ext4-qemu.py'
+      - 'tests/test-snapcore-booted-root-qemu.py'
       - '.github/workflows/snapcore-qemu.yml'
   push:
     branches: [main]
@@ -15,6 +16,7 @@ on:
       - 'scripts/veyra-snapcore.py'
       - 'tests/fixtures/snapcore-*'
       - 'tests/test-snapcore-ext4-qemu.py'
+      - 'tests/test-snapcore-booted-root-qemu.py'
       - '.github/workflows/snapcore-qemu.yml'
   workflow_dispatch:
 
@@ -38,8 +40,9 @@ jobs:
       - name: Compile SnapCore and QEMU test harness
         run: |
           python3 -m py_compile snapcore/*.py scripts/veyra-snapcore.py \
-            tests/fixtures/snapcore-nbdkit-plugin.py tests/test-snapcore-ext4-qemu.py
-      - name: Build Alpine guest kernel and ext4-capable initramfs
+            tests/fixtures/snapcore-nbdkit-plugin.py \
+            tests/test-snapcore-ext4-qemu.py tests/test-snapcore-booted-root-qemu.py
+      - name: Build Alpine kernel and initramfs images for ext4 QEMU tests
         run: |
           set -euo pipefail
           mkdir -p /tmp/veyra-snapcore-qemu
@@ -51,16 +54,26 @@ jobs:
             /tmp/veyra-snapcore-qemu/snapcore-ext4-kernel \
             /tmp/veyra-snapcore-qemu/snapcore-ext4-initramfs \
             --log /tmp/veyra-snapcore-qemu/serial.log
+      - name: Boot, damage and restore a SnapCore-backed ext4 PID 1 root
+        run: |
+          python3 tests/test-snapcore-booted-root-qemu.py \
+            /tmp/veyra-snapcore-qemu/snapcore-ext4-kernel \
+            /tmp/veyra-snapcore-qemu/snapcore-booted-root-initramfs \
+            --log /tmp/veyra-snapcore-qemu/booted-root-serial.log
       - name: Print guest serial errors
         if: failure()
         run: |
-          test ! -s /tmp/veyra-snapcore-qemu/serial.log || \
-            tail -n 200 /tmp/veyra-snapcore-qemu/serial.log
+          for log in /tmp/veyra-snapcore-qemu/serial.log \
+              /tmp/veyra-snapcore-qemu/booted-root-serial.log; do
+            test ! -s "$log" || tail -n 200 "$log"
+          done
       - name: Save QEMU serial proof
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: veyra-snapcore-root-home-ext4-serial
-          path: /tmp/veyra-snapcore-qemu/serial.log
+          name: veyra-snapcore-ext4-qemu-serial
+          path: |
+            /tmp/veyra-snapcore-qemu/serial.log
+            /tmp/veyra-snapcore-qemu/booted-root-serial.log
           retention-days: 7
           if-no-files-found: ignore
