@@ -3,8 +3,37 @@
 set -eu
 out=${1:-/out}
 apk add --no-cache linux-lts mkinitfs e2fsprogs cpio gzip build-base
+apk add --no-cache alpine-base openrc
 kernel=$(basename "$(find /lib/modules -mindepth 1 -maxdepth 1 -type d -print -quit)")
 test -n "$kernel"
+
+# Build a disposable Alpine/OpenRC root used only by the SnapCore QEMU test.
+alpine_root=$out/alpine-openrc-root
+mkdir -p "$alpine_root"
+apk --root "$alpine_root" --initdb \
+    --keys-dir /etc/apk/keys \
+    --repositories-file /etc/apk/repositories \
+    add alpine-base openrc
+test -x "$alpine_root/sbin/init"
+test -x "$alpine_root/sbin/openrc"
+rm -rf "$alpine_root/etc/runlevels"
+mkdir -p "$alpine_root/etc/runlevels/sysinit" \
+    "$alpine_root/etc/runlevels/boot" \
+    "$alpine_root/etc/runlevels/default" \
+    "$alpine_root/etc/init.d" "$alpine_root/usr/lib" \
+    "$alpine_root/root" "$alpine_root/dev" "$alpine_root/proc" \
+    "$alpine_root/sys" "$alpine_root/run" "$alpine_root/tmp"
+cp /work/tests/fixtures/snapcore-alpine-openrc-inittab \
+    "$alpine_root/etc/inittab"
+cp /work/tests/fixtures/snapcore-alpine-openrc.initd \
+    "$alpine_root/etc/init.d/veyra-snapcore-openrc"
+chmod 0755 "$alpine_root/etc/init.d/veyra-snapcore-openrc"
+ln -s /etc/init.d/veyra-snapcore-openrc \
+    "$alpine_root/etc/runlevels/default/veyra-snapcore-openrc"
+printf '%s\n' 'baseline-alpine-openrc-root' \
+    > "$alpine_root/usr/lib/veyra-snapcore-root-marker"
+printf '%s\n' 'DISPOSABLE_QEMU_ROOT_V1' \
+    > "$alpine_root/etc/veyra-snapcore-root-fixture"
 
 mkinitfs -F "base ext4 virtio" \
     -i /work/tests/fixtures/snapcore-ext4-qemu-init.sh \
@@ -18,6 +47,8 @@ cc -static -Os -Wall -Wextra -Werror \
     -o "$out/overlay/sbin/veyra-wipe-root" \
     /work/tests/fixtures/snapcore-wipe-root.c
 chmod 0755 "$out/overlay/sbin/veyra-wipe-root"
+cp "$out/overlay/sbin/veyra-wipe-root" \
+    "$alpine_root/sbin/veyra-wipe-root"
 : > "$out/ext4-ldd-output"
 for tool in mkfs.ext4 e2fsck; do
     binary=$(command -v "$tool")

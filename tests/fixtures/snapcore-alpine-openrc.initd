@@ -1,0 +1,78 @@
+#!/sbin/openrc-run
+# Disposable OpenRC service for the SnapCore Alpine root recovery test.
+description="Veyra SnapCore Alpine root test"
+
+start() {
+    local phase item root_source
+    local BB=/bin/busybox
+    phase=
+    for item in $($BB cat /proc/cmdline); do
+        case "$item" in
+            veyra_snapcore_phase=*) phase=${item#*=} ;;
+        esac
+    done
+    root_source=$($BB awk '$2 == "/" { print $1; exit }' /proc/mounts)
+    if [ "$root_source" != /dev/vda ]; then
+        echo "VEYRA_SNAPCORE_FAILURE: Alpine root is not /dev/vda ($root_source)"
+        $BB poweroff -f
+        return 1
+    fi
+    if [ "$($BB cat /etc/veyra-snapcore-root-fixture 2>/dev/null || :)" != DISPOSABLE_QEMU_ROOT_V1 ]; then
+        echo "VEYRA_SNAPCORE_FAILURE: Alpine root fixture marker is missing"
+        $BB poweroff -f
+        return 1
+    fi
+    echo "VEYRA_SNAPCORE_ALPINE_OPENRC_STARTED phase=$phase root=$root_source"
+    case "$phase" in
+        alpine-baseline)
+            [ "$($BB cat /usr/lib/veyra-snapcore-root-marker 2>/dev/null || :)" = baseline-alpine-openrc-root ] || {
+                echo "VEYRA_SNAPCORE_FAILURE: Alpine baseline marker missing"
+                $BB poweroff -f
+                return 1
+            }
+            echo "VEYRA_SNAPCORE_ALPINE_BASELINE_PASS root=/dev/vda openrc=default"
+            ;;
+        alpine-mutate)
+            [ "$($BB cat /usr/lib/veyra-snapcore-root-marker 2>/dev/null || :)" = baseline-alpine-openrc-root ] || {
+                echo "VEYRA_SNAPCORE_FAILURE: Alpine mutation did not start from baseline"
+                $BB poweroff -f
+                return 1
+            }
+            $BB rm -rf /usr || {
+                echo "VEYRA_SNAPCORE_FAILURE: could not remove Alpine /usr"
+                $BB poweroff -f
+                return 1
+            }
+            $BB printf '%s\n' removed-usr > /root/veyra-alpine-mutation-marker
+            echo "VEYRA_SNAPCORE_ALPINE_MUTATION_PASS root=/dev/vda removed=/usr openrc=default"
+            ;;
+        alpine-delete)
+            [ "$($BB cat /usr/lib/veyra-snapcore-root-marker 2>/dev/null || :)" = baseline-alpine-openrc-root ] || {
+                echo "VEYRA_SNAPCORE_FAILURE: Alpine full-delete did not start from baseline"
+                $BB poweroff -f
+                return 1
+            }
+            exec /sbin/veyra-wipe-root
+            ;;
+        alpine-verify)
+            [ "$($BB cat /usr/lib/veyra-snapcore-root-marker 2>/dev/null || :)" = baseline-alpine-openrc-root ] || {
+                echo "VEYRA_SNAPCORE_FAILURE: SnapCore rollback did not restore Alpine /usr"
+                $BB poweroff -f
+                return 1
+            }
+            [ ! -e /root/veyra-alpine-mutation-marker ] || {
+                echo "VEYRA_SNAPCORE_FAILURE: rollback retained Alpine mutation"
+                $BB poweroff -f
+                return 1
+            }
+            echo "VEYRA_SNAPCORE_ALPINE_RESTORE_PASS root=/dev/vda /usr=restored mutation=absent openrc=default"
+            ;;
+        *)
+            echo "VEYRA_SNAPCORE_FAILURE: unexpected Alpine root phase: $phase"
+            $BB poweroff -f
+            return 1
+            ;;
+    esac
+    $BB sync
+    $BB poweroff -f
+}

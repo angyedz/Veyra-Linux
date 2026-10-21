@@ -18,6 +18,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 CLI = ROOT / "scripts" / "veyra-snapcore.py"
 PLUGIN = ROOT / "tests" / "fixtures" / "snapcore-nbdkit-plugin.py"
 VOLUME_SIZE = 32 * 1024 * 1024
+ALPINE_VOLUME_SIZE = 256 * 1024 * 1024
 
 
 def run_cli(store: pathlib.Path, command: str, *args: str) -> str:
@@ -85,6 +86,7 @@ def connect_kernel_nbd(
     socket: pathlib.Path,
     device: pathlib.Path,
     log_path: pathlib.Path,
+    expected_size: int = VOLUME_SIZE,
 ) -> None:
     subprocess.run(["sudo", "-n", "modprobe", "nbd"], check=True, timeout=30)
     deadline = time.monotonic() + 15
@@ -116,11 +118,11 @@ def connect_kernel_nbd(
     deadline = time.monotonic() + 15
     while time.monotonic() < deadline:
         actual_size = kernel_nbd_size(device)
-        if actual_size == VOLUME_SIZE:
+        if actual_size == expected_size:
             return
         if actual_size not in (None, 0):
             raise RuntimeError(
-                f"{device} has unexpected size {actual_size}, expected {VOLUME_SIZE}"
+                f"{device} has unexpected size {actual_size}, expected {expected_size}"
             )
         time.sleep(0.05)
     details = log_path.read_text(errors="replace")
@@ -140,9 +142,10 @@ def guest_boot(
     expected_marker: bytes,
     log_path: pathlib.Path,
     work: pathlib.Path,
+    volume_size: int = VOLUME_SIZE,
 ) -> None:
     nbd_log = work / f"qemu-nbd-{phase}.log"
-    connect_kernel_nbd(qemu_nbd, socket, device, nbd_log)
+    connect_kernel_nbd(qemu_nbd, socket, device, nbd_log, volume_size)
     guest = None
     try:
         command = [
@@ -181,10 +184,61 @@ def guest_boot(
         disconnect_kernel_nbd(qemu_nbd, device)
 
 
+
+def run_sudo(*args: str, timeout: int = 60) -> None:
+    result = subprocess.run(
+        ["sudo", "-n", *args],
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        timeout=timeout,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"sudo command failed ({result.returncode}): {' '.join(args)}\n"
+            f"{result.stdout[-4000:]}"
+        )
+
+
+def seed_alpine_ext4_root(
+    qemu_nbd: str,
+    socket: pathlib.Path,
+    device: pathlib.Path,
+    root: pathlib.Path,
+    mountpoint: pathlib.Path,
+    work: pathlib.Path,
+) -> None:
+    log_path = work / "qemu-nbd-alpine-seed.log"
+    mountpoint.mkdir()
+    connect_kernel_nbd(
+        qemu_nbd, socket, device, log_path, ALPINE_VOLUME_SIZE
+    )
+    mounted = False
+    try:
+        run_sudo(
+            "mkfs.ext4", "-F", "-q", "-L", "VEYRA_ALPINE_ROOT",
+            str(device), timeout=120,
+        )
+        run_sudo("mount", str(device), str(mountpoint), timeout=30)
+        mounted = True
+        run_sudo("cp", "-a", f"{root.resolve()}/.", f"{mountpoint}/", timeout=120)
+        run_sudo("sync", timeout=60)
+    finally:
+        try:
+            if mounted:
+                run_sudo("umount", str(mountpoint), timeout=60)
+        finally:
+            disconnect_kernel_nbd(qemu_nbd, device)
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("kernel", type=pathlib.Path)
     parser.add_argument("initramfs", type=pathlib.Path)
+    parser.add_argument(
+        "--alpine-root", type=pathlib.Path, required=True,
+        help="Alpine/OpenRC root built by the initramfs builder",
+    )
     parser.add_argument(
         "--log", type=pathlib.Path,
         default=pathlib.Path("snapcore-booted-root-qemu.log"),
@@ -196,6 +250,7 @@ def main() -> None:
     if (
         not qemu or not qemu_nbd or not nbdkit
         or not args.kernel.is_file() or not args.initramfs.is_file()
+        or not args.alpine_root.is_dir()
     ):
         parser.error("QEMU, qemu-nbd, nbdkit, kernel and initramfs are required")
 
@@ -267,10 +322,105 @@ def main() -> None:
             if b"VEYRA_SNAPCORE_BOOTED_ROOT_FULL_DELETE_PASS" not in serial:
                 raise RuntimeError("the guest did not verify full root deletion")
             print("VEYRA_SNAPCORE_BOOTED_ROOT_QEMU_PASS")
+
+            # Seed Alpine through the host kernel block frontend, then run its
+            # BusyBox PID 1 and real OpenRC default service from the guest disk.
+            alpine_store = work / "snapcore-alpine-openrc-root"
+            alpine_socket = work / "snapcore-alpine-openrc.sock"
+            alpine_server_log = work / "snapcore-alpine-nbdkit.log"
+            alpine_server = None
+            run_cli(
+                alpine_store, "format", "--size-bytes", str(ALPINE_VOLUME_SIZE),
+                "--block-size", "4096",
+            )
+            with alpine_server_log.open("wb") as alpine_server_log_file:
+                alpine_server = subprocess.Popen(
+                    [
+                        nbdkit, "-f", "-U", str(alpine_socket),
+                        "python", str(PLUGIN), f"store={alpine_store}",
+                    ],
+                    stdout=alpine_server_log_file,
+                    stderr=subprocess.STDOUT,
+                )
+            try:
+                wait_for_socket(alpine_server, alpine_socket)
+                seed_alpine_ext4_root(
+                    qemu_nbd, alpine_socket, device, args.alpine_root,
+                    work / "alpine-openrc-mount", work,
+                )
+                guest_boot(
+                    qemu, qemu_nbd, args.kernel, args.initramfs,
+                    alpine_socket, device, "alpine-baseline",
+                    b"VEYRA_SNAPCORE_ALPINE_BASELINE_PASS",
+                    args.log, work, ALPINE_VOLUME_SIZE,
+                )
+                run_cli(alpine_store, "snapshot", "alpine-openrc-root")
+                alpine_status = json.loads(run_cli(alpine_store, "status"))
+                if "alpine-openrc-root" not in [
+                    item["name"] for item in alpine_status["snapshots"]
+                ]:
+                    raise RuntimeError("SnapCore did not retain the Alpine/OpenRC checkpoint")
+                guest_boot(
+                    qemu, qemu_nbd, args.kernel, args.initramfs,
+                    alpine_socket, device, "alpine-mutate",
+                    b"VEYRA_SNAPCORE_ALPINE_MUTATION_PASS",
+                    args.log, work, ALPINE_VOLUME_SIZE,
+                )
+                run_cli(alpine_store, "rollback", "alpine-openrc-root")
+                run_cli(alpine_store, "verify")
+                guest_boot(
+                    qemu, qemu_nbd, args.kernel, args.initramfs,
+                    alpine_socket, device, "alpine-verify",
+                    b"VEYRA_SNAPCORE_ALPINE_RESTORE_PASS",
+                    args.log, work, ALPINE_VOLUME_SIZE,
+                )
+                guest_boot(
+                    qemu, qemu_nbd, args.kernel, args.initramfs,
+                    alpine_socket, device, "alpine-delete",
+                    b"VEYRA_SNAPCORE_BOOTED_ROOT_FULL_DELETE_PASS",
+                    args.log, work, ALPINE_VOLUME_SIZE,
+                )
+                run_cli(alpine_store, "rollback", "alpine-openrc-root")
+                run_cli(alpine_store, "verify")
+                guest_boot(
+                    qemu, qemu_nbd, args.kernel, args.initramfs,
+                    alpine_socket, device, "alpine-verify",
+                    b"VEYRA_SNAPCORE_ALPINE_RESTORE_PASS",
+                    args.log, work, ALPINE_VOLUME_SIZE,
+                )
+                alpine_serial = args.log.read_bytes()
+                required_markers = (
+                    b"VEYRA_SNAPCORE_ALPINE_OPENRC_STARTED",
+                    b"VEYRA_SNAPCORE_ALPINE_MUTATION_PASS",
+                    b"VEYRA_SNAPCORE_ALPINE_E2FSCK_PASS",
+                    b"VEYRA_SNAPCORE_ALPINE_RESTORE_PASS",
+                )
+                missing = [marker.decode() for marker in required_markers
+                           if marker not in alpine_serial]
+                if missing:
+                    raise RuntimeError(
+                        "Alpine/OpenRC serial proof is missing: " + ", ".join(missing)
+                    )
+                print("VEYRA_SNAPCORE_ALPINE_OPENRC_QEMU_PASS")
+            finally:
+                if alpine_server is not None:
+                    alpine_server.terminate()
+                    try:
+                        alpine_server.wait(timeout=10)
+                    except subprocess.TimeoutExpired:
+                        alpine_server.kill()
+                        alpine_server.wait(timeout=5)
+                    if alpine_server.returncode not in (0, -15):
+                        details = alpine_server_log.read_text(errors="replace")
+                        raise RuntimeError(
+                            f"Alpine nbdkit exited with status "
+                            f"{alpine_server.returncode}:\n{details[-12000:]}"
+                        )
+
             print(
-                "NOTE: a minimal PID-1 fixture booted from ext4 through the "
-                "file-backed SnapCore test adapter; this is not an Alpine/OpenRC "
-                "installed-root or production block-device proof."
+                "NOTE: Alpine/OpenRC and the BusyBox fixture both boot through "
+                "the file-backed SnapCore test adapter; this is not the installed "
+                "Veyra user root or a production block-device proof."
             )
         finally:
             if server is not None:
