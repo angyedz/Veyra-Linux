@@ -50,6 +50,33 @@ INDEPENDENT VRE (separate kernel + initramfs)
 
 `ublk` is a *candidate*, not a committed production dependency; evaluate kernel versions, failure semantics, I/O flush/ordering, security and Recovery availability. The SnapCore service must be started **before** the user rootfs is mounted, and VRE must be able to open the on-disk format without loading any binaries from a broken installed user environment.
 
+#### Required ublk integration proof (not implemented)
+
+Before selecting ublk as the production block interface, run it with the actual
+Veyra system kernel and verify the required driver/configuration and control
+node exist. The kernel ublk model forwards block requests from `/dev/ublkb*` to
+a userspace server; the server owns request handling and device lifecycle
+([kernel ublk documentation](https://docs.kernel.org/block/ublk.html)). This
+makes the server and its metadata part of SnapCore's trusted system boundary.
+
+The server must run in a **dedicated mount namespace** separate from every
+filesystem consumer of its own block device. The upstream libublk-rs project
+documents that sharing a mount namespace can deadlock shutdown when unmount
+flushes I/O through a server that is exiting
+([mount-namespace caveat](https://github.com/ublk-org/libublk-rs#mount-namespace-caveat)).
+The system manager must control the device node and prevent the user root from
+accessing `/dev/ublk-control`, the server control socket, or protected backing
+storage. Shutdown and recovery must stop consumer I/O, unmount/flush the
+filesystem, then stop and delete the device in a tested order; abrupt server
+loss must fail the volume closed without acknowledging incomplete writes.
+
+Acceptance requires a QEMU guest using the selected Veyra kernel to create a
+real `/dev/ublkbN`, format ext4 on it, write and sync data, checkpoint offline,
+mutate it, unmount, restore the prior logical block map, then remount and pass
+`e2fsck -f -n` plus content assertions. Also inject server termination and
+reboot at documented transaction boundaries. Passing the existing NBDKit test
+is not evidence for this ublk gate.
+
 ### Snapshot representation
 
 - The active logical volume has a writable *head mapping* from logical block numbers to physical extents in a protected store.
