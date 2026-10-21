@@ -2,6 +2,7 @@
 # Build a small Alpine initramfs with ext4 tooling for a disposable QEMU test.
 set -eu
 out=${1:-/out}
+apk add --no-cache linux-lts mkinitfs e2fsprogs cpio gzip
 kernel=$(basename "$(find /lib/modules -mindepth 1 -maxdepth 1 -type d -print -quit)")
 test -n "$kernel"
 
