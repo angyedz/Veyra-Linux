@@ -20,11 +20,31 @@ rm -rf "$ublksrv_src"
 git clone https://github.com/ublk-org/ublksrv.git "$ublksrv_src"
 git -C "$ublksrv_src" checkout --detach "$ublksrv_ref"
 
-# Alpine's fortified musl headers expose strdupa as void* in C++; upstream
-# passes it to char* APIs without a cast. Keep the adaptation narrow and pinned.
+# Alpine's fortified musl strdupa macro expands through a void* expression
+# inside strcpy; C++ rejects it even with a call-site cast. Replace the two
+# scratch copies with owned heap buffers in this pinned upstream source.
 ublksrv_target="$ublksrv_src/targets/ublksrv_tgt.cpp"
-test "$(grep -c 'strdupa(dir)' "$ublksrv_target")" -eq 2
-sed -i 's/strdupa(dir)/(char *)strdupa(dir)/g' "$ublksrv_target"
+test "$(grep -F -c '__mkpath(dirname(strdupa(dir)), 0755);' "$ublksrv_target")" -eq 1
+test "$(grep -F -c 'ret = __mkpath(strdupa(dir), mode);' "$ublksrv_target")" -eq 1
+awk '
+    index($0, "__mkpath(dirname(strdupa(dir)), 0755);") {
+        print "\tchar *parent = strdup(dir);"
+        print "\tif (!parent) return -ENOMEM;"
+        print "\t__mkpath(dirname(parent), 0755);"
+        print "\tfree(parent);"
+        next
+    }
+    index($0, "ret = __mkpath(strdupa(dir), mode);") {
+        print "\tchar *dir_copy = strdup(dir);"
+        print "\tif (!dir_copy) return -ENOMEM;"
+        print "\tret = __mkpath(dir_copy, mode);"
+        print "\tfree(dir_copy);"
+        next
+    }
+    { print }
+' "$ublksrv_target" > "$ublksrv_target.veyra"
+mv "$ublksrv_target.veyra" "$ublksrv_target"
+test "$(grep -F -c 'strdupa(dir)' "$ublksrv_target")" -eq 0
 
 # Alpine musl already declares prctl_mm_map and PR_SET_IO_FLUSHER in
 # sys/prctl.h. Upstream's extra Linux UAPI include redeclares the struct.
