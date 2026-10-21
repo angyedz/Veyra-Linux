@@ -6,7 +6,7 @@ users=$store/users
 template=/usr/share/veyra/stage1-user-template
 root_a=/mnt/veyra-user
 root_b=/mnt/veyra-user-b
-lock=$store/.stage1-provisioning-lock
+lock=/run/veyra-stage1-user-provisioning-lock
 tmp=
 
 fail() {
@@ -85,7 +85,7 @@ provision_one() {
 }
 
 for entry in "$users"/*; do
-    [ -e "$entry" ] || continue
+    [ -e "$entry" ] || [ -L "$entry" ] || continue
     case "$entry" in
         "$users/alice"|"$users/bob") ;;
         *) fail "unexpected entry in managed users directory" ;;
