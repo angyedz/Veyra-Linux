@@ -155,6 +155,8 @@ Parallel tracks are intentional; avoid turning prototypes on in the normal boot 
 - [ ] Audit inherited file descriptors, proc/sysfs interfaces, mount propagation, device nodes, namespace transitions and seccomp/LSM/cgroups where applicable.
 - [ ] Resource quotas/limits protect system services from user process floods, memory exhaustion and fork bombs.
 - [ ] Explicit threat model for kernel vulnerabilities and shared-kernel attacks.
+- [ ] Design and implement an explicit system-administration bridge initiated from the user environment. It may open a dedicated **system-root administrative session only after** the system-side authentication provider accepts an administrator password. The password prompt and authenticated session must stay on a system-controlled trusted TTY/UI; never collect the system password in the user rootfs or expose a host-root mount, root shell socket, reusable credential or privileged control socket to the user environment. Audit successful and failed attempts, expire idle sessions, close broker channels on exit, and fail closed if authentication or the trusted handoff is unavailable.
+- [ ] QEMU/security-test the bridge: missing, incorrect, replayed or expired authentication cannot start a session; successful authentication opens a process in the system root environment with system UID 0; hostile user-root processes cannot spoof the trusted prompt, read credentials/session I/O, retain broker descriptors, or turn user-side `sudo` into host root. Keep the bridge disabled until independent security review passes.
 
 **Gate:** under inner `sudo`, attempts to modify host kernel state, mounts, packages, boot, devices, host processes and privileged IPC fail; normal inner administration still succeeds.
 

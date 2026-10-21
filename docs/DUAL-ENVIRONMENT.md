@@ -48,6 +48,26 @@ and every deliberate host service bridge must use a narrow authorization
 policy. A container boundary cannot guarantee security against kernel
 vulnerabilities; that is an explicit threat-model limitation.
 
+### Password-authenticated system administration (design only)
+
+The user may request an explicit handoff to a **system-root administrative
+session**, but the system must authenticate an administrator password before
+starting it. The system-owned authentication provider, trusted TTY/UI and
+session manager perform the handoff. Do not prompt for the system password
+inside the user rootfs, or pass the system-root session's terminal input,
+output, PTY descriptor, mount, credential or control socket back to a process
+in the user environment. After successful authentication, the administrative
+shell runs as system UID 0 in the system root environment; user-side `sudo`
+continues to grant privileges only inside that user's own environment.
+
+The trusted prompt must not be spoofable or observable by hostile user-root
+processes. Record successful and failed attempts, expire idle sessions, and
+revoke every bridge channel when the session ends. If the system cannot keep
+the prompt and privileged session outside the user environment, it must not
+offer this root handoff. This is a planned feature, not current behavior; the
+authentication mechanism, secure console/UI handoff and threat model require
+design review and adversarial QEMU tests before enablement.
+
 ## Networking and VPN
 
 The host owns physical Wi-Fi/Ethernet and its routing, DNS and firewall.
