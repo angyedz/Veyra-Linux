@@ -9,7 +9,9 @@ mkdir -p etc/apk etc/sddm.conf.d etc/skel/Desktop etc/skel/.config/autostart etc
     etc/nix etc/veyra \
     etc/init.d etc/runlevels/sysinit etc/runlevels/boot etc/runlevels/default \
     etc/calamares/modules etc/calamares/branding/veyra \
-    usr/local/bin usr/local/lib/veyra usr/share/applications
+    usr/local/bin usr/local/lib/veyra usr/share/applications \
+    usr/share/veyra/fastfetch usr/share/pixmaps etc/fastfetch \
+    etc/skel/.config/fastfetch etc/skel/.config/neofetch
 mkdir -p etc/apk/keys
 if [ -n "${VEYRA_ISO_REPO_PUBLIC_KEY:-}" ] && [ -s "$VEYRA_ISO_REPO_PUBLIC_KEY" ]; then
     install -m 0644 "$VEYRA_ISO_REPO_PUBLIC_KEY" etc/apk/keys/veyra-iso.rsa.pub
@@ -40,7 +42,7 @@ border_color = (CYAN,BLACK,ON)
 button_active_color = (WHITE,BLUE,ON)
 button_inactive_color = (CYAN,BLACK,OFF)
 button_key_active_color = (YELLOW,BLUE,ON)
-button_key_inactive_color = (RED,BLACK,OFF)
+button_key_inactive_color = (RED,BLACK,ON)
 button_label_active_color = (WHITE,BLUE,ON)
 button_label_inactive_color = (WHITE,BLACK,OFF)
 inputbox_color = (WHITE,BLACK,OFF)
@@ -62,6 +64,17 @@ polkit.addRule(function(action, subject) {
     }
 });
 POLKIT
+cp "$root/branding/os-release" etc/os-release
+printf '%s\n' 'DISTRIB_ID=Veyra' 'DISTRIB_RELEASE=1.0' 'DISTRIB_CODENAME=glacier' 'DISTRIB_DESCRIPTION="Veyra Linux 1.0 (Glacier)"' > etc/lsb-release
+cp "$root/branding/fastfetch/config.jsonc" etc/fastfetch/config.jsonc
+cp "$root/branding/fastfetch/config.jsonc" etc/skel/.config/fastfetch/config.jsonc
+cp "$root/branding/fastfetch/logo.txt" usr/share/veyra/fastfetch/logo.txt
+cat > etc/skel/.config/neofetch/config.conf <<'NEOFETCH'
+image_backend="ascii"
+image_source="/usr/share/veyra/fastfetch/logo.txt"
+ascii_distro="off"
+NEOFETCH
+cp "$root/branding/veyra-logo.svg" usr/share/pixmaps/veyra-logo.svg
 
 # Alpine initramfs installs this package set from the ISO's offline repository
 # to tmpfs; no conventional root= disk is used.
@@ -76,9 +89,26 @@ POLKIT
 } > etc/apk/world
 
 cp "$root/scripts/bootstrap.sh" usr/local/lib/veyra/bootstrap.sh
+cp "$root/scripts/setup-pkgrepo.sh" usr/local/lib/veyra/setup-pkgrepo.sh
 cp "$root/scripts/compat.sh" usr/local/lib/veyra/compat.sh
 cp "$root/scripts/smoke.sh" usr/local/lib/veyra/smoke.sh
+# Development-only Go manager is kept separate from the original glenv
+# executable and installer. Neither boot helper is enabled automatically.
+cp "$root/scripts/glenv-boot-pin.sh" usr/local/lib/veyra/glenv-boot-pin.sh
+cp "$root/scripts/glenv-boot-mount.sh" usr/local/lib/veyra/glenv-boot-mount.sh
+manager="$root/dist/glenv-manager/glenv-manager"
+if [ -f "$manager" ]; then
+    [ -x "$manager" ] || { echo "glenv manager artifact is not executable" >&2; exit 1; }
+    cp "$manager" usr/local/lib/veyra/glenv-manager
+    chmod 755 usr/local/lib/veyra/glenv-manager
+elif [ "${VEYRA_REQUIRE_GLENV_MANAGER:-0}" = 1 ]; then
+    echo "Required development glenv manager artifact missing: $manager" >&2
+    exit 1
+fi
 cp "$root/images/veyra-live.initd" etc/init.d/veyra-live
+cp "$root/images/veyra-live-mode.initd" etc/init.d/veyra-live-mode
+cp "$root/images/veyra-live-mode.sh" usr/local/lib/veyra/live-mode.sh
+cp "$root/images/veyra-tui-install.sh" usr/local/lib/veyra/tui-install.sh
 cp "$root/images/veyra-live-user.sh" usr/local/lib/veyra/live-user.sh
 cp "$root/images/veyra-plasma-watchdog.sh" usr/local/lib/veyra/plasma-watchdog.sh
 cp "$root/images/veyra-install.sh" usr/local/bin/veyra-install
@@ -94,13 +124,14 @@ cp "$root/calamares/settings.conf" etc/calamares/settings.conf
 cp "$root/calamares/modules/"*.conf etc/calamares/modules/
 cp "$root/calamares/branding/veyra/branding.desc" etc/calamares/branding/veyra/branding.desc
 cp "$root/calamares/branding/veyra/show.qml" etc/calamares/branding/veyra/show.qml
-chmod 755 etc/init.d/veyra-live usr/local/lib/veyra/live-user.sh \
-    usr/local/lib/veyra/plasma-watchdog.sh \
-    usr/local/bin/veyra-install \
-    usr/local/bin/veyra-install-tui \
+chmod 755 etc/init.d/veyra-live etc/init.d/veyra-live-mode \
+    usr/local/lib/veyra/live-user.sh usr/local/lib/veyra/live-mode.sh \
+    usr/local/lib/veyra/tui-install.sh usr/local/lib/veyra/plasma-watchdog.sh \
+    usr/local/bin/veyra-install usr/local/bin/veyra-install-tui \
     usr/local/lib/veyra/installer-copy.sh usr/local/lib/veyra/installer-prepare.sh \
     usr/local/lib/veyra/installer-desktop.sh usr/local/lib/veyra/installer-hardware.sh \
-    usr/local/lib/veyra/hardware-detect.sh
+    usr/local/lib/veyra/hardware-detect.sh \
+    usr/local/lib/veyra/glenv-boot-pin.sh usr/local/lib/veyra/glenv-boot-mount.sh
 
 cat > usr/local/bin/veyra-setup <<'SETUP'
 #!/bin/sh
@@ -118,9 +149,8 @@ Session=plasma.desktop
 Relogin=true
 SDDM
 
-# The live image is an ephemeral, reset-on-reboot environment. The live user
-# needs full passwordless administration for package tools and setup tasks.
-# installer-prepare.sh removes this rule before the disk system is finalized.
+# The live image is ephemeral and reset on reboot, so its user can administer
+# the live system without a password. installer-prepare.sh removes this rule.
 cat > etc/sudoers.d/veyra-live <<'SUDO'
 Defaults:veyra env_keep += "DISPLAY WAYLAND_DISPLAY XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS QT_QPA_PLATFORM XAUTHORITY"
 veyra ALL=(ALL:ALL) NOPASSWD: ALL
@@ -152,7 +182,60 @@ Icon=drive-harddisk
 Terminal=false
 Categories=System;
 DESKTOP
-cp usr/share/applications/veyra-install.desktop etc/skel/Desktop/Install\ Veyra\ Linux.desktop
+# Recovery tools are intentionally available only in the live rescue environment.
+# No custom recovery implementation: both programs come from Alpine's TestDisk package.
+cat > usr/share/applications/veyra-testdisk.desktop <<'TESTDISK'
+[Desktop Entry]
+Type=Application
+Name=TestDisk — Recover Partitions
+Comment=Recover lost partitions and repair disk partition tables (advanced)
+Exec=konsole -e pkexec /usr/bin/testdisk
+Icon=drive-harddisk
+Terminal=false
+Categories=System;Utility;
+TESTDISK
+cat > usr/share/applications/veyra-photorec.desktop <<'PHOTOREC'
+[Desktop Entry]
+Type=Application
+Name=PhotoRec — Recover Files
+Comment=Recover deleted files to a different storage device
+Exec=konsole -e pkexec /usr/bin/photorec
+Icon=drive-removable-media
+Terminal=false
+Categories=System;Utility;
+PHOTOREC
+# Disk rescue launchers open trusted upstream TestDisk/PhotoRec in Konsole.
+# Require explicit authentication; never run disk recovery as the live user.
+cat > usr/local/bin/veyra-testdisk <<'RECOVERY'
+#!/bin/sh
+exec konsole --hold -e sudo /usr/bin/testdisk
+RECOVERY
+cat > usr/local/bin/veyra-photorec <<'RECOVERY'
+#!/bin/sh
+exec konsole --hold -e sudo /usr/bin/photorec
+RECOVERY
+chmod 755 usr/local/bin/veyra-testdisk usr/local/bin/veyra-photorec
+cat > usr/share/applications/veyra-testdisk.desktop <<'DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=TestDisk (Disk Recovery)
+Comment=Recover partitions and repair partition tables (advanced)
+Exec=veyra-testdisk
+Icon=drive-harddisk
+Terminal=false
+Categories=System;Utility;
+DESKTOP
+cat > usr/share/applications/veyra-photorec.desktop <<'DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=PhotoRec (File Recovery)
+Comment=Recover lost files from disks and memory cards
+Exec=veyra-photorec
+Icon=drive-removable-media
+Terminal=false
+Categories=System;Utility;
+DESKTOP
+cp usr/share/applications/veyra-install.desktop 'etc/skel/Desktop/Install Veyra Linux.desktop'
 chmod 755 etc/skel/Desktop/Install\ Veyra\ Linux.desktop
 
 cat > usr/share/applications/veyra-install-tui.desktop <<'DESKTOP'
@@ -165,7 +248,7 @@ Icon=utilities-terminal
 Terminal=false
 Categories=System;
 DESKTOP
-cp usr/share/applications/veyra-install-tui.desktop etc/skel/Desktop/Install\ Veyra\ Linux\ Text.desktop
+cp usr/share/applications/veyra-install-tui.desktop 'etc/skel/Desktop/Install Veyra Linux Text.desktop'
 chmod 755 etc/skel/Desktop/Install\ Veyra\ Linux\ Text.desktop
 
 # KDE/Wayland needs eudev for input devices, DRM and seat management.
@@ -177,6 +260,7 @@ ln -s /etc/init.d/zram-init etc/runlevels/boot/zram-init
 
 # Live-specific services never get enabled on an installed target.
 ln -s /etc/init.d/veyra-live etc/runlevels/boot/veyra-live
+ln -s /etc/init.d/veyra-live-mode etc/runlevels/boot/veyra-live-mode
 for service in dbus elogind networkmanager sddm; do
     ln -s "/etc/init.d/$service" "etc/runlevels/default/$service"
 done

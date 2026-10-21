@@ -1,10 +1,13 @@
-# Veyra Linux graphical live environment.
+# Minimal Veyra graphical live environment: Firefox, Konsole, Dolphin and Calamares.
+# Plasma shell, display/login services and hardware/network dependencies remain.
 # Names must exist in Alpine's main/community repositories for the pinned release.
 plasma-desktop
 linux-lts
-zram-init
 veyra-calamares
-dialog
+# Timezone database and open-source disk/file recovery tools.
+tzdata
+testdisk
+# Offline disk/partition and deleted-file recovery tools (TestDisk includes PhotoRec).
 rsync
 util-linux
 plasma-workspace
@@ -15,11 +18,6 @@ breeze
 breeze-icons
 sddm-breeze
 polkit-kde-agent-1
-systemsettings
-kscreen
-kde-cli-tools
-plasma-systemmonitor
-plasma-workspace-wallpapers
 sddm
 sddm-openrc
 xorg-server
@@ -48,11 +46,8 @@ pipewire-alsa
 xdg-desktop-portal
 xdg-desktop-portal-kde
 konsole
+fastfetch
 dolphin
-ark
-kate
-spectacle
-kcalc
 firefox
 nix
 nix-openrc
@@ -66,4 +61,9 @@ kpmcore
 efibootmgr
 parted
 e2fsprogs
+btrfs-progs
+xfsprogs
+f2fs-tools
 dosfstools
+zram-init
+dialog

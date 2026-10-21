@@ -14,6 +14,7 @@ on:
       - 'scripts/hardware-detect.sh'
       - 'scripts/build-iso.sh'
       - 'scripts/test-iso.sh'
+      - 'scripts/verify-iso-artifact.sh'
       - 'scripts/bootstrap.sh'
       - 'scripts/compat.sh'
       - 'scripts/smoke.sh'
@@ -63,8 +64,40 @@ jobs:
           path: dist/calamares/*
           if-no-files-found: error
           retention-days: 7
+  glenv-manager:
+    name: Build experimental glenv manager for ISO
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    container:
+      image: golang:1.23-alpine
+    steps:
+      - name: Check out tested glenv manager
+        uses: actions/checkout@v4
+        with:
+          repository: angyedz/veyra-glenv
+          ref: bdcc0980553a2bc86fd6d62faee26002fea07999
+          persist-credentials: false
+      - name: Verify Go tests and build static native tool
+        run: |
+          set -eu
+          go test -count=1 ./...
+          mkdir -p dist
+          CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o dist/glenv-manager ./cmd/glenv
+          chmod 755 dist/glenv-manager
+          dist/glenv-manager version
+          (cd dist && sha256sum glenv-manager > glenv-manager.sha256)
+      - name: Upload development manager binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: veyra-glenv-manager
+          path: |
+            dist/glenv-manager
+            dist/glenv-manager.sha256
+          if-no-files-found: error
+          retention-days: 7
+
   build:
-    needs: calamares
+    needs: [calamares, glenv-manager]
     name: Build experimental ISO
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -76,10 +109,29 @@ jobs:
         with:
           name: veyra-calamares-package
           path: dist/calamares
+      - name: Download verified development glenv manager
+        uses: actions/download-artifact@v4
+        with:
+          name: veyra-glenv-manager
+          path: dist/glenv-manager
+      - name: Verify glenv manager artifact before ISO packaging
+        run: |
+          set -eu
+          # Downloaded Actions artifacts do not retain executable modes.
+          chmod 755 dist/glenv-manager/glenv-manager
+          test -x dist/glenv-manager/glenv-manager
+          (cd dist/glenv-manager && sha256sum -c glenv-manager.sha256)
+          dist/glenv-manager/glenv-manager version
       - name: Preflight desktop dependencies
         run: |
           apk update
           grep -vE '^[[:space:]]*(#|$)' images/packages-desktop.txt | grep -vx veyra-calamares | xargs apk add --simulate
+      - name: Checkout canonical Veyra package sources
+        uses: actions/checkout@v4
+        with:
+          repository: angyedz/veyra-pkgrepo
+          path: pkgrepo-source
+          persist-credentials: false
       - name: Build development APKs for the live image
         run: |
           apk add --no-cache alpine-sdk go git
@@ -94,11 +146,15 @@ jobs:
           mkdir -p packages/keys
           cp /home/builder/.abuild/*.rsa.pub packages/keys/veyra-ci.rsa.pub
       - name: Build ISO with Alpine mkimage
+        env:
+          VEYRA_REQUIRE_GLENV_MANAGER: '1'
         run: sh scripts/build-iso.sh
-      - name: Check image structure
+      - name: Check image structure and checksum
         run: |
-          test -n "$(find dist -maxdepth 1 -name 'veyra-linux-*.iso' -print -quit)"
-          test -n "$(find dist -maxdepth 1 -name '*.sha256' -print -quit)"
+          set -eu
+          iso=$(find dist -maxdepth 1 -name 'veyra-linux-*.iso' -print -quit)
+          test -n "$iso"
+          sh scripts/verify-iso-artifact.sh "$iso"
           ls -lh dist/
       - name: Upload ISO
         uses: actions/upload-artifact@v4
@@ -130,7 +186,12 @@ jobs:
             sudo apt-get update -qq
             sudo apt-get install -y -qq qemu-utils python3-pexpect
           fi
-      - name: Verify live Plasma session
+      - name: Verify downloaded ISO artifact
+        run: |
+          iso=$(find dist -maxdepth 1 -name 'veyra-linux-*.iso' -print -quit)
+          test -n "$iso"
+          sh scripts/verify-iso-artifact.sh "$iso"
+      - name: Boot live ISO and verify Plasma session
         run: |
           iso=$(find dist -maxdepth 1 -name 'veyra-linux-*.iso' -print -quit)
           test -n "$iso"
@@ -167,6 +228,11 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq qemu-system-x86 qemu-utils python3-pexpect ovmf
+      - name: Verify ISO artifact before installing
+        run: |
+          iso=$(find dist -maxdepth 1 -name 'veyra-linux-*.iso' -print -quit)
+          test -n "$iso"
+          sh scripts/verify-iso-artifact.sh "$iso"
       - name: Syntax-check console automation
         run: python3 -m py_compile tests/test-installed-qemu.py
       - name: Install ${{ matrix.desktop }} (${{ matrix.firmware }}) on an isolated virtual disk and reboot

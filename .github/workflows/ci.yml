@@ -10,8 +10,18 @@ jobs:
       - uses: actions/checkout@v4
       - name: Check scripts and image overlay
         run: sh tests/static.sh
-      - name: Check installed signed repository configuration
-        run: sh tests/test-repo-config.sh
+      - name: Audit rootless user-environment preflight and negative paths
+        run: sh tests/test-user-env-prototype.sh
+      - name: Test ISO artifact integrity verifier
+        run: sh tests/test-iso-artifact.sh
+      - name: Validate recovery builder safety preflight
+        run: sh tests/test-recovery-builder.sh
+      - name: Syntax-check atomic QEMU automation
+        run: python3 -m py_compile tests/test-atomic-qemu.py tests/test-installed-qemu.py
+      - name: Verify GRUB generation-selection policies
+        run: python3 tests/test-bootctl-config.py
+      - name: Verify recovery artifact hashes and immutable publication
+        run: python3 tests/test-recovery-publish.py
   alpine-smoke:
     runs-on: ubuntu-latest
     container: alpine:3.22
@@ -21,8 +31,14 @@ jobs:
         run: apk add --no-cache shellcheck python3 py3-yaml
       - name: ShellCheck
         run: shellcheck -s sh scripts/*.sh images/*.sh tests/*.sh
+      - name: Render official Veyra GRUB theme assets
+        run: |
+          apk add --no-cache rsvg-convert
+          sh tests/test-boot-theme.sh
       - name: Validate shell and image overlay
         run: sh tests/static.sh
+      - name: Test ISO artifact integrity verifier on Alpine
+        run: sh tests/test-iso-artifact.sh
       - name: Validate Calamares settings and modules
         run: python3 tests/test-calamares-config.py
       - name: CPU and graphics detection fixtures
@@ -46,3 +62,395 @@ jobs:
           apk add --simulate linux-firmware-nvidia mesa-vulkan-nouveau
       - name: Verify native Nix package availability
         run: apk add --no-cache nix nix-openrc && nix --version
+
+  dual-environment-prototype:
+    name: Rootless dual-environment prototype checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify safe preflight and negative cases (no privileged operations)
+        run: sh tests/test-user-env-prototype.sh
+      - name: Check kernel namespace prerequisites (informational only)
+        shell: bash
+        run: |
+          set +e
+          sh tests/probe-dual-environment.sh
+          result=$?
+          set -e
+          if [ "$result" -eq 77 ]; then
+            echo 'SKIPPED: runner policy prevents unprivileged namespaces. Isolation NOT validated.' | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if [ "$result" -ne 0 ]; then
+            echo 'FAILED: namespace invariants did not hold after entry.' | tee -a "$GITHUB_STEP_SUMMARY"
+            exit "$result"
+          fi
+          echo 'PASSED: namespace prerequisites only; no security/boot claim.' | tee -a "$GITHUB_STEP_SUMMARY"
+
+  signed-pkgrepo:
+    name: Install signed Veyra packages on clean Alpine
+    runs-on: ubuntu-latest
+    container: alpine:3.22
+    steps:
+      - uses: actions/checkout@v4
+      - name: Trust pinned Veyra key and configure APK repository
+        run: sh scripts/setup-pkgrepo.sh
+      - name: Install vpkg and veyra-glenv using verified APK signatures
+        run: |
+          apk update
+          apk add --no-cache vpkg veyra-glenv
+          command -v vpkg
+          command -v veyra-glenv
+          apk info -e vpkg
+          apk info -e veyra-glenv
+          vpkg --help
+      - name: Install the signed Veyra desktop and AppCenter
+        run: |
+          set -eu
+          apk add --no-cache veyra-meta veyra-appcenter
+          apk info -e veyra-meta
+          apk info -e veyra-appcenter
+          command -v veyra-appcenter
+          test -s /usr/share/veyra/appcenter/main.qml
+          test -s /usr/share/veyra/appcenter/backend.py
+      - name: Launch signed AppCenter from APK installation
+        run: |
+          set +e
+          QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software timeout 6s veyra-appcenter > /tmp/veyra-signed-appcenter.log 2>&1
+          result=$?
+          set -e
+          cat /tmp/veyra-signed-appcenter.log
+          grep -q 'VEYRA_QML_READY' /tmp/veyra-signed-appcenter.log
+          test "$result" -eq 124 || test "$result" -eq 143
+
+  glenv-musl:
+    name: glenv compatibility build (musl)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    container:
+      image: golang:1.23-alpine
+    steps:
+      - name: Check out Veyra integration scripts
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Check out pinned glenv source
+        uses: actions/checkout@v4
+        with:
+          repository: angyedz/veyra-glenv
+          ref: bdcc0980553a2bc86fd6d62faee26002fea07999
+          path: glenv
+          persist-credentials: false
+      - name: Verify glenv Go packages under musl
+        working-directory: glenv
+        run: go test -count=1 ./...
+      - name: Build glenv native tool
+        working-directory: glenv
+        run: go build -trimpath -o /tmp/glenv ./cmd/glenv
+      - name: Check native binary and CLI
+        run: |
+          /tmp/glenv version
+          /tmp/glenv inspect /bin/busybox
+      - name: Exercise Veyra A/B boot-to-glenv matching
+        run: |
+          set -eu
+          mkdir -p /tmp/veyra-glenv-original/sysroot /tmp/veyra-glenv-original/lib
+          printf 'generation B' > /tmp/veyra-glenv-original/sysroot/libc.so
+          printf 'existing Wayland shim fixture' > /tmp/veyra-glenv-original/lib/glenv-wayland-filter.so
+          printf 'original glenv installation marker' > /tmp/veyra-glenv-original/.glenv-prefix
+          /tmp/glenv release prepare-copy /tmp/veyra-glenv-original /tmp/veyra-glenv-fixture ci-runtime
+          test -f /tmp/veyra-glenv-original/.glenv-prefix
+          test ! -e /tmp/veyra-glenv-fixture/.glenv-prefix
+          test -f /tmp/veyra-glenv-original/lib/glenv-wayland-filter.so
+          test -f /tmp/veyra-glenv-fixture/lib/glenv-wayland-filter.so
+          /tmp/glenv release --store /tmp/veyra-glenv-store stage /tmp/veyra-glenv-fixture ci-runtime
+          mkdir -p /tmp/veyra-glenv-previous/sysroot
+          printf 'generation A' > /tmp/veyra-glenv-previous/sysroot/libc.so
+          /tmp/glenv release inventory /tmp/veyra-glenv-previous ci-runtime-old > /tmp/veyra-glenv-previous/glenv-manifest.json
+          /tmp/glenv release --store /tmp/veyra-glenv-store stage /tmp/veyra-glenv-previous ci-runtime-old
+          /tmp/glenv release --store /tmp/veyra-glenv-store pair-host veyra-ci ci-runtime
+          /tmp/glenv release --store /tmp/veyra-glenv-store pair-host veyra-previous ci-runtime-old
+          /tmp/glenv release --store /tmp/veyra-glenv-store pair-status veyra-ci
+          if /tmp/glenv release --store /tmp/veyra-glenv-store pair-host veyra-ci ci-runtime-old; then
+            echo 'Changed an existing host deployment pair' >&2
+            exit 1
+          fi
+          if /tmp/glenv release --store /tmp/veyra-glenv-store boot-pair-pin foreign-host /tmp/veyra-boot/glenv; then
+            echo 'Accepted unknown Veyra deployment' >&2
+            exit 1
+          fi
+          /tmp/glenv release --store /tmp/veyra-glenv-store boot-pair-pin veyra-ci /tmp/veyra-boot/glenv
+          /tmp/glenv release --store /tmp/veyra-glenv-store boot-pair-pin veyra-ci /tmp/veyra-user-boot/glenv
+          test "$(readlink /tmp/veyra-boot/glenv)" = "$(readlink /tmp/veyra-user-boot/glenv)"
+          test "$(basename "$(readlink /tmp/veyra-boot/glenv)")" = ci-runtime
+          printf '%s\n' veyra-previous > /tmp/veyra-deployment-id
+          VEYRA_DEPLOYMENT_ID_FILE=/tmp/veyra-deployment-id \
+          VEYRA_GLENV_STORE=/tmp/veyra-glenv-store \
+          VEYRA_GLENV_PIN=/tmp/veyra-boot/glenv \
+          VEYRA_GLENV_BIN=/tmp/glenv \
+            sh scripts/glenv-boot-pin.sh
+          test "$(basename "$(readlink /tmp/veyra-boot/glenv)")" = ci-runtime-old
+          # Simulated next boot of the new slot must select the newer runtime.
+          printf '%s\n' veyra-ci > /tmp/veyra-deployment-id
+          VEYRA_DEPLOYMENT_ID_FILE=/tmp/veyra-deployment-id \
+          VEYRA_GLENV_STORE=/tmp/veyra-glenv-store \
+          VEYRA_GLENV_PIN=/tmp/veyra-boot/glenv \
+          VEYRA_GLENV_BIN=/tmp/glenv \
+            sh scripts/glenv-boot-pin.sh
+          test "$(basename "$(readlink /tmp/veyra-boot/glenv)")" = ci-runtime
+          # Validate future read-only runtime exposure without mounting in CI.
+          /tmp/glenv release --store /tmp/veyra-glenv-store boot-pair-pin veyra-ci /tmp/veyra-boot/selected
+          mkdir -p /tmp/veyra-user-root
+          VEYRA_GLENV_STORE=/tmp/veyra-glenv-store \
+          VEYRA_GLENV_SELECTED=/tmp/veyra-boot/selected \
+          VEYRA_GLENV_RUNTIME_MOUNT=/tmp/veyra-host-runtime \
+          VEYRA_GLENV_USER_ROOT=/tmp/veyra-user-root \
+            sh scripts/glenv-boot-mount.sh --check
+          ln -s /tmp/foreign-runtime /tmp/veyra-boot/foreign
+          if VEYRA_GLENV_STORE=/tmp/veyra-glenv-store \
+             VEYRA_GLENV_SELECTED=/tmp/veyra-boot/foreign \
+             VEYRA_GLENV_RUNTIME_MOUNT=/tmp/veyra-host-runtime \
+             sh scripts/glenv-boot-mount.sh --check; then
+            echo 'glenv mount accepted foreign release' >&2
+            exit 1
+          fi
+          mkdir -p /tmp/veyra-symlink-target
+          ln -s /tmp/veyra-symlink-target /tmp/veyra-symlink-mount
+          if VEYRA_GLENV_STORE=/tmp/veyra-glenv-store \
+             VEYRA_GLENV_SELECTED=/tmp/veyra-boot/selected \
+             VEYRA_GLENV_RUNTIME_MOUNT=/tmp/veyra-symlink-mount/runtime \
+             sh scripts/glenv-boot-mount.sh --check; then
+            echo 'glenv mount accepted a symlinked mountpoint parent' >&2
+            exit 1
+          fi
+
+  glenv-mount:
+    name: glenv host/user read-only bind mount
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test real read-only bind mounts in an isolated namespace
+        run: sudo unshare --mount --propagation private sh tests/test-glenv-mount.sh
+
+  glenv-signed-boot:
+    name: Signed glenv boot selection (Alpine/musl)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    container:
+      image: golang:1.23-alpine
+    steps:
+      - name: Check out Veyra boot scripts
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Check out tested glenv sources
+        uses: actions/checkout@v4
+        with:
+          repository: angyedz/veyra-glenv
+          ref: bdcc0980553a2bc86fd6d62faee26002fea07999
+          path: glenv
+          persist-credentials: false
+      - name: Build glenv without outside dependencies
+        working-directory: glenv
+        run: go build -trimpath -o /tmp/glenv ./cmd/glenv
+      - name: Verify signed boot and fail closed on tampering
+        shell: sh
+        run: |
+          set -eu
+          root=/tmp/veyra-ci-signed-release
+          pub=/tmp/veyra-ci-signed-key.pub
+          store=/tmp/veyra-ci-signed-store
+          mkdir -p "$root/sysroot"
+          printf 'signed runtime fixture' > "$root/sysroot/libc.so.6"
+          /tmp/glenv release inventory "$root" signed-v1 > "$root/glenv-manifest.json"
+          (cd glenv && go run ./tests/signfixture "$root" "$pub")
+          /tmp/glenv release verify-signed "$root" "$pub"
+          /tmp/glenv release --store "$store" stage-signed "$root" signed-v1 "$pub"
+          /tmp/glenv release --store "$store" pair-host veyra-signed signed-v1
+          printf 'veyra-signed\n' > /tmp/veyra-ci-deployment-id
+
+          export VEYRA_DEPLOYMENT_ID_FILE=/tmp/veyra-ci-deployment-id
+          export VEYRA_GLENV_STORE="$store"
+          export VEYRA_GLENV_BIN=/tmp/glenv
+          export VEYRA_GLENV_PIN=/tmp/veyra-ci-boot/selected
+          export VEYRA_GLENV_REQUIRE_SIGNATURE=1
+          export VEYRA_GLENV_TRUST_KEY="$pub"
+
+          if VEYRA_GLENV_TRUST_KEY=/tmp/nonexistent-glenv-key sh scripts/glenv-boot-pin.sh; then
+            echo 'Signed boot fell back when trusted key was missing' >&2
+            exit 1
+          fi
+          chmod 666 "$pub"
+          if sh scripts/glenv-boot-pin.sh; then
+            echo 'Signed boot accepted a world-writable key file' >&2
+            exit 1
+          fi
+          chmod 644 "$pub"
+          ln -s "$pub" /tmp/veyra-ci-key-symlink
+          if VEYRA_GLENV_TRUST_KEY=/tmp/veyra-ci-key-symlink sh scripts/glenv-boot-pin.sh; then
+            echo 'Signed boot accepted a symlinked key file' >&2
+            exit 1
+          fi
+          test ! -e "$VEYRA_GLENV_PIN"
+          sh scripts/glenv-boot-pin.sh
+          test "$(basename "$(readlink "$VEYRA_GLENV_PIN")")" = signed-v1
+
+          export VEYRA_GLENV_SELECTED="$VEYRA_GLENV_PIN"
+          export VEYRA_GLENV_RUNTIME_MOUNT=/tmp/veyra-ci-mount/host-runtime
+          export VEYRA_GLENV_USER_ROOT=/tmp/veyra-ci-mount/userroot
+          mkdir -p "$VEYRA_GLENV_USER_ROOT"
+          sh scripts/glenv-boot-mount.sh --check
+          if VEYRA_GLENV_TRUST_KEY=/tmp/nonexistent-glenv-key sh scripts/glenv-boot-mount.sh --check; then
+            echo 'Pre-mount verification accepted a missing trust key' >&2
+            exit 1
+          fi
+
+          printf 'tampered' > "$store/versions/signed-v1/sysroot/libc.so.6"
+          if VEYRA_GLENV_PIN=/tmp/veyra-ci-boot/tampered sh scripts/glenv-boot-pin.sh; then
+            echo 'Signed boot accepted a modified runtime' >&2
+            exit 1
+          fi
+          test ! -e /tmp/veyra-ci-boot/tampered
+          if sh scripts/glenv-boot-mount.sh --check; then
+            echo 'Pre-mount verification accepted tampered signed runtime' >&2
+            exit 1
+          fi
+
+          unsigned=/tmp/veyra-ci-unsigned-release
+          mkdir -p "$unsigned/sysroot"
+          printf 'unsigned runtime' > "$unsigned/sysroot/libc.so.6"
+          /tmp/glenv release inventory "$unsigned" unsigned-v1 > "$unsigned/glenv-manifest.json"
+          /tmp/glenv release --store "$store" stage "$unsigned" unsigned-v1
+          /tmp/glenv release --store "$store" pair-host veyra-unsigned unsigned-v1
+          printf 'veyra-unsigned\n' > "$VEYRA_DEPLOYMENT_ID_FILE"
+          if VEYRA_GLENV_PIN=/tmp/veyra-ci-boot/unsigned sh scripts/glenv-boot-pin.sh; then
+            echo 'Signed boot accepted an unsigned release' >&2
+            exit 1
+          fi
+          test ! -e /tmp/veyra-ci-boot/unsigned
+          echo 'Signed Veyra/glenv boot integration passed'
+
+  glenv-signed-mount:
+    name: Authenticated glenv host/user read-only mounts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Fetch tested glenv source
+        uses: actions/checkout@v4
+        with:
+          repository: angyedz/veyra-glenv
+          ref: bdcc0980553a2bc86fd6d62faee26002fea07999
+          path: glenv
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: false
+      - name: Compile native glenv manager
+        working-directory: glenv
+        run: go build -trimpath -o /tmp/veyra-glenv-signed-test ./cmd/glenv
+      - name: Mount signed runtime into both views in isolated namespace
+        shell: bash
+        run: |
+          set -euo pipefail
+          temp="$(mktemp -d /tmp/veyra-glenv-signed-mount.XXXXXX)"
+          trap 'sudo rm -rf "$temp"' EXIT
+          runtime="$temp/unsigned-staging"
+          store="$temp/store"
+          public_key="$temp/trusted.pub"
+          mkdir -p "$runtime/sysroot" "$temp/userroot"
+          printf 'signed Veyra glenv mount fixture' > "$runtime/sysroot/libc.so.6"
+          /tmp/veyra-glenv-signed-test release inventory "$runtime" test-v1 > "$runtime/glenv-manifest.json"
+          (cd glenv && go run ./tests/signfixture "$runtime" "$public_key")
+          sudo chown root:root "$public_key"
+          /tmp/veyra-glenv-signed-test release --store "$store" stage-signed "$runtime" test-v1 "$public_key"
+          /tmp/veyra-glenv-signed-test release --store "$store" pair-host veyra-test test-v1
+          printf 'veyra-test\n' > "$temp/deployment-id"
+
+          sudo env VEYRA_DEPLOYMENT_ID_FILE="$temp/deployment-id" \
+            VEYRA_GLENV_STORE="$store" \
+            VEYRA_GLENV_PIN="$temp/selected" \
+            VEYRA_GLENV_BIN=/tmp/veyra-glenv-signed-test \
+            VEYRA_GLENV_REQUIRE_SIGNATURE=1 \
+            VEYRA_GLENV_TRUST_KEY="$public_key" \
+            sh scripts/glenv-boot-pin.sh
+
+          sudo unshare --mount --propagation private env \
+            VEYRA_GLENV_STORE="$store" \
+            VEYRA_GLENV_SELECTED="$temp/selected" \
+            VEYRA_GLENV_RUNTIME_MOUNT="$temp/host/runtime" \
+            VEYRA_GLENV_USER_ROOT="$temp/userroot" \
+            VEYRA_GLENV_BIN=/tmp/veyra-glenv-signed-test \
+            VEYRA_GLENV_REQUIRE_SIGNATURE=1 \
+            VEYRA_GLENV_TRUST_KEY="$public_key" \
+            sh tests/test-glenv-signed-mount.sh
+
+  fs-neutral-deployment:
+    name: Filesystem-independent deployment staging on ext4 and XFS
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install independent filesystem test tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq e2fsprogs xfsprogs rsync util-linux grub-common python3
+      - name: Stage A/B system trees and preserve user data on two filesystems
+        run: sudo sh tests/test-deployment-fs-neutral.sh
+
+  vpkg-go:
+    name: Veyra package manager policy and backend tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: false
+      - name: Test vpkg native engine selection and atomic write guard
+        working-directory: vpkg
+        run: |
+          go test -count=1 ./...
+          go vet ./...
+
+  veyra-initramfs:
+    name: Build filesystem-neutral Alpine A/B initramfs selector
+    runs-on: ubuntu-24.04
+    container:
+      image: alpine:3.22
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install real Alpine mkinitfs and initramfs dependencies
+        run: apk add --no-cache mkinitfs shellcheck
+      - name: Patch upstream initramfs into a separate Veyra init
+        run: |
+          sh scripts/build-veyra-init.sh /tmp/veyra-init
+          sh -n /tmp/veyra-init
+          grep -q 'Veyra: booting deployment' /tmp/veyra-init
+          grep -q 'veyra_deployment' /tmp/veyra-init
+          sh -n scripts/veyra-initramfs-select.sh
+          shellcheck -s sh scripts/build-veyra-init.sh
+          test -x /tmp/veyra-init
+          test -f /usr/share/mkinitfs/initramfs-init
+          if sh scripts/build-veyra-init.sh /tmp/veyra-init; then
+            echo 'Overwrote an existing patched initramfs image' >&2
+            exit 1
+          fi
+
+  veyra-init-selector-mount:
+    name: Early-root filesystem-neutral mount and persistent state
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ext4, mount and filesystem tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq e2fsprogs util-linux rsync
+      - name: Execute actual root and home/Nix bind selection in mount namespace
+        run: sudo unshare --mount --propagation private sh tests/test-veyra-init-selector.sh

@@ -4,7 +4,7 @@ set -eu
 [ -r /etc/veyra-release ] || exit 0
 
 if ! id veyra >/dev/null 2>&1; then
-    adduser -D -h /home/veyra -s /bin/ash veyra
+    adduser -D -h /home/veyra -s /bin/bash veyra
 fi
 for group in video audio input render wheel plugdev; do
     if grep -q "^$group:" /etc/group; then

@@ -1,0 +1,19 @@
+#!/sbin/openrc-run
+# Experimental A/B boot success marker. Runs after system services reach the
+# default runlevel, confirming a GRUB one-shot candidate only after OpenRC boot.
+description="Confirm booted Veyra deployment and retain previous fallback"
+command=/usr/local/sbin/veyra-bootctl
+command_args="--store /var/lib/veyra/store confirm"
+command_background=no
+supervisor=supervise-daemon
+
+depend() {
+    need localmount
+    after bootmisc
+}
+
+start() {
+    ebegin "Confirming Veyra OS deployment"
+    "$command" --store /var/lib/veyra/store confirm
+    eend $?
+}

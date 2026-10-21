@@ -1,0 +1,8 @@
+#!/sbin/openrc-run
+description="Select KDE or TTY for the Veyra live session"
+command="/usr/local/lib/veyra/live-mode.sh"
+command_background="no"
+depend() {
+    need localmount veyra-live
+    before sddm
+}

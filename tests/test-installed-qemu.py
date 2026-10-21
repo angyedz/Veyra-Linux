@@ -131,6 +131,9 @@ chroot "$target" grub-mkconfig -o /boot/grub/grub.cfg
 test -s "$target/boot/grub/grub.cfg"
 grep -q 'menuentry' "$target/boot/grub/grub.cfg"
 test -s "$target/boot/vmlinuz-lts"
+grep -Eq '^[[:xdigit:]]{32}$' "$target/etc/machine-id"
+test ! -e "$target/etc/veyra-release"
+test ! -e "$target/etc/runlevels/default/veyra-live-mode"
 test -s "$target/boot/initramfs-lts"
 grep -q 'rootfstype=ext4' "$target/etc/default/grub"
 grep -q 'ext4 virtio nvme' "$target/etc/mkinitfs/mkinitfs.conf"
@@ -218,6 +221,14 @@ def upload_script(child, content, remote_path):
     if not (
         remote_path == "/tmp/e2e-install.sh"
         or remote_path.startswith("/usr/local/lib/veyra/installer-")
+        or remote_path == "/usr/local/lib/veyra/setup-pkgrepo.sh"
+        or remote_path in {
+            "/usr/local/lib/veyra/veyra-atomic-convert.sh",
+            "/usr/local/lib/veyra/veyra-deployment.sh",
+            "/usr/local/lib/veyra/veyra-initramfs-select.sh",
+            "/usr/local/lib/veyra/build-veyra-init.sh",
+            "/usr/local/lib/veyra/veyra-bootctl.py",
+        }
     ):
         raise ValueError("Unexpected remote script path")
     payload = base64.b64encode(content).decode("ascii")
@@ -229,10 +240,11 @@ def upload_script(child, content, remote_path):
             "printf '%s' '" + chunk + "' >> /tmp/veyra-e2e-transfer.b64",
             45,
         )
+    syntax_check = ("test -s " if remote_path.endswith(".py") else "sh -n ")
     run_command(
         child,
         "base64 -d /tmp/veyra-e2e-transfer.b64 > " + remote_path
-        + " && sh -n " + remote_path,
+        + " && " + syntax_check + remote_path,
         45,
     )
 
@@ -244,6 +256,8 @@ def main():
                         default="plasma")
     parser.add_argument("--firmware", choices=["bios", "uefi"], default="bios")
     parser.add_argument("--log-dir", type=pathlib.Path, default=pathlib.Path("."))
+    parser.add_argument("--require-glenv-manager", action="store_true",
+                        help="require the opt-in musl manager on live and installed Veyra")
     args = parser.parse_args()
     args.log_dir.mkdir(parents=True, exist_ok=True)
     if not args.iso.is_file():
@@ -277,12 +291,20 @@ def main():
                          firmware=args.firmware, ovmf_code=ovmf_code, ovmf_vars=ovmf_vars)
             try:
                 login(child, 360)
+                if args.require_glenv_manager:
+                    run_command(child, "test -x /usr/local/lib/veyra/glenv-manager && "
+                                "/usr/local/lib/veyra/glenv-manager version && "
+                                "test -f /usr/local/lib/veyra/glenv-boot-pin.sh && "
+                                "test -f /usr/local/lib/veyra/glenv-boot-mount.sh", 45)
                 # The cached-ISO workflow tests current installer scripts:
                 # patch them into the disposable live guest before installing.
+                # Always copy the matching Veyra trust bootstrap script too:
+                # older cached ISOs lack setup-pkgrepo.sh altogether.
                 srcroot = pathlib.Path(__file__).resolve().parents[1]
                 for script in (
                     "installer-copy.sh", "installer-prepare.sh",
                     "installer-desktop.sh", "installer-hardware.sh",
+                    "setup-pkgrepo.sh",
                 ):
                     upload_script(
                         child,
@@ -305,12 +327,17 @@ def main():
                          firmware=args.firmware, ovmf_code=ovmf_code, ovmf_vars=ovmf_vars)
             try:
                 login(child, 240)
+                if args.require_glenv_manager:
+                    run_command(child, "test -x /usr/local/lib/veyra/glenv-manager && "
+                                "/usr/local/lib/veyra/glenv-manager version && "
+                                "test -f /usr/local/lib/veyra/glenv-boot-pin.sh && "
+                                "test -f /usr/local/lib/veyra/glenv-boot-mount.sh", 45)
                 run_command(child, "test -r /etc/veyra/desktop && cat /etc/veyra/desktop", 30)
                 run_command(child, "test -x /usr/bin/vpkg && vpkg --version", 30)
                 run_command(child, "test -x /usr/bin/veyra-glenv", 30)
                 run_command(child, "test ! -e /etc/polkit-1/rules.d/49-veyra-live.rules", 30)
                 run_command(child, "test -s /boot/grub/grub.cfg", 30)
-                run_command(child, "grep -Eq '^[0-9a-f]{32}$' /etc/machine-id", 30)
+                run_command(child, "test -s /etc/machine-id && rc-service dbus status", 60)
                 if args.firmware == "uefi":
                     run_command(child, "test -d /sys/firmware/efi", 30)
                     run_command(child, "test -s /boot/efi/EFI/BOOT/BOOTX64.EFI", 30)

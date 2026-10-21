@@ -4,18 +4,24 @@
 
 Veyra Linux is an experimental Linux distribution built on Alpine Linux. It combines a minimal foundation with flexible software management and an expanded application environment.
 
+**Target architecture (not shipped yet):** a KDE-only, atomic installed system with separate system and user Linux environments sharing one kernel. KDE packages are system-managed; `plasmashell` runs in the user environment.
+
 ## Highlights
 
 - **Lean foundation** — Alpine Linux and OpenRC.
 - **Broad application support** — the [glenv](https://github.com/angyedz/glenv) glibc environment alongside native musl.
 - **Flexible packages** — `apk` and the Nix package manager.
-- **Straightforward installation** — KDE Plasma is selected automatically, and hardware setup is automatic. A guided text installer is also available for terminal-based installs.
+- **KDE Plasma desktop** — the final installed Veyra will be KDE-only. The legacy experimental installer still offers other DEs during migration.
 - **Modular setup** — add only the components you need.
 - **Open development** — transparent scripts and automated builds.
 
+## Development plan
+
+See the [full development roadmap](docs/ROADMAP.md) and the [dual-environment security architecture](docs/DUAL-ENVIRONMENT.md). Stage gates distinguish implemented code, CI probes and fully tested functionality.
+
 ## Get started
 
-Veyra is in **early development**. CI builds the ISO, verifies live boot, and tests installation plus first boot on blank QEMU disks for Plasma and the console-only profile. GNOME, Xfce, and LXQt are validated through configuration, package-resolution, and installer-routing checks; their full disk installation is not yet covered.
+Veyra is in **early development**. The experimental ISO passed a full **QEMU Live boot → installation onto a blank virtual disk → installed-system reboot** in [GitHub Actions](https://github.com/angyedz/Veyra-Linux/actions/runs/39202330852) on October 19, 2026. This automated test exercises the installer shell scripts, not graphical Calamares clicks; real hardware compatibility is still unverified.
 
 Try the integration in an Alpine Linux x86_64 virtual machine:
 

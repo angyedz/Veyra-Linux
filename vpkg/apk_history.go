@@ -92,7 +92,7 @@ func runAPKTransaction(action string, args ...string) error {
 		return fmt.Errorf("cannot start APK operation without recording its history: %w", err)
 	}
 
-	operationErr := commandRunner("apk", args...)
+	operationErr := commandRunner(systemEngine(), args...)
 	phase := "succeeded"
 	if operationErr != nil {
 		phase = "failed"

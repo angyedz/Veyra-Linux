@@ -28,4 +28,10 @@ sh tests/static.sh
 sh scripts/test-iso.sh dist/veyra-linux-*.iso
 ```
 
-The ISO is still a **development build**. The glenv upstream installer is available through `veyra-setup` but is not baked into this live ISO. The ISO build requires a successfully compiled native Calamares package in `dist/calamares/`; Calamares is bundled from the local signed APK repository. CI exercises script-driven installs and first boot on blank QEMU disks. It does not exercise Calamares' graphical workflow or physical hardware.
+The ISO is still a **development build**. The glenv upstream installer is available through `veyra-setup` but is not baked into this live ISO. The ISO build requires a successfully compiled native Calamares package in `dist/calamares/`; Calamares is bundled from the local signed APK repository. A full QEMU install/reboot test **passed** on October 19, 2026 ([workflow run 39202330852](https://github.com/angyedz/Veyra-Linux/actions/runs/39202330852)). This test invokes Veyra's actual installer shell scripts inside a disposable virtual machine and boots the installed disk; it is not a GUI automation test of clicking through Calamares. Real hardware and all supported desktops still need validation.
+
+## GitHub Actions image verification
+
+The ISO workflow now checks the SHA-256 checksum and ISO9660 primary volume descriptor before uploading the image, before boot testing, and again before the blank-disk install test. The check is implemented in `scripts/verify-iso-artifact.sh` and fails if the image does not match its checksum. Successful Actions builds upload the ISO and checksums as an artifact named `veyra-linux-iso` (current retention: 7 days). Boot and installation logs are uploaded separately for investigation of failures.
+
+To start a build manually, open [Veyra ISO workflow](https://github.com/angyedz/Veyra-Linux/actions/workflows/iso.yml) and choose **Run workflow** on the main branch. A pushed change to ISO-related scripts also triggers the build. The presence of a workflow or uploaded artifact alone does **not** prove an ISO boots successfully; check the `boot` and `install-e2e` job conclusions before promoting a build.

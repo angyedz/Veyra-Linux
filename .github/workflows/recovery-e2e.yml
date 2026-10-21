@@ -1,0 +1,69 @@
+name: Veyra Recovery independent boot
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/veyra-recovery-init.sh'
+      - 'scripts/build-veyra-recovery.sh'
+      - 'tests/test-recovery-qemu.py'
+      - '.github/workflows/recovery-e2e.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diskless-recovery:
+    name: Boot standalone Alpine Recovery initramfs without OS or disks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install QEMU and serial test driver
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-system-x86 python3-pexpect
+      - name: Build independent Alpine LTS recovery kernel and initramfs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/veyra-recovery"
+          docker run --rm \
+            -v "$PWD:/work:ro" \
+            -v "$RUNNER_TEMP/veyra-recovery:/out" \
+            alpine:3.22 sh -ec '
+              apk add --no-cache linux-lts mkinitfs
+              kernel=$(basename "$(find /lib/modules -mindepth 1 -maxdepth 1 -type d -print -quit)")
+              test -n "$kernel"
+              sh /work/scripts/build-veyra-recovery.sh "$kernel" /out/initramfs-veyra-recovery
+              cp /boot/vmlinuz-lts /out/vmlinuz-veyra-recovery
+              test -s /out/initramfs-veyra-recovery
+              test -s /out/vmlinuz-veyra-recovery
+            '
+          ls -lh "$RUNNER_TEMP/veyra-recovery"
+      - name: Verify recovery really boots as PID 1 in diskless QEMU
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile tests/test-recovery-qemu.py
+          python3 tests/test-recovery-qemu.py \
+            "$RUNNER_TEMP/veyra-recovery/vmlinuz-veyra-recovery" \
+            "$RUNNER_TEMP/veyra-recovery/initramfs-veyra-recovery" \
+            --log "$RUNNER_TEMP/veyra-recovery/serial.log"
+      - name: Show serial log when recovery boot fails
+        if: failure()
+        run: |
+          if [ -f "$RUNNER_TEMP/veyra-recovery/serial.log" ]; then
+            tail -n 180 "$RUNNER_TEMP/veyra-recovery/serial.log"
+          fi
+      - name: Preserve independent boot diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: veyra-recovery-serial-log
+          path: ${{ runner.temp }}/veyra-recovery/serial.log
+          if-no-files-found: ignore
+          retention-days: 7

@@ -1,21 +1,11 @@
-name: Veyra native packages
+name: Legacy manual Veyra package publisher
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'vpkg/**'
-      - 'packages/src/**'
-      - 'packages/build.sh'
-      - '.github/workflows/packages.yml'
-  pull_request:
-    paths:
-      - 'vpkg/**'
-      - 'packages/src/**'
-      - 'packages/build.sh'
-      - '.github/workflows/packages.yml'
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: veyra-packages-publish
+  cancel-in-progress: false
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -26,51 +16,47 @@ jobs:
           go-version-file: vpkg/go.mod
       - run: cd vpkg && go test ./... && go vet ./...
   build:
-    permissions:
-      contents: read
-    outputs:
-      stable_signing: ${{ steps.sign.outputs.stable }}
+    needs: test
     runs-on: ubuntu-latest
     container: alpine:3.22
     steps:
       - uses: actions/checkout@v4
+      - name: Checkout canonical Veyra package sources
+        uses: actions/checkout@v4
+        with:
+          repository: angyedz/veyra-pkgrepo
+          path: pkgrepo-source
+          persist-credentials: false
       - name: Install build tools
-        run: apk add --no-cache alpine-sdk go git
-      - name: Prepare unprivileged Alpine builder
+        run: apk add --no-cache alpine-sdk go git openssl && apk update
+      - name: Prepare unprivileged Alpine builder and signing key
+        env:
+          VEYRA_KEY_B64: ${{ secrets.VEYRA_ABUILD_PRIVATE_KEY_B64 }}
+          VEYRA_PUB_B64: ${{ secrets.VEYRA_ABUILD_PUBLIC_KEY_B64 }}
         run: |
           adduser -D builder
           addgroup builder abuild
           chown -R builder:builder "$GITHUB_WORKSPACE"
           mkdir -p /home/builder/.abuild
           chown builder:builder /home/builder/.abuild
-      - name: Configure stable signing key for main publication
-        id: sign
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        env:
-          VEYRA_KEY_B64: ${{ secrets.VEYRA_ABUILD_PRIVATE_KEY_B64 }}
-          VEYRA_PUB_B64: ${{ secrets.VEYRA_ABUILD_PUBLIC_KEY_B64 }}
-        run: |
           if [ -n "$VEYRA_KEY_B64" ] && [ -n "$VEYRA_PUB_B64" ]; then
             printf '%s' "$VEYRA_KEY_B64" | base64 -d > /home/builder/.abuild/veyra.rsa
             printf '%s' "$VEYRA_PUB_B64" | base64 -d > /home/builder/.abuild/veyra.rsa.pub
             chmod 600 /home/builder/.abuild/veyra.rsa
             chown -R builder:builder /home/builder/.abuild
-            echo 'stable=true' >> "$GITHUB_OUTPUT"
+            echo stable > /tmp/veyra-signing-mode
           else
             su builder -c 'abuild-keygen -a -n'
-            echo 'stable=false' >> "$GITHUB_OUTPUT"
+            echo ephemeral > /tmp/veyra-signing-mode
           fi
+          printf "PACKAGER_PRIVKEY=/home/builder/.abuild/veyra.rsa\n" > /home/builder/.abuild/abuild.conf
+          if [ "$(cat /tmp/veyra-signing-mode)" = ephemeral ]; then
+            key=$(find /home/builder/.abuild -maxdepth 1 -name "*.rsa" -print -quit)
+            printf "PACKAGER_PRIVKEY=%s\n" "$key" > /home/builder/.abuild/abuild.conf
+          fi
+          chown builder:builder /home/builder/.abuild/abuild.conf
           cp /home/builder/.abuild/*.rsa.pub /etc/apk/keys/
-          mkdir -p packages/keys
-          cp /home/builder/.abuild/*.rsa.pub packages/keys/veyra.rsa.pub
-      - name: Generate an ephemeral key for non-main builds
-        if: github.event_name != 'push' || github.ref != 'refs/heads/main'
-        run: |
-          su builder -c 'abuild-keygen -a -n'
-          cp /home/builder/.abuild/*.rsa.pub /etc/apk/keys/
-          mkdir -p packages/keys
-          cp /home/builder/.abuild/*.rsa.pub packages/keys/veyra.rsa.pub
-      - name: Compile Veyra APKs
+      - name: Compile APKs using canonical pkgrepo build system
         run: su builder -c "cd '$GITHUB_WORKSPACE' && sh packages/build.sh"
       - uses: actions/upload-artifact@v4
         with:
@@ -78,44 +64,44 @@ jobs:
           path: |
             packages/repo/x86_64/*.apk
             packages/repo/x86_64/APKINDEX.tar.gz
-            packages/keys/veyra.rsa.pub
           if-no-files-found: error
           retention-days: 7
-  publish:
-    needs: build
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.build.outputs.stable_signing == 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      actions: write
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: veyra-native-apks
-          path: packages
-      - name: Publish signed packages and public key
-        id: publish
+      - name: Require persistent signing key for publication
+        if: github.event_name != 'pull_request'
         run: |
+          test "$(cat /tmp/veyra-signing-mode)" = stable || {
+            echo 'Cannot publish with an ephemeral signing key.' >&2
+            exit 1
+          }
+          openssl pkey -pubin -in /home/builder/.abuild/veyra.rsa.pub -outform DER > /tmp/veyra-builder-pub.der
+          openssl pkey -pubin -in pkgrepo-source/keys/veyra.rsa.pub -outform DER > /tmp/veyra-pinned-pub.der
+          cmp /tmp/veyra-builder-pub.der /tmp/veyra-pinned-pub.der
+          test -s packages/repo/x86_64/APKINDEX.tar.gz
+          test -n "$(find packages/repo/x86_64 -maxdepth 1 -name '*.apk' -print -quit)"
+      - name: Checkout package distribution repository
+        if: github.event_name != 'pull_request'
+        uses: actions/checkout@v4
+        with:
+          repository: angyedz/veyra-pkgrepo
+          token: ${{ secrets.VEYRA_PKGREPO_TOKEN }}
+          path: pkgrepo
+          persist-credentials: true
+      - name: Publish signed APK repository
+        if: github.event_name != 'pull_request'
+        run: |
+          set -eu
+          mkdir -p pkgrepo/stable/v1/x86_64 pkgrepo/keys
+          cp packages/repo/x86_64/*.apk pkgrepo/stable/v1/x86_64/
+          cp packages/repo/x86_64/APKINDEX.tar.gz pkgrepo/stable/v1/x86_64/
+          cp /home/builder/.abuild/veyra.rsa.pub pkgrepo/keys/veyra.rsa.pub
+          cd pkgrepo
+          git config --global --add safe.directory "$PWD"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add packages/repo/x86_64 packages/keys/veyra.rsa.pub
+          git add stable/v1/x86_64 keys/veyra.rsa.pub
           if git diff --cached --quiet; then
-            echo 'No binary package changes'
-            echo 'changed=false' >> "$GITHUB_OUTPUT"
+            echo 'No package changes'
             exit 0
           fi
-          git commit -m "packages: publish signed vpkg and glenv APKs"
+          git commit -m "packages: publish signed Veyra APKs"
           git push origin HEAD:main
-          echo 'changed=true' >> "$GITHUB_OUTPUT"
-      - name: Start ISO and QEMU validation for the published repository
-        if: steps.publish.outputs.changed == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          curl --fail-with-body --silent --show-error -X POST \
-            -H 'Accept: application/vnd.github+json' \
-            -H "Authorization: Bearer $GH_TOKEN" \
-            -H 'X-GitHub-Api-Version: 2022-11-28' \
-            https://api.github.com/repos/angyedz/Veyra-Linux/actions/workflows/iso.yml/dispatches \
-            -d '{"ref":"main"}'

@@ -54,11 +54,19 @@ func captureCommandOutput(name string, args ...string) ([]byte, error) {
 func searchPackageSource(source, query string, exact bool) ([]packageMatch, error) {
 	switch source {
 	case "apk":
+		engine := systemEngine()
+		atomic, err := atomicSystem()
+		if err != nil {
+			return nil, err
+		}
+		if atomic && engine == "apk" {
+			return nil, fmt.Errorf("atomic Veyra requires native vpkg-engine; upstream APK fallback is forbidden")
+		}
 		args := []string{"search", "--quiet"}
 		if exact {
 			args = append(args, "--exact")
 		}
-		output, err := commandOutput("apk", append(args, query)...)
+		output, err := commandOutput(engine, append(args, query)...)
 		if err != nil {
 			return nil, err
 		}
@@ -213,6 +221,15 @@ func dispatchAutoInstall(packages []string) error {
 		}
 	}
 
+	atomic, err := atomicSystem()
+	if err != nil {
+		return err
+	}
+	apkEngine := systemEngine()
+	if atomic && apkEngine == "apk" {
+		return fmt.Errorf("atomic Veyra requires native vpkg-engine; upstream APK fallback is forbidden")
+	}
+
 	selectedSource := ""
 	var apkMatches []packageMatch
 	var nixMatches []packageMatch
@@ -272,7 +289,7 @@ func dispatchAutoInstall(packages []string) error {
 		printPackageMatch(candidate)
 	}
 	planArgs := append([]string{"add", "--simulate"}, packages...)
-	if err := commandRunner("apk", planArgs...); err != nil {
+	if err := commandRunner(apkEngine, planArgs...); err != nil {
 		return fmt.Errorf("cannot prepare Alpine/Veyra installation plan: %w", err)
 	}
 	ok, err := apkInstallConfirmer(apkMatches)

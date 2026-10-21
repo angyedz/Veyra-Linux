@@ -2,6 +2,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -9,7 +10,7 @@ import (
 	"strings"
 )
 
-const version = "0.1.0"
+const version = "0.2.0-dev"
 
 func usage() {
 	fmt.Print(`vpkg ` + version + ` - Veyra package manager
@@ -31,6 +32,9 @@ Usage:
   vpkg rollback --from appimage
   vpkg history --from nix
   vpkg rollback --from nix [version]
+  vpkg deployments --from alpine
+  vpkg activate <deployment-id> --from alpine
+  vpkg rollback <deployment-id> --from alpine
   vpkg version
   vpkg help
 
@@ -77,6 +81,37 @@ func run(name string, args ...string) error {
 	return nil
 }
 
+// Atomic installations never write to the active system root. The native
+// engine is also required for read-only package queries in that mode.
+var markerFile = "/etc/veyra/deployment-mode"
+var bootCtlBinary = "/usr/local/sbin/veyra-bootctl"
+var bootCtlStore = "/var/lib/veyra/store"
+
+func atomicSystem() (bool, error) {
+	data, err := os.ReadFile(markerFile)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("cannot read Veyra system policy: %w", err)
+	}
+	switch strings.TrimSpace(string(data)) {
+	case "legacy":
+		return false, nil
+	case "atomic-v1":
+		return true, nil
+	default:
+		return false, fmt.Errorf("unknown Veyra system mode: %q", strings.TrimSpace(string(data)))
+	}
+}
+
+func systemEngine() string {
+	if _, err := exec.LookPath("vpkg-engine"); err == nil {
+		return "vpkg-engine"
+	}
+	return "apk"
+}
+
 // commandRunner is replaceable in tests so command routing can be verified on
 // hosts that do not provide apk or nix.
 var commandRunner = run
@@ -106,6 +141,61 @@ func dispatch(action, source string, packages []string) error {
 		}
 		return nil
 	}
+	if source == "auto" && action == "search" {
+		atomic, err := atomicSystem()
+		if err != nil {
+			return err
+		}
+		if atomic && systemEngine() == "apk" {
+			return fmt.Errorf("atomic Veyra requires native vpkg-engine; upstream APK fallback is forbidden")
+		}
+	}
+	if source == "alpine" {
+		atomic, err := atomicSystem()
+		if err != nil {
+			return err
+		}
+		if atomic {
+			if action == "deployments" {
+				if len(packages) != 0 {
+					return fmt.Errorf("deployments takes no arguments")
+				}
+				return commandRunner(bootCtlBinary, "--store", bootCtlStore, "status")
+			}
+			if action == "activate" || action == "rollback" {
+				if len(packages) != 1 {
+					return fmt.Errorf("%s requires exactly one deployment ID", action)
+				}
+				return commandRunner(bootCtlBinary, "--store", bootCtlStore, action, packages[0])
+			}
+			switch action {
+			case "install", "remove", "update", "upgrade":
+				return fmt.Errorf("atomic Veyra forbids in-place system changes; update an inactive deployment instead")
+			}
+			engine := systemEngine()
+			if engine == "apk" {
+				return fmt.Errorf("atomic Veyra requires native vpkg-engine; upstream APK fallback is forbidden")
+			}
+			switch action {
+			case "search":
+				if err := need(); err != nil {
+					return err
+				}
+				return commandRunner(engine, append([]string{"search"}, packages...)...)
+			case "info":
+				if err := need(); err != nil {
+					return err
+				}
+				return commandRunner(engine, append([]string{"info", "-a"}, packages...)...)
+			case "list":
+				return commandRunner(engine, "info")
+			case "history":
+				return fmt.Errorf("APK transaction history is not available for atomic deployments yet")
+			default:
+				return fmt.Errorf("unsupported command %q for atomic Veyra", action)
+			}
+		}
+	}
 	if source == "auto" {
 		return dispatchAuto(action, packages, dryRun)
 	}
@@ -125,14 +215,14 @@ func dispatch(action, source string, packages []string) error {
 			if e := need(); e != nil {
 				return e
 			}
-			return commandRunner("apk", append([]string{"search"}, packages...)...)
+			return commandRunner(systemEngine(), append([]string{"search"}, packages...)...)
 		case "info":
 			if e := need(); e != nil {
 				return e
 			}
-			return commandRunner("apk", append([]string{"info", "-a"}, packages...)...)
+			return commandRunner(systemEngine(), append([]string{"info", "-a"}, packages...)...)
 		case "list":
-			return commandRunner("apk", "info")
+			return commandRunner(systemEngine(), "info")
 		case "update":
 			return runAPKTransaction("update", "update")
 		case "upgrade":
