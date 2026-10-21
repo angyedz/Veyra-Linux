@@ -33,13 +33,11 @@ fi
 if [ ! -x /newroot/sbin/init ] || [ ! -x /newroot/sbin/openrc ]; then
     fail "disk-backed system root lacks Alpine init/OpenRC"
 fi
-"$bb" mkdir -p /newroot/mnt/veyra-user /newroot/proc /newroot/sys \
-    /newroot/dev/pts /newroot/run /newroot/tmp
-if ! "$bb" mount -t ext4 -o rw /dev/vdb /newroot/mnt/veyra-user; then
-    fail "could not mount persistent user root on /dev/vdb"
-fi
-if [ ! -f /newroot/mnt/veyra-user/.veyra-stage1-rootfs ]; then
-    fail "persistent user root marker is missing"
+"$bb" mkdir -p /newroot/var/lib/veyra-user-store \
+    /newroot/mnt/veyra-user /newroot/mnt/veyra-user-b \
+    /newroot/proc /newroot/sys /newroot/dev/pts /newroot/run /newroot/tmp
+if ! "$bb" mount -t ext4 -o rw /dev/vdb /newroot/var/lib/veyra-user-store; then
+    fail "could not mount persistent per-user store on /dev/vdb"
 fi
 "$bb" mount -t proc proc /newroot/proc
 "$bb" mount -t sysfs sysfs /newroot/sys
@@ -50,5 +48,5 @@ fi
 "$bb" mount -t tmpfs -o mode=1777,nosuid,nodev tmpfs /newroot/tmp
 "$bb" printf 'system-only\n' > /newroot/run/.veyra-stage1-run-boundary
 "$bb" chmod 0400 /newroot/run/.veyra-stage1-run-boundary
-echo "VEYRA_STAGE1_DUAL_ROOT_MOUNTED system=/dev/vda user=/dev/vdb"
+echo "VEYRA_STAGE1_DUAL_ROOT_MOUNTED system=/dev/vda user-store=/dev/vdb"
 exec "$bb" switch_root /newroot /sbin/init
