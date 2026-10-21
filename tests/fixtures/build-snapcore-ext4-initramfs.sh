@@ -60,10 +60,7 @@ sed -i 's@^#include <linux/prctl.h>$@@' "$ublksrv_src/lib/ublksrv.c"
     make -C lib -j2 libublksrv.la
     make -j2 ublk ublk.loop
     make -C lib install
-    mkdir -p /usr/sbin
-    cp ublk /usr/sbin/ublk
-    cp ublk.loop /usr/sbin/ublk.loop
-    chmod 0755 /usr/sbin/ublk /usr/sbin/ublk.loop
+    make sbin_PROGRAMS='ublk ublk.loop' install-sbinPROGRAMS
 )
 test -x /usr/sbin/ublk
 test -x /usr/sbin/ublk.loop
