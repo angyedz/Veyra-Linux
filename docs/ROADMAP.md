@@ -304,7 +304,7 @@ Parallel tracks are intentional; avoid turning prototypes on in the normal boot 
 ## Immediate execution order
 
 1. **Stage 0 prototype complete and merged**: PR #8 QEMU/static gates verified; continue its unfinished threat-model work under Stage 2.
-2. **Stage 1 QEMU baseline merged**: PRs #9–13. Open PR #17 tests system OpenRC autostart and serial login; draft PRs #18, #24, #25 and #26 add two-root boot, generic root provisioning, named login and manifest-to-authentication proofs. **Next** implement the proposed [production account and login contract](STAGE1-LOGIN-DESIGN.md): credential enrollment and the installed OpenRC-owned session manager, then integrate graphical login, finalize persistent roots and personal data outside A/B, and add trusted cleanup. This design does not enable the feature or change the legacy installer.
+2. **Stage 1 QEMU baseline merged**: PRs #9–13. Open PR #17 tests system OpenRC autostart and serial login; draft PRs #18, #24, #25 and #26 add two-root boot, generic root provisioning, named login and manifest-to-authentication proofs. The system-side registry package is now a partial credential-enrollment primitive. **Next** integrate it with production account creation and root provisioning, implement the installed OpenRC-owned session manager, then integrate graphical login, finalize persistent roots and personal data outside A/B, and add trusted cleanup. This design does not enable the feature or change the legacy installer.
 3. **In parallel Stage 1S:** prototype SnapCore genuine block-level CoW with crash-consistent mapping roots, power-cut tests and independent root vs `/home` recovery; preserve system A/B's snapshot-free contract.
 4. Stage 2: adversarially prove the production inner `sudo` cannot escape or control host kernel/devices/boot/network/services; extend inherited-FD/cgroup/LSM audits.
 5. Stage 3: controlled user internet and VPN while host network stays independent.
@@ -332,14 +332,17 @@ Dual Environment system.
 
 **Account-registry progress (2026-10-21):** draft
 [veyra-pkgrepo PR #3](https://github.com/angyedz/veyra-pkgrepo/pull/3) adds a
-system-side account-to-range registry primitive. Its package tests and the
-repository package build both pass ([registry/package CI](https://github.com/angyedz/veyra-pkgrepo/actions/runs/39653527285),
-[source checks](https://github.com/angyedz/veyra-pkgrepo/actions/runs/39653527315)).
+system-side account-to-range registry primitive. On head
+`4c7fbe26b111b57d5a3937f142bb7dd23eadc2fd`, package source checks and the
+signed APK package build/tests both pass ([source checks](https://github.com/angyedz/veyra-pkgrepo/actions/runs/39657217279),
+[package build/tests](https://github.com/angyedz/veyra-pkgrepo/actions/runs/39657217259)).
 `veyra-pkgrepo` is the canonical source for both system and user APK packages;
-the registry is one system-side package within that mixed repository. It only
-reserves identity ranges and checks enrollment eligibility: it does not yet
-provision installed user roots, homes, sessions, or login. PR #3 remains draft
-pending independent review, so this does not change the integrated Alpha count.
+the registry is one system-side package within that mixed repository. Its
+manager-facing `resolve USER` operation rechecks active eligibility, mapped
+system UID/GID and current host privilege policy on each lookup. It does not
+authenticate a login or provision installed user roots, homes, sessions, or
+login. PR #3 remains draft pending independent review, so this does not change
+the integrated Alpha count.
 
 The remaining integration blocks are production account enrollment and the
 system OpenRC/session manager; persistent per-user roots and `/home` outside

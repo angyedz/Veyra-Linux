@@ -28,6 +28,15 @@ name, the assigned outer UID/GID range and the user-root/home locations in a
 system-owned registry. It must not copy the system password, password hash,
 authentication token or host `/etc/shadow` into the user root.
 
+The system-side `veyra-account-registry resolve USER` operation is the
+manager-facing eligibility and mapping lookup. It rechecks that the enrolled
+system account is still active, has the same UID/GID, and has not gained host
+`wheel`/`sudo` membership or direct sudo policy authorization. It returns the
+system identity and reserved mapping base, but **does not authenticate a
+login**. The session broker must obtain authentication from the configured
+system PAM/login path and compare that trusted session identity with the
+resolved UID/GID before opening the account's root.
+
 The existing Calamares and TUI installers create a conventional system user.
 That legacy path remains unchanged until the new profile can provision and
 recover both environments. The production dual-environment profile must
