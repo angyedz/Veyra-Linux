@@ -1,29 +1,33 @@
 #!/bin/sh
 # Disposable QEMU only. The outer system-side init owns the disk and manager.
 set -eu
-/bin/busybox mount -t proc proc /proc
-/bin/busybox mount -t sysfs sysfs /sys
-/bin/busybox mount -t devtmpfs devtmpfs /dev
-/bin/busybox mkdir -p /dev/pts /run /tmp /mnt/veyra-user /mnt/veyra-stage1-bootstrap
-/bin/busybox mount -t devpts devpts /dev/pts
-/bin/busybox mount -t tmpfs -o mode=0755 tmpfs /run
-/bin/busybox mount -t tmpfs tmpfs /tmp
-exec </dev/console >/dev/console 2>&1
-/bin/busybox modprobe virtio_pci 2>/dev/null || :
-/bin/busybox modprobe virtio_blk 2>/dev/null || :
-/bin/busybox modprobe ext4 2>/dev/null || :
-disk_ready=0
-for _ in 1 2 3 4 5 6 7 8 9 10; do
-    if [ -b /dev/vda ]; then disk_ready=1; break; fi
-    /bin/busybox sleep 1
-done
-if [ "$disk_ready" -ne 1 ]; then
-    echo 'VEYRA_STAGE1_FAILURE: disposable /dev/vda unavailable'
-    /bin/busybox poweroff -f
-fi
-if ! /bin/busybox mount -t ext4 -o rw /dev/vda /mnt/veyra-user; then
-    echo 'VEYRA_STAGE1_FAILURE: disposable ext4 mount failed'
-    /bin/busybox poweroff -f
+qa_only=0
+if [ "${1:-}" = "--qa" ]; then qa_only=1; fi
+if [ "$qa_only" -eq 0 ]; then
+    /bin/busybox mount -t proc proc /proc
+    /bin/busybox mount -t sysfs sysfs /sys
+    /bin/busybox mount -t devtmpfs devtmpfs /dev
+    /bin/busybox mkdir -p /dev/pts /run /tmp /mnt/veyra-user /mnt/veyra-stage1-bootstrap
+    /bin/busybox mount -t devpts devpts /dev/pts
+    /bin/busybox mount -t tmpfs -o mode=0755 tmpfs /run
+    /bin/busybox mount -t tmpfs tmpfs /tmp
+    exec </dev/console >/dev/console 2>&1
+    /bin/busybox modprobe virtio_pci 2>/dev/null || :
+    /bin/busybox modprobe virtio_blk 2>/dev/null || :
+    /bin/busybox modprobe ext4 2>/dev/null || :
+    disk_ready=0
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+        if [ -b /dev/vda ]; then disk_ready=1; break; fi
+        /bin/busybox sleep 1
+    done
+    if [ "$disk_ready" -ne 1 ]; then
+        echo 'VEYRA_STAGE1_FAILURE: disposable /dev/vda unavailable'
+        /bin/busybox poweroff -f
+    fi
+    if ! /bin/busybox mount -t ext4 -o rw /dev/vda /mnt/veyra-user; then
+        echo 'VEYRA_STAGE1_FAILURE: disposable ext4 mount failed'
+        /bin/busybox poweroff -f
+    fi
 fi
 expected=1
 for item in $(/bin/busybox cat /proc/cmdline); do
@@ -70,14 +74,25 @@ verify_autologin() {
 }
 trap cleanup EXIT INT TERM
 
-/sbin/openrc sysinit || fail 'system OpenRC sysinit failed'
-/sbin/openrc boot || fail 'system OpenRC boot failed'
-if [ -e /run/.veyra-stage1-run-boundary ]; then
-    fail 'system /run boundary marker unexpectedly exists before test setup'
+if [ "$qa_only" -eq 0 ]; then
+    /sbin/openrc sysinit || fail 'system OpenRC sysinit failed'
+    /sbin/openrc boot || fail 'system OpenRC boot failed'
+    if [ -e /run/.veyra-stage1-run-boundary ]; then
+        fail 'system /run boundary marker unexpectedly exists before test setup'
+    fi
+    /bin/busybox printf 'system-only\n' > /run/.veyra-stage1-run-boundary
+    /bin/busybox chmod 0400 /run/.veyra-stage1-run-boundary
+    /sbin/openrc default || fail 'system OpenRC default runlevel failed'
+else
+    root_source=$(/bin/busybox awk '$2 == "/" { print $1; exit }' /proc/mounts)
+    if [ "$root_source" != "/dev/vda" ]; then
+        fail "system root is not the disk-backed ext4 device: $root_source"
+    fi
+    if [ "$(/bin/busybox cat /run/.veyra-stage1-run-boundary 2>/dev/null || :)" != "system-only" ]; then
+        fail "system /run marker was not preserved across switch_root"
+    fi
+    echo "VEYRA_STAGE1_SYSTEM_ROOT_EXT4_OPENRC_PASS root=$root_source"
 fi
-/bin/busybox printf 'system-only\n' > /run/.veyra-stage1-run-boundary
-/bin/busybox chmod 0400 /run/.veyra-stage1-run-boundary
-/sbin/openrc default || fail 'system OpenRC default runlevel failed'
 manager_status=$(/host-supervisor status 2>/dev/null || :)
 case "$manager_status" in
     RUNNING\ pid=*\ count=*) ;;
