@@ -30,6 +30,8 @@ sed -i 's@^#include <linux/prctl.h>$@@' "$ublksrv_src/lib/ublksrv.c"
     ./configure --prefix=/usr --with-libnfs=no --with-libiscsi=no --with-gnutls=no
     # Build only the loop front end and CLI required by this QEMU fixture;
     # upstream demos include glibc-only <error.h> and are not runtime inputs.
+    # Explicit root targets do not build the library subdirectory first.
+    make -C lib -j2 libublksrv.la
     make -j2 ublk ublk.loop
     make -C lib install
     mkdir -p /usr/sbin
