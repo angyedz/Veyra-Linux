@@ -118,6 +118,63 @@ case "$phase" in
         "$BB" umount /mnt/snapcore || fail 'could not unmount verified user-root volume'
         echo 'VEYRA_SNAPCORE_ROOT_ONLY_RESTORE_HOME_PRESERVED_PASS'
         ;;
+    destroy-root)
+        mount_root_rw
+        mount_home_rw
+        [ "$("$BB" cat /mnt/snapcore/user-root/state.txt)" = 'baseline-user-root' ] ||
+            fail 'baseline user-root file was not present before recursive root deletion'
+        [ "$("$BB" cat /mnt/snapcore/home/veyrauser/Documents/post-checkpoint.txt)" = \
+            'new-personal-file-after-checkpoint' ] ||
+            fail 'current personal file was not present before recursive root deletion'
+        # The /home filesystem is mounted separately. Delete every entry from
+        # the user-root ext4 tree while leaving that mounted personal volume in
+        # place, matching the cross-mount failure boundary called out in the
+        # recovery contract.
+        for entry in /mnt/snapcore/* /mnt/snapcore/.[!.]* /mnt/snapcore/..?*; do
+            [ -e "$entry" ] || [ -L "$entry" ] || continue
+            [ "$entry" = '/mnt/snapcore/home' ] || "$BB" rm -rf "$entry"
+        done
+        for entry in /mnt/snapcore/* /mnt/snapcore/.[!.]* /mnt/snapcore/..?*; do
+            [ -e "$entry" ] || [ -L "$entry" ] || continue
+            [ "$entry" = '/mnt/snapcore/home' ] ||
+                fail "recursive root deletion left an entry: $entry"
+        done
+        [ ! -e /mnt/snapcore/user-root/state.txt ] ||
+            fail 'recursive root deletion left the baseline root file'
+        [ "$("$BB" cat /mnt/snapcore/home/veyrauser/Documents/post-checkpoint.txt)" = \
+            'new-personal-file-after-checkpoint' ] ||
+            fail 'recursive root deletion damaged the separately mounted /home file'
+        unmount_both
+        /sbin/e2fsck -f -n /dev/vda ||
+            fail 'ext4 user-root consistency check failed after recursive deletion'
+        /sbin/e2fsck -f -n /dev/vdb ||
+            fail 'ext4 /home consistency check failed after recursive root deletion'
+        echo 'VEYRA_SNAPCORE_FULL_USER_ROOT_DELETE_PASS'
+        ;;
+    verify-root-after-delete)
+        /sbin/e2fsck -f -n /dev/vda ||
+            fail 'ext4 user-root consistency check failed after full-root rollback'
+        /sbin/e2fsck -f -n /dev/vdb ||
+            fail 'ext4 /home consistency check failed after full-root rollback'
+        "$BB" mount -t ext4 -o ro,noload /dev/vda /mnt/snapcore ||
+            fail 'could not mount restored user-root volume read-only after full deletion'
+        "$BB" mount -t ext4 -o ro,noload /dev/vdb /mnt/snapcore/home ||
+            fail 'could not mount current /home volume after full-root rollback'
+        [ "$("$BB" cat /mnt/snapcore/user-root/state.txt)" = 'baseline-user-root' ] ||
+            fail 'full-root rollback did not restore the baseline user-root file'
+        [ ! -e /mnt/snapcore/user-root/state-mutated.txt ] ||
+            fail 'full-root rollback retained a mutated user-root file'
+        [ ! -e /mnt/snapcore/user-root/mutation-only.txt ] ||
+            fail 'full-root rollback retained a post-checkpoint user-root file'
+        [ ! -e /mnt/snapcore/home/veyrauser/Documents/recovery-note.txt ] ||
+            fail 'full-root rollback unexpectedly rewound the separately mounted /home'
+        [ "$("$BB" cat /mnt/snapcore/home/veyrauser/Documents/post-checkpoint.txt)" = \
+            'new-personal-file-after-checkpoint' ] ||
+            fail 'full-root rollback did not preserve the newer current /home file'
+        "$BB" umount /mnt/snapcore/home || fail 'could not unmount verified /home after full-root rollback'
+        "$BB" umount /mnt/snapcore || fail 'could not unmount verified root after full-root rollback'
+        echo 'VEYRA_SNAPCORE_FULL_ROOT_RESTORE_HOME_PRESERVED_PASS'
+        ;;
     verify-home)
         /sbin/e2fsck -f -n /dev/vda ||
             fail 'ext4 user-root consistency check failed after separate /home restore'
