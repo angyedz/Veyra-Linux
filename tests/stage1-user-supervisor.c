@@ -29,7 +29,8 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-#define ROOT_PATH "/mnt/veyra-user"
+#define PRIMARY_ROOT_PATH "/mnt/veyra-user"
+#define SECONDARY_ROOT_PATH "/mnt/veyra-user-b"
 #define RUN_DIR "/run/veyra-user-manager"
 #define SOCKET_PATH RUN_DIR "/control.sock"
 /* Root-owned (0711) staging parent: the namespace user can traverse
@@ -39,9 +40,13 @@
 #define PIN_PARENT "/run/veyra-user-rootfs-pin"
 #define PIN_PATH PIN_PARENT "/rootfs"
 #define BOOTSTRAP_PATH PIN_PARENT "/bootstrap"
-#define OUTER_ROOT_UID 100000U
-#define OUTER_NORMAL_UID 101000U
-#define MAPPED_ID_LIMIT 165536U
+#define DEFAULT_OUTER_ROOT_UID 100000U
+#define SECONDARY_OUTER_ROOT_UID 200000U
+#define USER_NAMESPACE_ID_COUNT 65536U
+static char root_path[PATH_MAX] = PRIMARY_ROOT_PATH;
+static unsigned outer_root_uid = DEFAULT_OUTER_ROOT_UID;
+static unsigned outer_normal_uid = DEFAULT_OUTER_ROOT_UID + 1000U;
+static unsigned mapped_id_limit = DEFAULT_OUTER_ROOT_UID + USER_NAMESPACE_ID_COUNT;
 #define MAX_TREE_ENTRIES 100000U
 #define START_TIMEOUT_MS 90000
 #define STOP_TIMEOUT_MS 5000
@@ -137,8 +142,8 @@ static int open_in_root(int rootfd, const char *path, int flags) {
     return (int)syscall(SYS_openat2, rootfd, path, &how, sizeof(how));
 }
 static int valid_owner(const struct stat *st) {
-    return st->st_uid >= OUTER_ROOT_UID && st->st_uid < MAPPED_ID_LIMIT &&
-           st->st_gid >= OUTER_ROOT_UID && st->st_gid < MAPPED_ID_LIMIT;
+    return st->st_uid >= outer_root_uid && st->st_uid < mapped_id_limit &&
+           st->st_gid >= outer_root_uid && st->st_gid < mapped_id_limit;
 }
 static int safe_device(const char *path, const struct stat *st) {
     if (!S_ISCHR(st->st_mode)) return 0;
@@ -220,7 +225,7 @@ static int scan_directory(int fd, const char *parent, int depth,
         if (S_ISREG(st.st_mode) || S_ISLNK(st.st_mode)) {
             if (st.st_mode & (S_ISUID | S_ISGID)) {
                 if (strcmp(path, "usr/bin/sudo") || !S_ISREG(st.st_mode) ||
-                    st.st_uid != OUTER_ROOT_UID ||
+                    st.st_uid != outer_root_uid ||
                     (st.st_mode & 07777) != 04755) {
                     set_error(scan->error, scan->error_size,
                               "unexpected setuid/setgid file in user rootfs");
@@ -255,9 +260,9 @@ static int check_mount_table(char *error, size_t error_size) {
             if (!field) break;
         }
         if (!field) continue;
-        size_t root_len = strlen(ROOT_PATH);
-        if (!strcmp(field, ROOT_PATH)) exact++;
-        else if (!strncmp(field, ROOT_PATH, root_len) && field[root_len] == '/')
+        size_t root_len = strlen(root_path);
+        if (!strcmp(field, root_path)) exact++;
+        else if (!strncmp(field, root_path, root_len) && field[root_len] == '/')
             nested++;
     }
     free(line);
@@ -271,7 +276,7 @@ static int check_mount_table(char *error, size_t error_size) {
 static int validate_rootfs(int *rootfd_out, char *error, size_t error_size) {
     struct stat path_st, parent_st, root_st;
     struct statfs fs;
-    if (lstat(ROOT_PATH, &path_st) < 0 || !S_ISDIR(path_st.st_mode)) {
+    if (lstat(root_path, &path_st) < 0 || !S_ISDIR(path_st.st_mode)) {
         set_error(error, error_size, "persistent rootfs mountpoint is missing or not a directory");
         return -1;
     }
@@ -282,7 +287,7 @@ static int validate_rootfs(int *rootfd_out, char *error, size_t error_size) {
         return -1;
     }
     close(parentfd);
-    int rootfd = open(ROOT_PATH, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    int rootfd = open(root_path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
     if (rootfd < 0 || fstat(rootfd, &root_st) < 0 || fstatfs(rootfd, &fs) < 0) {
         if (rootfd >= 0) close(rootfd);
         set_error(error, error_size, "cannot open persistent rootfs safely");
@@ -294,7 +299,8 @@ static int validate_rootfs(int *rootfd_out, char *error, size_t error_size) {
         set_error(error, error_size, "user rootfs is not on a separate persistent filesystem");
         return -1;
     }
-    if (root_st.st_uid != OUTER_ROOT_UID || root_st.st_gid != OUTER_ROOT_UID ||
+    if (root_st.st_uid != outer_root_uid ||
+        (root_st.st_gid != outer_root_uid && root_st.st_gid != outer_normal_uid) ||
         (root_st.st_mode & 0022)) {
         close(rootfd);
         set_error(error, error_size, "rootfs inode must be mapped root-owned and not group/world writable");
@@ -334,7 +340,7 @@ static int validate_rootfs(int *rootfd_out, char *error, size_t error_size) {
     int sudofd = open_in_root(rootfd, "usr/bin/sudo", O_PATH);
     struct stat sudo_st;
     if (sudofd < 0 || fstat(sudofd, &sudo_st) < 0 ||
-        !S_ISREG(sudo_st.st_mode) || sudo_st.st_uid != OUTER_ROOT_UID ||
+        !S_ISREG(sudo_st.st_mode) || sudo_st.st_uid != outer_root_uid ||
         (sudo_st.st_mode & 04755) != 04755) {
         if (sudofd >= 0) close(sudofd);
         close(rootfd);
@@ -362,7 +368,7 @@ static int read_boot_count(int rootfd) {
 static int check_proofs(int rootfd, char *error, size_t error_size) {
     struct stat st;
     int fd = open_in_root(rootfd, "home/veyrauser/normal-user-proof", O_RDONLY);
-    if (fd < 0 || fstat(fd, &st) < 0 || st.st_uid != OUTER_NORMAL_UID) {
+    if (fd < 0 || fstat(fd, &st) < 0 || st.st_uid != outer_normal_uid) {
         if (fd >= 0) close(fd);
         set_error(error, error_size, "ordinary user write did not map to outside UID 101000");
         return -1;
@@ -377,9 +383,9 @@ static int check_proofs(int rootfd, char *error, size_t error_size) {
         return -1;
     }
     fd = open_in_root(rootfd, "home/veyrauser/inner-sudo-proof", O_PATH);
-    if (fd < 0 || fstat(fd, &st) < 0 || st.st_uid != OUTER_ROOT_UID) {
+    if (fd < 0 || fstat(fd, &st) < 0 || st.st_uid != outer_root_uid) {
         if (fd >= 0) close(fd);
-        set_error(error, error_size, "namespace-local sudo escaped mapped outside UID 100000");
+        set_error(error, error_size, "namespace-local sudo escaped its mapped outside UID");
         return -1;
     }
     close(fd);
@@ -594,19 +600,20 @@ static int ensure_pin_directory(void) {
     if (mkdir(PIN_PATH, 0700) < 0 && errno != EEXIST) return -1;
     if (mkdir(BOOTSTRAP_PATH, 0700) < 0 && errno != EEXIST) return -1;
     if (lstat(BOOTSTRAP_PATH, &st) < 0 || !S_ISDIR(st.st_mode) ||
-        (st.st_uid != 0 && st.st_uid != OUTER_ROOT_UID)) {
+        (st.st_uid != 0 && st.st_uid != DEFAULT_OUTER_ROOT_UID &&
+         st.st_uid != SECONDARY_OUTER_ROOT_UID)) {
         errno = EPERM;
         return -1;
     }
-    /* The nested user namespace maps UID/GID 0 to OUTER_ROOT_UID. Give
+    /* The nested user namespace maps UID/GID 0 to outer_root_uid. Give
      * its PID 1 a private, pre-existing system-side mountpoint; it cannot
      * create one under the outer root's /mnt after dropping privileges.
      */
-    if (chown(BOOTSTRAP_PATH, OUTER_ROOT_UID, OUTER_ROOT_UID) < 0 ||
+    if (chown(BOOTSTRAP_PATH, outer_root_uid, outer_root_uid) < 0 ||
         chmod(BOOTSTRAP_PATH, 0700) < 0)
         return -1;
     if (lstat(BOOTSTRAP_PATH, &st) < 0 || !S_ISDIR(st.st_mode) ||
-        st.st_uid != OUTER_ROOT_UID || st.st_gid != OUTER_ROOT_UID ||
+        st.st_uid != outer_root_uid || st.st_gid != outer_root_uid ||
         (st.st_mode & 07777) != 0700) {
         errno = EPERM;
         return -1;
@@ -638,9 +645,9 @@ static int test_directory_identity_guard(void) {
         fprintf(stderr, "rootfs inode guard test requires system-side UID 0\n");
         return 2;
     }
-    int rootfd = open(ROOT_PATH, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    int rootfd = open(root_path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
     if (rootfd < 0) { perror("open validated rootfs for inode guard test"); return 2; }
-    int same = directory_identity_matches(rootfd, ROOT_PATH);
+    int same = directory_identity_matches(rootfd, root_path);
     int different = directory_identity_matches(rootfd, "/run");
     close(rootfd);
     if (same != 1 || different != 0) {
@@ -744,15 +751,15 @@ static void launch_user(const struct child_args *ctx) {
     };
     close_unlisted_fds(permitted_fds,
                        sizeof(permitted_fds) / sizeof(permitted_fds[0]));
-    if (setgroups(0, NULL) < 0 || setgid(OUTER_ROOT_UID) < 0 ||
-        setuid(OUTER_ROOT_UID) < 0) die("drop to unprivileged outside UID 100000");
+    if (setgroups(0, NULL) < 0 || setgid(outer_root_uid) < 0 ||
+        setuid(outer_root_uid) < 0) die("drop to unprivileged outside UID 100000");
     /* Credential changes clear PR_SET_PDEATHSIG, so arm it again after the
      * drop and verify that the system-side manager is still our parent.
      */
     if (prctl(PR_SET_PDEATHSIG, SIGKILL) < 0 ||
         getppid() != ctx->expected_parent)
         _exit(1);
-    if (geteuid() != OUTER_ROOT_UID) die("launcher remains privileged");
+    if (geteuid() != outer_root_uid) die("launcher remains privileged");
     if (unshare(CLONE_NEWUSER) < 0) die("create user namespace");
     write_text(ctx->ready_write, "R");
     close(ctx->ready_write);
@@ -932,7 +939,7 @@ static int start_environment(char *response, size_t response_size) {
     }
     close(ready[1]); close(proceed[0]); close(pid_pipe[1]);
     /* Hold the validated directory FD throughout readiness checks.
-     * Re-opening ROOT_PATH here would reintroduce path-replacement TOCTOU.
+     * Re-opening root_path here would reintroduce path-replacement TOCTOU.
      */
     launcher_pid = pid;
     state = STATE_STARTING;
@@ -947,8 +954,14 @@ static int start_environment(char *response, size_t response_size) {
         return -1;
     }
     close(ready[0]);
-    install_map(pid, "uid_map", "0 100000 65536\n");
-    install_map(pid, "gid_map", "0 100000 65536\n");
+    char uid_map[64], gid_map[64];
+    if (snprintf(uid_map, sizeof(uid_map), "0 %u %u\n", outer_root_uid,
+                 USER_NAMESPACE_ID_COUNT) >= (int)sizeof(uid_map) ||
+        snprintf(gid_map, sizeof(gid_map), "0 %u %u\n", outer_root_uid,
+                 USER_NAMESPACE_ID_COUNT) >= (int)sizeof(gid_map))
+        die("namespace map is too long");
+    install_map(pid, "uid_map", uid_map);
+    install_map(pid, "gid_map", gid_map);
     write_text(proceed[1], "G");
     close(proceed[1]);
     char pid_text[48] = {0};
@@ -1188,7 +1201,15 @@ int main(int argc, char **argv) {
     if (argc == 2 && !strcmp(argv[1], "test-inode-guard"))
         return test_directory_identity_guard();
     if (argc == 3 && !strcmp(argv[1], "serve") &&
-        !strcmp(argv[2], ROOT_PATH)) {
+        (!strcmp(argv[2], PRIMARY_ROOT_PATH) ||
+         !strcmp(argv[2], SECONDARY_ROOT_PATH))) {
+        const unsigned selected_base = !strcmp(argv[2], PRIMARY_ROOT_PATH)
+            ? DEFAULT_OUTER_ROOT_UID : SECONDARY_OUTER_ROOT_UID;
+        if (snprintf(root_path, sizeof(root_path), "%s", argv[2])
+            >= (int)sizeof(root_path)) die("user rootfs path is too long");
+        outer_root_uid = selected_base;
+        outer_normal_uid = selected_base + 1000U;
+        mapped_id_limit = selected_base + USER_NAMESPACE_ID_COUNT;
         route_test_manager_stderr_to_console();
         if (manager_service() < 0) die("system-side user manager failed");
         return 0;
@@ -1197,7 +1218,7 @@ int main(int argc, char **argv) {
                       !strcmp(argv[1], "status") ||
                       !strcmp(argv[1], "stop")))
         return manager_client(argv[1]);
-    fprintf(stderr, "usage: %s serve %s | start | status | stop\n",
-            argv[0], ROOT_PATH);
+    fprintf(stderr, "usage: %s serve %s | serve %s | start | status | stop\n",
+            argv[0], PRIMARY_ROOT_PATH, SECONDARY_ROOT_PATH);
     return 2;
 }
