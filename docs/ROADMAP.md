@@ -363,10 +363,11 @@ account database and rechecks current registry eligibility. It issues a
 120-second, random, one-use grant bound to the PAM process, controlling
 terminal, login session and current UID/GID mapping. A root-only consumer
 revalidates that identity and mapping before consuming the grant. The PTY
-regression test covers wrong PID, changed mapping, replay and expiry; both
-[package build/tests](https://github.com/angyedz/veyra-pkgrepo/actions/runs/39680548219)
-and [source checks](https://github.com/angyedz/veyra-pkgrepo/actions/runs/39680548247)
-pass on head `b2a9d25bcd3f239bf75d38e7f2e9c677267d5ac5`. This does not yet
+regression test exercises wrong and correct `pam_unix` passwords, then checks
+wrong-PID rejection, changed mapping, replay, expiry and PAM cleanup. Both
+[package build/tests](https://github.com/angyedz/veyra-pkgrepo/actions/runs/39683659417)
+and [source checks](https://github.com/angyedz/veyra-pkgrepo/actions/runs/39683659375)
+pass on head `53918e9b2b6dfe1236060f7849a85dc958604d7d`. This does not yet
 provide the trusted login broker, session manager, namespace/rootfs launch,
 logout cleanup, SDDM integration or system-root password bridge; the PAM
 profile is not wired into installed login services.
