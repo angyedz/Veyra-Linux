@@ -28,8 +28,12 @@ sed -i 's@^#include <linux/prctl.h>$@@' "$ublksrv_src/lib/ublksrv.c"
     cd "$ublksrv_src"
     autoreconf -i
     ./configure --prefix=/usr --with-libnfs=no --with-libiscsi=no --with-gnutls=no
-    make -j2
-    make install
+    # Build only the loop front end and CLI required by this QEMU fixture;
+    # upstream demos include glibc-only <error.h> and are not runtime inputs.
+    make -j2 ublk ublk.loop
+    make -C lib install
+    install -D -m 0755 ublk /usr/sbin/ublk
+    install -D -m 0755 ublk.loop /usr/sbin/ublk.loop
 )
 test -x /usr/sbin/ublk
 test -x /usr/sbin/ublk.loop
