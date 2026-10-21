@@ -42,15 +42,16 @@ def guest_cycle(qemu, disk, logdir, expected, commands):
             for command in commands:
                 installed.run_command(child, command, 60)
             installed.run_command(child, "sync", 30)
-            # Installed QEMU will be forcibly stopped after durable sync.
-            # A real shutdown is also requested to exercise OpenRC cleanly.
+            # Shut the disposable guest down after its writes are durable so
+            # QEMU exits on its own instead of leaving a live emulator for
+            # pexpect's forced-termination path.
             child.sendline("poweroff")
             try:
-                child.expect("POWERED_OFF_TEST_SENTINEL_UNREACHABLE", timeout=25)
-            except Exception:
+                child.expect(installed.pexpect.EOF, timeout=90)
+            except installed.pexpect.EOF:
                 pass
         finally:
-            child.close(force=True)
+            child.close(force=child.isalive())
 
 
 def failed_candidate_boot(qemu, disk, logdir):
@@ -126,8 +127,15 @@ def main():
                     "! grep -q 'veyra_deployment=B' /mnt/veyra-e2e/boot/grub/grub.cfg",
                     timeout=45)
                 installed.run_command(child, "sync", 30)
+                # The live guest is still running here. Request shutdown and
+                # wait for QEMU to exit before closing the PTY and disk.
+                child.sendline("poweroff")
+                try:
+                    child.expect(installed.pexpect.EOF, timeout=90)
+                except installed.pexpect.EOF:
+                    pass
             finally:
-                child.close(force=True)
+                child.close(force=child.isalive())
 
         print("Atomically prepared A/B on disposable installed ext4 disk; booting A",
               flush=True)
