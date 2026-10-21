@@ -27,10 +27,13 @@ start_post() {
         return 1
     fi
     echo "VEYRA_STAGE1_SYSTEM_OPENRC_MANAGER_READY"
-    start_result=$(/host-supervisor start) || {
-        eerror "system-side manager could not start the user environment"
-        return 1
-    }
+    if start_result=$(/host-supervisor start 2>&1); then
+        :
+    else
+        start_status=$?
+        eerror "system-side manager could not start the user environment: $start_result"
+        return "$start_status"
+    fi
     case "$start_result" in
         RUNNING\ pid=*\ count=*) ;;
         *) eerror "unexpected user-environment start result: $start_result"; return 1 ;;
