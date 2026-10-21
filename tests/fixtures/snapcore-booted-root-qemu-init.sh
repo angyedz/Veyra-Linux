@@ -53,7 +53,7 @@ case "$phase" in
 esac
 
 if [ "$phase" = "prepare-root" ]; then
-    /sbin/mkfs.ext4 -F -q -L VEYRA_BOOTED_ROOT /dev/vda ||
+    /sbin/mkfs.ext4 -F -q -L VEYRA_BOOT_ROOT /dev/vda ||
         fail 'mkfs.ext4 failed for the booted-root fixture'
     "$BB" mount -t ext4 -o noatime /dev/vda /mnt/snapcore ||
         fail 'could not mount the booted-root ext4 volume'
