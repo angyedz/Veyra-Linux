@@ -84,9 +84,11 @@ case "$phase" in
             > /mnt/snapcore/user-root/state-mutated.txt
         "$BB" printf '%s\n' 'must-disappear-after-root-rollback' \
             > /mnt/snapcore/user-root/mutation-only.txt
-        # This deliberately crosses into the separately mounted /home. A root
-        # rollback alone must leave the current personal-data volume untouched.
-        "$BB" rm -f /mnt/snapcore/home/veyrauser/Documents/recovery-note.txt
+        # This destructive recursive delete stays inside a disposable QEMU
+        # guest but crosses into the separately mounted personal-data volume.
+        # Root-only rollback must leave the resulting current /home untouched.
+        "$BB" rm -rf /mnt/snapcore/home/veyrauser/Documents
+        "$BB" mkdir -p /mnt/snapcore/home/veyrauser/Documents
         "$BB" printf '%s\n' 'new-personal-file-after-checkpoint' \
             > /mnt/snapcore/home/veyrauser/Documents/post-checkpoint.txt
         unmount_both
