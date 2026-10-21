@@ -110,6 +110,9 @@ jobs:
               mknod -m 0666 /out/userroot/dev/tty c 5 0
               mknod -m 0666 /out/userroot/dev/random c 1 8
               mknod -m 0666 /out/userroot/dev/urandom c 1 9
+              mkdir -p /out/userroot/dev/pts
+              rm -f /out/userroot/dev/ptmx
+              ln -s pts/ptmx /out/userroot/dev/ptmx
               # Include recovery metadata before formatting and map package
               # symlinks as well as regular files to the nested UID range.
               mkdir -p /out/userroot/lost+found
