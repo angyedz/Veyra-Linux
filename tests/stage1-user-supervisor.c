@@ -901,7 +901,8 @@ static int directory_access_as(uid_t uid, gid_t gid, const char *path,
         int fd = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
         int saved_errno = errno;
         if (fd >= 0) close(fd);
-        if (expect_access ? fd >= 0 : fd < 0 && saved_errno == EACCES)
+        if ((expect_access && fd >= 0) ||
+            (!expect_access && fd < 0 && saved_errno == EACCES))
             _exit(0);
         _exit(1);
     }
@@ -935,7 +936,7 @@ static int verify_per_user_root_isolation(char *error, size_t error_size) {
         return -1;
     }
     fprintf(stderr, "VEYRA_STAGE1_PER_USER_ROOT_ISOLATION_PASS "
-                    "alice=100000 bob=200000 cross-traverse=denied\\n");
+                    "alice=100000 bob=200000 cross-traverse=denied\n");
     fflush(stderr);
     return 0;
 }
