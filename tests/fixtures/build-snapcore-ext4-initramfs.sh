@@ -130,7 +130,13 @@ for binary in /usr/sbin/ublk /usr/sbin/ublk.loop "$(command -v unshare)"; do
     else
         cp -L "$binary" "$out/overlay$binary"
     fi
-    ldd "$binary" >> "$out/ublk-ldd-output"
+    if ! readelf -h "$binary" >/dev/null 2>&1; then
+        echo "invalid ublk fixture executable: $binary" >&2
+        exit 1
+    fi
+    if readelf -l "$binary" | grep -q 'INTERP'; then
+        ldd "$binary" >> "$out/ublk-ldd-output"
+    fi
 done
 
 cat "$out/ext4-ldd-output" "$out/ublk-ldd-output" > "$out/initramfs-ldd-output"
