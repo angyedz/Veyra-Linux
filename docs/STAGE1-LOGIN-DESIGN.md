@@ -79,6 +79,16 @@ PAM/logind or equivalent session-broker interface remains an implementation
 choice; it must provide a system-verifiable authenticated session identity,
 not merely trust caller-supplied data or a world-accessible socket.
 
+**Current prototype boundary (2026-10-22):** draft
+[`veyra-pkgrepo` PR #5](https://github.com/angyedz/veyra-pkgrepo/pull/5) adds
+a dedicated PAM profile and a short-lived, one-use grant bound to the PAM
+process, controlling terminal, session ID and current registry mapping. Its
+root-only consumer revalidates those facts. The production manager and login
+broker still need to be implemented: the manager must obtain the connecting
+process identity from `SO_PEERCRED` itself and consume the grant; it must not
+accept a PID supplied by the client. This prototype does not launch a user
+root or change any installed login stack.
+
 Until multiple concurrent sessions against one writable root are proven safe,
 the system permits at most one active session per account. The manager owns a
 cgroup or an equivalently reviewed process boundary for each session, closes

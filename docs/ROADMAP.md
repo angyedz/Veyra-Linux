@@ -304,7 +304,7 @@ Parallel tracks are intentional; avoid turning prototypes on in the normal boot 
 ## Immediate execution order
 
 1. **Stage 0 prototype complete and merged**: PR #8 QEMU/static gates verified; continue its unfinished threat-model work under Stage 2.
-2. **Stage 1 QEMU baseline merged**: PRs #9–13. Open PR #17 tests system OpenRC autostart and serial login; draft PRs #18, #24, #25 and #26 add two-root boot, generic root provisioning, named login and manifest-to-authentication proofs. Draft `veyra-pkgrepo` PR #3 adds a partial account-enrollment primitive, while stacked PR #4 adds a system-side root-provisioner package; both remain independent of the installed image and login path. **Next** integrate account enrollment and root provisioning with the system OpenRC-owned session manager, then add authenticated TTY login, graphical login, persistent roots outside A/B and trusted cleanup. This design does not enable the feature or change the legacy installer.
+2. **Stage 1 QEMU baseline merged**: PRs #9–13. Open PR #17 tests system OpenRC autostart and serial login; draft PRs #18, #24, #25 and #26 add two-root boot, generic root provisioning, named login and manifest-to-authentication proofs. Draft `veyra-pkgrepo` PR #3 adds a partial account-enrollment primitive, stacked PR #4 adds a system-side root-provisioner package, and stacked PR #5 adds a PAM authentication-gate and one-use session-grant primitive. All three remain independent of the installed image and production login path. **Next** implement the system OpenRC-owned manager that consumes grants, resolves and provisions enrolled roots, supervises authenticated TTY sessions, and performs trusted cleanup; then integrate persistent roots outside A/B and graphical login. This design does not enable the feature or change the legacy installer.
 3. **In parallel Stage 1S:** prototype SnapCore genuine block-level CoW with crash-consistent mapping roots, power-cut tests and independent root vs `/home` recovery; preserve system A/B's snapshot-free contract.
 4. Stage 2: adversarially prove the production inner `sudo` cannot escape or control host kernel/devices/boot/network/services; extend inherited-FD/cgroup/LSM audits.
 5. Stage 3: controlled user internet and VPN while host network stays independent.
@@ -356,8 +356,24 @@ It does not authenticate a login, start or supervise sessions, integrate with
 PAM/SDDM, or activate an installer profile. PR #4 remains draft pending
 independent review and its registry dependency.
 
+**Session-auth progress (2026-10-22):** draft
+[veyra-pkgrepo PR #5](https://github.com/angyedz/veyra-pkgrepo/pull/5), stacked
+on PR #4, adds a dedicated PAM profile that authenticates against the system
+account database and rechecks current registry eligibility. It issues a
+120-second, random, one-use grant bound to the PAM process, controlling
+terminal, login session and current UID/GID mapping. A root-only consumer
+revalidates that identity and mapping before consuming the grant. The PTY
+regression test covers wrong PID, changed mapping, replay and expiry; both
+[package build/tests](https://github.com/angyedz/veyra-pkgrepo/actions/runs/39680548219)
+and [source checks](https://github.com/angyedz/veyra-pkgrepo/actions/runs/39680548247)
+pass on head `b2a9d25bcd3f239bf75d38e7f2e9c677267d5ac5`. This does not yet
+provide the trusted login broker, session manager, namespace/rootfs launch,
+logout cleanup, SDDM integration or system-root password bridge; the PAM
+profile is not wired into installed login services.
+
 The remaining integration blocks are production account enrollment and the
-system OpenRC/session manager that consumes the registry and provisioner;
+system OpenRC/session manager that consumes the registry, provisioner and
+one-use authentication grants;
 installation and recovery of persistent per-user roots and `/home` outside
 system A/B; the system KDE to user Plasma/KRunner session path and a confined
 inner-`sudo` policy; user-only package installation and VPN/network isolation;
