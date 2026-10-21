@@ -1,5 +1,5 @@
 #!/bin/sh
-# Build a small Alpine initramfs with ext4 tooling for a disposable QEMU test.
+# Build ext4-capable Alpine initramfs images for disposable SnapCore QEMU tests.
 set -eu
 out=${1:-/out}
 apk add --no-cache linux-lts mkinitfs e2fsprogs cpio gzip
@@ -9,6 +9,9 @@ test -n "$kernel"
 mkinitfs -F "base ext4 virtio" \
     -i /work/tests/fixtures/snapcore-ext4-qemu-init.sh \
     -o "$out/snapcore-ext4-initramfs" "$kernel"
+mkinitfs -F "base ext4 virtio" \
+    -i /work/tests/fixtures/snapcore-booted-root-qemu-init.sh \
+    -o "$out/snapcore-booted-root-initramfs" "$kernel"
 
 mkdir -p "$out/overlay/sbin" "$out/overlay/etc"
 : > "$out/ext4-ldd-output"
@@ -35,12 +38,15 @@ while IFS= read -r library; do
     cp -L "$library" "$out/overlay$library"
 done < "$out/ext4-libraries"
 
-rm -f "$out/ext4-ldd-output" "$out/ext4-libraries"
-(
-    cd "$out/overlay"
-    find . -print | cpio --quiet -o -H newc | gzip -9
-) >> "$out/snapcore-ext4-initramfs"
+for image in "$out/snapcore-ext4-initramfs" "$out/snapcore-booted-root-initramfs"; do
+    (
+        cd "$out/overlay"
+        find . -print | cpio --quiet -o -H newc | gzip -9
+    ) >> "$image"
+done
 cp /boot/vmlinuz-lts "$out/snapcore-ext4-kernel"
-chmod 0644 "$out/snapcore-ext4-kernel" "$out/snapcore-ext4-initramfs"
+chmod 0644 "$out/snapcore-ext4-kernel" \
+    "$out/snapcore-ext4-initramfs" "$out/snapcore-booted-root-initramfs"
 test -s "$out/snapcore-ext4-kernel"
 test -s "$out/snapcore-ext4-initramfs"
+test -s "$out/snapcore-booted-root-initramfs"
