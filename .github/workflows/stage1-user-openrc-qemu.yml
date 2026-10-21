@@ -95,6 +95,7 @@ jobs:
               mkdir -p /out/userroot/etc/sudoers.d
               printf "veyrauser ALL=(ALL) NOPASSWD: ALL\n"                 > /out/userroot/etc/sudoers.d/veyrauser
               chmod 0440 /out/userroot/etc/sudoers.d/veyrauser
+              mkdir -p /out/userroot/usr/local/sbin
               cp /work/tests/fixtures/stage1-user-autologin \
                 /out/userroot/usr/local/sbin/veyra-stage1-autologin
               chmod 0755 /out/userroot/usr/local/sbin/veyra-stage1-autologin
