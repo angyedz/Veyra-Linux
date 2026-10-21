@@ -1,0 +1,15 @@
+#!/sbin/openrc-run
+# Disposable QEMU test service; production Veyra does not install this yet.
+description="Veyra Stage 1 per-account user-root provisioner"
+
+depend() {
+    before veyra-stage1-system-manager veyra-stage1-system-manager-b
+}
+
+start() {
+    ebegin "Provisioning distinct persistent test user roots"
+    /usr/local/sbin/veyra-stage1-user-provision
+    result=$?
+    eend "$result"
+    return "$result"
+}
