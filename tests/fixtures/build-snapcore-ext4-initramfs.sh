@@ -20,6 +20,12 @@ rm -rf "$ublksrv_src"
 git clone https://github.com/ublk-org/ublksrv.git "$ublksrv_src"
 git -C "$ublksrv_src" checkout --detach "$ublksrv_ref"
 
+# Alpine's fortified musl headers expose strdupa as void* in C++; upstream
+# passes it to char* APIs without a cast. Keep the adaptation narrow and pinned.
+ublksrv_target="$ublksrv_src/targets/ublksrv_tgt.cpp"
+test "$(grep -c 'strdupa(dir)' "$ublksrv_target")" -eq 2
+sed -i 's/strdupa(dir)/(char *)strdupa(dir)/g' "$ublksrv_target"
+
 # Alpine musl already declares prctl_mm_map and PR_SET_IO_FLUSHER in
 # sys/prctl.h. Upstream's extra Linux UAPI include redeclares the struct.
 grep -qx '#include <linux/prctl.h>' "$ublksrv_src/lib/ublksrv.c"
