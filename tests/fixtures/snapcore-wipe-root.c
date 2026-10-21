@@ -2,8 +2,6 @@
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <linux/magic.h>
-#include <linux/reboot.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -12,6 +10,8 @@
 #include <sys/types.h>
 #include <sys/vfs.h>
 #include <unistd.h>
+
+#define VEYRA_EXT4_SUPER_MAGIC 0xEF53
 
 static void power_off(void) {
     (void)sync();
@@ -141,7 +141,7 @@ static int is_ext4_qemu_root(void) {
 static int fixture_guard(int root_fd) {
     struct statfs filesystem;
     if (fstatfs(root_fd, &filesystem) < 0) return 0;
-    return filesystem.f_type == EXT4_SUPER_MAGIC &&
+    return filesystem.f_type == VEYRA_EXT4_SUPER_MAGIC &&
            has_fixture_marker() && has_qemu_fixture_argument() &&
            is_ext4_qemu_root();
 }
