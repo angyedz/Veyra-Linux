@@ -51,15 +51,24 @@ def guest_boot(
     phase: str,
     expected_marker: bytes,
     logfile,
+    home_device: pathlib.Path | None = None,
 ) -> None:
-    drive = f"file={block_device},if=virtio,format=raw,cache=writeback"
+    drives = [
+        "-drive",
+        f"file={block_device.resolve()},if=virtio,format=raw,cache=writeback",
+    ]
+    if home_device is not None:
+        drives.extend([
+            "-drive",
+            f"file={home_device.resolve()},if=virtio,format=raw,cache=writeback",
+        ])
     command = [
         "-machine", "q35,accel=tcg", "-m", "768", "-smp", "2",
         "-nodefaults", "-nographic", "-no-reboot",
         "-serial", "stdio", "-monitor", "none",
         "-kernel", str(kernel.resolve()),
         "-initrd", str(initramfs.resolve()),
-        "-drive", drive,
+        *drives,
         "-append", f"console=ttyS0,115200 panic=1 veyra_snapcore_phase={phase}",
     ]
     guest = pexpect.spawn("sudo", ["-n", qemu, *command], encoding=None, timeout=240)
@@ -194,17 +203,36 @@ def guest_boot_via_kernel_nbd(
     expected_marker: bytes,
     logfile,
     nbd_log_path: pathlib.Path,
+    home_socket: pathlib.Path | None = None,
+    home_device: pathlib.Path | None = None,
+    home_nbd_log_path: pathlib.Path | None = None,
 ) -> None:
-    connect_kernel_nbd(
-        qemu_nbd, socket, device, VOLUME_SIZE, nbd_log_path
-    )
+    has_home = home_socket is not None or home_device is not None or home_nbd_log_path is not None
+    if has_home and not all((home_socket, home_device, home_nbd_log_path)):
+        raise ValueError("home NBD socket, device, and log path must be supplied together")
+
+    connect_kernel_nbd(qemu_nbd, socket, device, VOLUME_SIZE, nbd_log_path)
+    home_connected = False
     try:
+        if has_home:
+            assert home_socket is not None
+            assert home_device is not None
+            assert home_nbd_log_path is not None
+            connect_kernel_nbd(
+                qemu_nbd, home_socket, home_device, VOLUME_SIZE, home_nbd_log_path
+            )
+            home_connected = True
         guest_boot(
-            qemu, kernel, initramfs, device, phase, expected_marker, logfile
+            qemu, kernel, initramfs, device, phase, expected_marker, logfile,
+            home_device=home_device if has_home else None,
         )
     finally:
-        disconnect_kernel_nbd(qemu_nbd, device)
-
+        try:
+            if home_connected:
+                assert home_device is not None
+                disconnect_kernel_nbd(qemu_nbd, home_device)
+        finally:
+            disconnect_kernel_nbd(qemu_nbd, device)
 
 def main() -> None:
     parser = argparse.ArgumentParser()
@@ -227,64 +255,110 @@ def main() -> None:
     args.log.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="veyra-snapcore-qemu-") as temporary:
         work = pathlib.Path(temporary)
-        store = work / "snapcore-volume"
-        socket = work / "snapcore.sock"
-        device = pathlib.Path("/dev/nbd0")
-        server_log_path = work / "nbdkit.log"
-        run_cli(store, "format", "--size-bytes", str(VOLUME_SIZE), "--block-size", "4096")
-        with server_log_path.open("wb") as server_log:
-            server = subprocess.Popen(
-                [nbdkit, "-f", "-U", str(socket), "python", str(PLUGIN), f"store={store}"],
-                stdout=server_log,
-                stderr=subprocess.STDOUT,
-            )
+        root_store = work / "snapcore-user-root"
+        home_store = work / "snapcore-home"
+        root_socket = work / "snapcore-root.sock"
+        home_socket = work / "snapcore-home.sock"
+        root_device = pathlib.Path("/dev/nbd0")
+        home_device = pathlib.Path("/dev/nbd1")
+        server_specs = [
+            (root_store, root_socket, work / "nbdkit-root.log"),
+            (home_store, home_socket, work / "nbdkit-home.log"),
+        ]
+        server_processes: list[subprocess.Popen[bytes]] = []
+
+        run_cli(root_store, "format", "--size-bytes", str(VOLUME_SIZE), "--block-size", "4096")
+        run_cli(home_store, "format", "--size-bytes", str(VOLUME_SIZE), "--block-size", "4096")
+
+        def boot(
+            phase: str,
+            marker: bytes,
+            serial_mode: str,
+        ) -> None:
+            with args.log.open(serial_mode) as serial_log:
+                guest_boot_via_kernel_nbd(
+                    qemu, qemu_nbd, args.kernel, args.initramfs,
+                    root_socket, root_device, phase, marker, serial_log,
+                    work / f"qemu-nbd-root-{phase}.log",
+                    home_socket=home_socket,
+                    home_device=home_device,
+                    home_nbd_log_path=work / f"qemu-nbd-home-{phase}.log",
+                )
+
         try:
-            wait_for_socket(server, socket)
-            with args.log.open("wb") as serial_log:
-                guest_boot_via_kernel_nbd(
-                    qemu, qemu_nbd, args.kernel, args.initramfs, socket, device,
-                    "baseline", b"VEYRA_SNAPCORE_BASELINE_PASS", serial_log,
-                    work / "qemu-nbd-baseline.log",
-                )
-            run_cli(store, "snapshot", "clean-ext4")
-            status = json.loads(run_cli(store, "status"))
-            if "clean-ext4" not in [item["name"] for item in status["snapshots"]]:
-                raise RuntimeError("SnapCore did not retain the clean ext4 checkpoint")
+            for store, socket, server_log_path in server_specs:
+                with server_log_path.open("wb") as server_log:
+                    server = subprocess.Popen(
+                        [
+                            nbdkit, "-f", "-U", str(socket),
+                            "python", str(PLUGIN), f"store={store}",
+                        ],
+                        stdout=server_log,
+                        stderr=subprocess.STDOUT,
+                    )
+                server_processes.append(server)
+                wait_for_socket(server, socket)
 
-            with args.log.open("ab") as serial_log:
-                guest_boot_via_kernel_nbd(
-                    qemu, qemu_nbd, args.kernel, args.initramfs, socket, device,
-                    "mutate", b"VEYRA_SNAPCORE_MUTATION_PASS", serial_log,
-                    work / "qemu-nbd-mutate.log",
-                )
-            run_cli(store, "rollback", "clean-ext4")
-            run_cli(store, "verify")
+            boot(
+                "baseline",
+                b"VEYRA_SNAPCORE_TWO_VOLUME_BASELINE_PASS",
+                "wb",
+            )
+            run_cli(root_store, "snapshot", "clean-user-root")
+            run_cli(home_store, "snapshot", "clean-home")
+            root_status = json.loads(run_cli(root_store, "status"))
+            home_status = json.loads(run_cli(home_store, "status"))
+            if "clean-user-root" not in [item["name"] for item in root_status["snapshots"]]:
+                raise RuntimeError("SnapCore did not retain the user-root checkpoint")
+            if "clean-home" not in [item["name"] for item in home_status["snapshots"]]:
+                raise RuntimeError("SnapCore did not retain the separate /home checkpoint")
 
-            with args.log.open("ab") as serial_log:
-                guest_boot_via_kernel_nbd(
-                    qemu, qemu_nbd, args.kernel, args.initramfs, socket, device,
-                    "verify", b"VEYRA_SNAPCORE_ROLLBACK_EXT4_PASS", serial_log,
-                    work / "qemu-nbd-verify.log",
-                )
-            print("VEYRA_SNAPCORE_QEMU_EXT4_ROLLBACK_PASS")
-            print("NOTE: ext4 uses the host kernel NBD device; SnapCore storage remains file-backed.")
+            boot(
+                "mutate",
+                b"VEYRA_SNAPCORE_TWO_VOLUME_MUTATION_PASS",
+                "ab",
+            )
+            run_cli(root_store, "rollback", "clean-user-root")
+            run_cli(root_store, "verify")
+
+            boot(
+                "verify-root",
+                b"VEYRA_SNAPCORE_ROOT_ONLY_RESTORE_HOME_PRESERVED_PASS",
+                "ab",
+            )
+            run_cli(home_store, "rollback", "clean-home")
+            run_cli(home_store, "verify")
+
+            boot(
+                "verify-home",
+                b"VEYRA_SNAPCORE_SEPARATE_HOME_RESTORE_PASS",
+                "ab",
+            )
+            print("VEYRA_SNAPCORE_QEMU_EXT4_ROOT_HOME_RESTORE_PASS")
+            print(
+                "NOTE: root and /home use separate file-backed SnapCore volumes "
+                "exported through host kernel NBD devices."
+            )
         finally:
             active_error = sys.exc_info()[0] is not None
-            server.terminate()
-            try:
-                server.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                server.kill()
-                server.wait(timeout=5)
-            if server.returncode not in (0, -15):
-                details = server_log_path.read_text(errors="replace")
-                message = (
-                    f"nbdkit exited with status {server.returncode}:\\n{details[-12000:]}"
-                )
-                if active_error:
-                    print(message, file=sys.stderr, flush=True)
-                else:
-                    raise RuntimeError(message)
+            for server in server_processes:
+                server.terminate()
+            for server, (_, _, server_log_path) in zip(server_processes, server_specs):
+                try:
+                    server.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    server.kill()
+                    server.wait(timeout=5)
+                if server.returncode not in (0, -15):
+                    details = server_log_path.read_text(errors="replace")
+                    message = (
+                        f"nbdkit exited with status {server.returncode}:\n"
+                        f"{details[-12000:]}"
+                    )
+                    if active_error:
+                        print(message, file=sys.stderr, flush=True)
+                    else:
+                        raise RuntimeError(message)
 
 
 if __name__ == "__main__":
