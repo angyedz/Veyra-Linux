@@ -141,6 +141,10 @@ jobs:
           mkdir -p /home/builder/.abuild
           chown builder:builder /home/builder/.abuild
           su builder -c 'abuild-keygen -a -n'
+          key=$(find /home/builder/.abuild -maxdepth 1 -type f -name '*.rsa' -print -quit)
+          test -n "$key"
+          printf 'PACKAGER_PRIVKEY=%s\n' "$key" > /home/builder/.abuild/abuild.conf
+          chown builder:builder /home/builder/.abuild/abuild.conf
           cp /home/builder/.abuild/*.rsa.pub /etc/apk/keys/
           su builder -c "cd '$GITHUB_WORKSPACE' && sh packages/build.sh"
           mkdir -p packages/keys
