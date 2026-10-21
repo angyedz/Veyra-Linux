@@ -13,6 +13,7 @@ mountpoint -q "$target" || { echo 'Target must be mounted' >&2; exit 1; }
 for d in dev proc sys run tmp media mnt boot/efi; do
     mkdir -p "$target/$d"
 done
+chmod 1777 "$target/tmp"
 
 # Avoid live-user autologin and boot initialization on the installed system.
 rm -f "$target/etc/sddm.conf.d/10-veyra-live.conf"
