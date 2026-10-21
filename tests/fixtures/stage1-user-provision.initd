@@ -7,9 +7,29 @@ depend() {
 }
 
 start() {
-    ebegin "Provisioning distinct persistent test user roots"
+    ebegin "Provisioning persistent user roots from the system account manifest"
     /usr/local/sbin/veyra-stage1-user-provision
     result=$?
-    eend "$result"
-    return "$result"
+    if [ "$result" -ne 0 ]; then
+        eend "$result"
+        return "$result"
+    fi
+    eve_root=/var/lib/veyra-user-store/users/eve
+    [ -d "$eve_root" ] && [ ! -L "$eve_root" ] || {
+        eerror "generic manifest account eve was not provisioned"
+        eend 1
+        return 1
+    }
+    [ "$(/bin/busybox cat "$eve_root/.veyra-stage1-account")" = eve ] || {
+        eerror "generic manifest root has a mismatched account identity"
+        eend 1
+        return 1
+    }
+    [ "$(/bin/busybox stat -c '%u:%g:%a' "$eve_root")" = "300000:301000:710" ] || {
+        eerror "generic manifest root has an unexpected mapped ID range"
+        eend 1
+        return 1
+    }
+    echo "VEYRA_STAGE1_GENERIC_ACCOUNT_ROOT_PASS account=eve outer-uid-base=300000"
+    eend 0
 }
