@@ -47,7 +47,7 @@ if [ "$phase" = "prepare-root" ]; then
     "$BB" mkdir -p /mnt/snapcore/bin /mnt/snapcore/lib /mnt/snapcore/sbin \
         /mnt/snapcore/dev /mnt/snapcore/proc /mnt/snapcore/sys \
         /mnt/snapcore/run /mnt/snapcore/tmp /mnt/snapcore/root \
-        /mnt/snapcore/usr/lib
+        /mnt/snapcore/usr/lib /mnt/snapcore/etc
     "$BB" cp /bin/busybox /mnt/snapcore/bin/busybox ||
         fail 'could not stage the test root shell'
     "$BB" cp /sbin/veyra-wipe-root /mnt/snapcore/sbin/veyra-wipe-root ||
@@ -63,6 +63,8 @@ if [ "$phase" = "prepare-root" ]; then
     fi
     "$BB" printf '%s\n' 'baseline-ext4-root' \
         > /mnt/snapcore/usr/lib/veyra-snapcore-root-marker
+    "$BB" printf '%s\n' 'DISPOSABLE_QEMU_ROOT_V1' \
+        > /mnt/snapcore/etc/veyra-snapcore-root-fixture
     "$BB" cat > /mnt/snapcore/sbin/init <<'ROOT_INIT'
 #!/bin/busybox sh
 set -eu
