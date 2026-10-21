@@ -3,6 +3,11 @@
 set -eu
 [ -r /etc/veyra-release ] || exit 0
 
+# Xwayland needs a sticky socket directory in the writable live root before
+# SDDM starts the Wayland Plasma session. Diskless roots may not inherit it.
+mkdir -p /tmp/.X11-unix
+chmod 1777 /tmp /tmp/.X11-unix
+
 if ! id veyra >/dev/null 2>&1; then
     adduser -D -h /home/veyra -s /bin/bash veyra
 fi
