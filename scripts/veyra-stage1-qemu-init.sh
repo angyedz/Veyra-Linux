@@ -255,7 +255,7 @@ case "$manager_status" in
     *) fail "OpenRC restart did not auto-start user environment: $manager_status" ;;
 esac
 verify_autologin "$recovery_count"
-echo "VEYRA_STAGE1_MANAGER_RECOVERY_PASS state=RUNNING autologin-count=$recovery_count stale-socket=cleared"
+echo "VEYRA_STAGE1_MANAGER_RECOVERY_PASS state=RUNNING autologin-count=$recovery_count host-run-isolated=1 manager-socket-isolated=1 stale-socket=cleared"
 echo "VEYRA_STAGE1_QEMU_SUCCESS: user environment lifecycle and persistence boot $expected"
 /bin/busybox sync
 /bin/busybox poweroff -f
