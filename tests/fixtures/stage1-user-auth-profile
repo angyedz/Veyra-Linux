@@ -1,0 +1,8 @@
+#!/bin/sh
+# Test-only login-shell proof for the named QEMU account.
+umask 077
+login_name=$(/bin/busybox id -un 2>/dev/null || :)
+login_uid=$(/bin/busybox id -u 2>/dev/null || :)
+[ "$login_name" = eve ] && [ "$login_uid" = 1000 ] || exit 1
+/bin/busybox printf 'account=%s uid=%s authenticated=1\n'     "$login_name" "$login_uid" > "$HOME/.veyra-stage1-authenticated-login"
+echo "VEYRA_STAGE1_AUTHENTICATED_LOGIN_PASS account=$login_name uid=$login_uid"
