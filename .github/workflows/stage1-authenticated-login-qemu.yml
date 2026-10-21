@@ -1,0 +1,152 @@
+name: Veyra Stage 1 authenticated user login QEMU
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/stage1-authenticated-login-qemu.yml'
+      - 'scripts/veyra-stage1-auth-login-init.sh'
+      - 'tests/stage1-user-supervisor.c'
+      - 'tests/test-stage1-authenticated-login-qemu.py'
+      - 'tests/fixtures/stage1-user-auth-inittab'
+      - 'tests/fixtures/stage1-user-auth-profile'
+      - 'tests/fixtures/stage1-user-openrc.initd'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/stage1-authenticated-login-qemu.yml'
+      - 'scripts/veyra-stage1-auth-login-init.sh'
+      - 'tests/stage1-user-supervisor.c'
+      - 'tests/test-stage1-authenticated-login-qemu.py'
+      - 'tests/fixtures/stage1-user-auth-inittab'
+      - 'tests/fixtures/stage1-user-auth-profile'
+      - 'tests/fixtures/stage1-user-openrc.initd'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  authenticated-login:
+    name: Named password login inside managed persistent user rootfs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install QEMU and serial assertion tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-system-x86 python3-pexpect
+      - name: Build named Alpine user rootfs and test-only manager initramfs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/veyra-stage1-auth-login
+          docker run --rm -v "$PWD:/work:ro" \
+            -v /tmp/veyra-stage1-auth-login:/out alpine:3.22 sh -ec '
+              apk add --no-cache alpine-base openrc linux-lts mkinitfs \
+                build-base linux-headers e2fsprogs cpio gzip openssl
+              kernel=$(basename "$(find /lib/modules -mindepth 1 -maxdepth 1 -type d -print -quit)")
+              test -n "$kernel"
+              cc -static -Os -Wall -Wextra -Werror \
+                -o /out/host-supervisor /work/tests/stage1-user-supervisor.c
+
+              mkdir -p /out/userroot
+              apk --root /out/userroot --initdb \
+                --keys-dir /etc/apk/keys \
+                --repositories-file /etc/apk/repositories \
+                add alpine-base openrc sudo
+              test -x /out/userroot/sbin/init
+              rm -rf /out/userroot/etc/runlevels
+              mkdir -p /out/userroot/etc/runlevels/sysinit \
+                /out/userroot/etc/runlevels/boot \
+                /out/userroot/etc/runlevels/default \
+                /out/userroot/etc/init.d \
+                /out/userroot/home/eve \
+                /out/userroot/var/lib/veyra-user \
+                /out/userroot/usr/local/sbin \
+                /out/userroot/etc/sudoers.d
+              cp /work/tests/fixtures/stage1-user-auth-inittab \
+                /out/userroot/etc/inittab
+              cp /work/tests/fixtures/stage1-user-openrc.initd \
+                /out/userroot/etc/init.d/veyra-stage1-user
+              chmod 0755 /out/userroot/etc/init.d/veyra-stage1-user
+              ln -s /etc/init.d/veyra-stage1-user \
+                /out/userroot/etc/runlevels/default/veyra-stage1-user
+              printf "format=stage1\\n" > /out/userroot/.veyra-stage1-rootfs
+              printf "eve:x:1000:1000:Eve:/home/eve:/bin/sh\\n" \
+                >> /out/userroot/etc/passwd
+              printf "eve:x:1000:\\n" >> /out/userroot/etc/group
+              test -f /out/userroot/etc/shadow
+              test_password="Veyra-Stage1-QEMU-only!"
+              password_hash=$(openssl passwd -6 -salt veyrastage1 "$test_password")
+              printf "eve:%s:19700:0:99999:7:::\\n" "$password_hash" \
+                >> /out/userroot/etc/shadow
+              chmod 0640 /out/userroot/etc/shadow
+              printf "eve ALL=(ALL) NOPASSWD: ALL\\n" \
+                > /out/userroot/etc/sudoers.d/eve
+              chmod 0440 /out/userroot/etc/sudoers.d/eve
+              cp /work/tests/fixtures/stage1-user-auth-profile \
+                /out/userroot/home/eve/.profile
+              chmod 0644 /out/userroot/home/eve/.profile
+              test -x /out/userroot/usr/bin/sudo
+
+              for dev in console null zero tty random urandom; do
+                rm -f "/out/userroot/dev/$dev"
+              done
+              mknod -m 0600 /out/userroot/dev/console c 5 1
+              mknod -m 0666 /out/userroot/dev/null c 1 3
+              mknod -m 0666 /out/userroot/dev/zero c 1 5
+              mknod -m 0666 /out/userroot/dev/tty c 5 0
+              mknod -m 0666 /out/userroot/dev/random c 1 8
+              mknod -m 0666 /out/userroot/dev/urandom c 1 9
+              mkdir -p /out/userroot/dev/pts
+              rm -f /out/userroot/dev/ptmx
+              ln -s pts/ptmx /out/userroot/dev/ptmx
+
+              chown -hR 100000:100000 /out/userroot
+              chown -hR 101000:101000 /out/userroot/home/eve
+              chmod 4755 /out/userroot/usr/bin/sudo
+              truncate -s 180M /out/veyra-user-root.raw
+              mkfs.ext4 -F -q -L VEYRA_AUTH_ROOT \
+                -E root_owner=100000:100000 \
+                -d /out/userroot /out/veyra-user-root.raw
+              chmod 0666 /out/veyra-user-root.raw
+
+              cp /work/scripts/veyra-stage1-auth-login-init.sh /out/auth-init
+              chmod 0755 /out/auth-init
+              mkinitfs -F "base ext4 virtio" \
+                -i /out/auth-init \
+                -o /out/veyra-stage1-auth-initramfs "$kernel"
+              mkdir -p /out/overlay
+              cp /out/host-supervisor /out/overlay/host-supervisor
+              (cd /out/overlay && find . -print | cpio --quiet -o -H newc | gzip -9) \
+                >> /out/veyra-stage1-auth-initramfs
+              cp /boot/vmlinuz-lts /out/veyra-stage1-kernel
+              chmod 0644 /out/veyra-user-root.raw \
+                /out/veyra-stage1-kernel /out/veyra-stage1-auth-initramfs
+              test -s /out/veyra-user-root.raw
+              test -s /out/veyra-stage1-kernel
+              test -s /out/veyra-stage1-auth-initramfs
+            '
+      - name: Reject a wrong password and authenticate named inner user Eve
+        run: |
+          python3 tests/test-stage1-authenticated-login-qemu.py \
+            /tmp/veyra-stage1-auth-login/veyra-stage1-kernel \
+            /tmp/veyra-stage1-auth-login/veyra-stage1-auth-initramfs \
+            /tmp/veyra-stage1-auth-login/veyra-user-root.raw \
+            --log /tmp/veyra-stage1-auth-login/serial.log
+      - name: Print guest serial errors
+        if: failure()
+        run: |
+          test ! -s /tmp/veyra-stage1-auth-login/serial.log || \
+            tail -n 200 /tmp/veyra-stage1-auth-login/serial.log
+      - name: Save QEMU serial proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: veyra-stage1-authenticated-login-serial
+          path: /tmp/veyra-stage1-auth-login/serial.log
+          retention-days: 7
+          if-no-files-found: ignore
