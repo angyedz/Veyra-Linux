@@ -46,6 +46,30 @@
 #define SECONDARY_OUTER_ROOT_UID 200000U
 #define USER_NAMESPACE_ID_COUNT 65536U
 static char root_path[PATH_MAX] = PRIMARY_ROOT_PATH;
+static char normal_user[33] = "veyrauser";
+
+static int valid_normal_user(const char *name) {
+    if (!name) return 0;
+    size_t length = strlen(name);
+    if (length == 0 || length > 32 ||
+        !((name[0] >= 'a' && name[0] <= 'z') || name[0] == '_'))
+        return 0;
+    for (size_t i = 1; i < length; i++) {
+        char value = name[i];
+        if (!((value >= 'a' && value <= 'z') ||
+              (value >= '0' && value <= '9') ||
+              value == '_' || value == '-'))
+            return 0;
+    }
+    return 1;
+}
+
+static int user_file_path(char *buffer, size_t size, const char *name,
+                          int absolute) {
+    int length = snprintf(buffer, size, absolute ? "/home/%s/%s" : "home/%s/%s",
+                          normal_user, name);
+    return length < 0 || length >= (int)size ? -1 : 0;
+}
 static unsigned outer_root_uid = DEFAULT_OUTER_ROOT_UID;
 static unsigned outer_normal_uid = DEFAULT_OUTER_ROOT_UID + 1000U;
 static unsigned mapped_id_limit = DEFAULT_OUTER_ROOT_UID + USER_NAMESPACE_ID_COUNT;
@@ -369,14 +393,23 @@ static int read_boot_count(int rootfd) {
 }
 static int check_proofs(int rootfd, char *error, size_t error_size) {
     struct stat st;
-    int fd = open_in_root(rootfd, "home/veyrauser/normal-user-proof", O_RDONLY);
+    char proof_path[PATH_MAX];
+    if (user_file_path(proof_path, sizeof(proof_path), "normal-user-proof", 0) < 0) {
+        set_error(error, error_size, "normal-user proof path is too long");
+        return -1;
+    }
+    int fd = open_in_root(rootfd, proof_path, O_RDONLY);
     if (fd < 0 || fstat(fd, &st) < 0 || st.st_uid != outer_normal_uid) {
         if (fd >= 0) close(fd);
         set_error(error, error_size, "ordinary user write did not map to outside UID 101000");
         return -1;
     }
     close(fd);
-    fd = open_in_root(rootfd, "home/veyrauser/inner-sudo-proof", O_RDONLY);
+    if (user_file_path(proof_path, sizeof(proof_path), "inner-sudo-proof", 0) < 0) {
+        set_error(error, error_size, "sudo proof path is too long");
+        return -1;
+    }
+    fd = open_in_root(rootfd, proof_path, O_RDONLY);
     char value[16] = {0};
     ssize_t n = fd >= 0 ? read(fd, value, sizeof(value) - 1) : -1;
     if (fd >= 0) close(fd);
@@ -384,7 +417,7 @@ static int check_proofs(int rootfd, char *error, size_t error_size) {
         set_error(error, error_size, "namespace-local sudo did not create inner UID 0 proof");
         return -1;
     }
-    fd = open_in_root(rootfd, "home/veyrauser/inner-sudo-proof", O_PATH);
+    fd = open_in_root(rootfd, proof_path, O_PATH);
     if (fd < 0 || fstat(fd, &st) < 0 || st.st_uid != outer_root_uid) {
         if (fd >= 0) close(fd);
         set_error(error, error_size, "namespace-local sudo escaped its mapped outside UID");
@@ -394,12 +427,14 @@ static int check_proofs(int rootfd, char *error, size_t error_size) {
     return 0;
 }
 static void proof_ordinary_user(void) {
+    char proof_path[PATH_MAX];
+    if (user_file_path(proof_path, sizeof(proof_path), "normal-user-proof", 1) < 0)
+        die("normal-user proof path is too long");
     pid_t pid = fork();
     if (pid < 0) die("fork normal-user proof");
     if (!pid) {
         if (setgid(1000) || setuid(1000)) die("switch to inner UID/GID 1000");
-        int fd = open("/home/veyrauser/normal-user-proof",
-                      O_CREAT | O_WRONLY | O_TRUNC | O_CLOEXEC, 0600);
+        int fd = open(proof_path, O_CREAT | O_WRONLY | O_TRUNC | O_CLOEXEC, 0600);
         if (fd < 0) die("normal user cannot write home");
         write_text(fd, "inner-user-id=1000\n");
         if (close(fd) < 0) die("close normal-user proof");
@@ -410,12 +445,17 @@ static void proof_ordinary_user(void) {
         WEXITSTATUS(status) != 0) die("ordinary user proof failed");
 }
 static void proof_user_sudo(void) {
+    char command[PATH_MAX + 32];
+    int length = snprintf(command, sizeof(command),
+                          "id -u > /home/%s/inner-sudo-proof", normal_user);
+    if (length < 0 || length >= (int)sizeof(command))
+        die("sudo proof command is too long");
     pid_t pid = fork();
     if (pid < 0) die("fork namespace-local sudo probe");
     if (!pid) {
         if (setgid(1000) || setuid(1000)) die("drop to inner ordinary account");
         execl("/usr/bin/sudo", "sudo", "-n", "/bin/sh", "-c",
-              "id -u > /home/veyrauser/inner-sudo-proof", (char *)NULL);
+              command, (char *)NULL);
         die("execute namespace-local sudo");
     }
     int status;
@@ -1262,9 +1302,16 @@ static int manager_client(const char *command) {
 int main(int argc, char **argv) {
     if (argc == 2 && !strcmp(argv[1], "test-inode-guard"))
         return test_directory_identity_guard();
-    if (argc == 3 && !strcmp(argv[1], "serve") &&
+    if ((argc == 3 || argc == 4) && !strcmp(argv[1], "serve") &&
         (!strcmp(argv[2], PRIMARY_ROOT_PATH) ||
          !strcmp(argv[2], SECONDARY_ROOT_PATH))) {
+        if (argc == 4) {
+            if (!valid_normal_user(argv[3])) {
+                fprintf(stderr, "invalid normal-user account name\n");
+                return 2;
+            }
+            snprintf(normal_user, sizeof(normal_user), "%s", argv[3]);
+        }
         const unsigned selected_base = !strcmp(argv[2], PRIMARY_ROOT_PATH)
             ? DEFAULT_OUTER_ROOT_UID : SECONDARY_OUTER_ROOT_UID;
         if (snprintf(root_path, sizeof(root_path), "%s", argv[2])
@@ -1280,7 +1327,7 @@ int main(int argc, char **argv) {
                       !strcmp(argv[1], "status") ||
                       !strcmp(argv[1], "stop")))
         return manager_client(argv[1]);
-    fprintf(stderr, "usage: %s serve %s | serve %s | start | status | stop\n",
+    fprintf(stderr, "usage: %s serve %s [account] | serve %s [account] | start | status | stop\n",
             argv[0], PRIMARY_ROOT_PATH, SECONDARY_ROOT_PATH);
     return 2;
 }
