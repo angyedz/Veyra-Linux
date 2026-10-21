@@ -124,8 +124,9 @@ jobs:
               (cd /out/overlay && find . -print | cpio --quiet -o -H newc | gzip -9) \
                 >> /out/veyra-stage1-auth-initramfs
               cp /boot/vmlinuz-lts /out/veyra-stage1-kernel
-              chmod 0644 /out/veyra-user-root.raw \
-                /out/veyra-stage1-kernel /out/veyra-stage1-auth-initramfs
+              chmod 0666 /out/veyra-user-root.raw
+              chmod 0644 /out/veyra-stage1-kernel \
+                /out/veyra-stage1-auth-initramfs
               test -s /out/veyra-user-root.raw
               test -s /out/veyra-stage1-kernel
               test -s /out/veyra-stage1-auth-initramfs
