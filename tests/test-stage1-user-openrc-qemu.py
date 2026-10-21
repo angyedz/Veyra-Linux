@@ -69,6 +69,7 @@ def guest_boot(qemu, kernel, initramfs, user_disk, qemu_boot, logfile, system_ro
         ]
         if system_root_disk is not None:
             patterns.insert(1, b"VEYRA_STAGE1_SYSTEM_ROOT_EXT4_OPENRC_PASS")
+            patterns.insert(len(patterns) - 3, b"VEYRA_STAGE1_PER_USER_ROOTS_PASS")
         for expected_index in range(len(patterns) - 2):
             active_patterns = patterns if expected_index == 0 else patterns[1:]
             outcome = guest.expect(active_patterns, timeout=180)
@@ -110,7 +111,7 @@ def main():
             print(f"VEYRA_STAGE1_QEMU_BOOT_{qemu_boot}_PASS", flush=True)
     print("VEYRA_STAGE1_LIFECYCLE_AND_PERSISTENCE_PASS: counts 5 then 10 including OpenRC autostart and recovery")
     if args.system_root_disk is not None:
-        print("PASS: system OpenRC booted from a persistent ext4 disk root; user root is a second ext4 disk")
+        print("PASS: system OpenRC booted from ext4 and provisioned two persistent per-account roots on the separate user store")
     print("NOTE: guest-only sudo fixture and manager; not installed Veyra security validation")
 
 
