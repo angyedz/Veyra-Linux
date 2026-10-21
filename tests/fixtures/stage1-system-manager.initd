@@ -1,6 +1,12 @@
 #!/sbin/openrc-run
 # Disposable QEMU fixture: production Veyra does not install this service yet.
 description="Veyra Stage 1 test user-environment manager"
+
+depend() {
+    if [ -x /usr/local/sbin/veyra-stage1-user-provision ]; then
+        need veyra-stage1-user-provision
+    fi
+}
 command="/host-supervisor"
 command_args="serve /mnt/veyra-user"
 command_background=true
@@ -13,7 +19,9 @@ start_pre() {
 }
 
 start_post() {
-    local attempt=0 start_result count actual manager_status
+    local attempt=0 start_result count actual manager_status account account_state
+    account=$(/bin/busybox cat /mnt/veyra-user/.veyra-stage1-account 2>/dev/null || printf default)
+    case "$account" in default|alice) ;; *) eerror "unexpected account identity in primary rootfs: $account"; return 1 ;; esac
     while [ "$attempt" -lt 15 ]; do
         manager_status=$(/host-supervisor status 2>/dev/null || :)
         if [ "$manager_status" = "STOPPED" ]; then
@@ -44,9 +52,11 @@ start_post() {
     esac
     attempt=0
     while [ "$attempt" -lt 15 ]; do
-        actual=$(cat /mnt/veyra-user/home/veyrauser/.veyra-stage1-autologin 2>/dev/null || :)
-        if [ "$actual" = "uid=1000 count=$count" ]; then
-            echo "VEYRA_STAGE1_SYSTEM_OPENRC_AUTOLOGIN_READY uid=1000 count=$count"
+        actual=$(/bin/busybox cat /mnt/veyra-user/home/veyrauser/.veyra-stage1-autologin 2>/dev/null || :)
+        account_state=$(/bin/busybox cat /mnt/veyra-user/home/veyrauser/.veyra-stage1-user-state 2>/dev/null || :)
+        if [ "$actual" = "uid=1000 count=$count" ] &&
+           [ "$account_state" = "account=$account count=$count" ]; then
+            echo "VEYRA_STAGE1_SYSTEM_OPENRC_AUTOLOGIN_READY account=$account uid=1000 count=$count"
             return 0
         fi
         attempt=$((attempt + 1))
