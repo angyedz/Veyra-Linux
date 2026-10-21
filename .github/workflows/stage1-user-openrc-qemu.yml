@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - 'scripts/veyra-stage1-qemu-init.sh'
+      - 'scripts/veyra-stage1-system-root-init.sh'
+      - 'tests/fixtures/stage1-system-qa.initd'
       - 'tests/stage1-user-supervisor.c'
       - 'tests/test-stage1-user-openrc-qemu.py'
       - 'tests/fixtures/stage1-user-inittab'
@@ -15,6 +17,8 @@ on:
   pull_request:
     paths:
       - 'scripts/veyra-stage1-qemu-init.sh'
+      - 'scripts/veyra-stage1-system-root-init.sh'
+      - 'tests/fixtures/stage1-system-qa.initd'
       - 'tests/stage1-user-supervisor.c'
       - 'tests/test-stage1-user-openrc-qemu.py'
       - 'tests/fixtures/stage1-user-inittab'
