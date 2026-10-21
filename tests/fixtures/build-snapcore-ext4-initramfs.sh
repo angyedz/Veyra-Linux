@@ -2,7 +2,7 @@
 # Build ext4-capable Alpine initramfs images for disposable SnapCore QEMU tests.
 set -eu
 out=${1:-/out}
-apk add --no-cache linux-lts mkinitfs e2fsprogs cpio gzip
+apk add --no-cache linux-lts mkinitfs e2fsprogs cpio gzip build-base
 kernel=$(basename "$(find /lib/modules -mindepth 1 -maxdepth 1 -type d -print -quit)")
 test -n "$kernel"
 
@@ -14,6 +14,10 @@ mkinitfs -F "base ext4 virtio" \
     -o "$out/snapcore-booted-root-initramfs" "$kernel"
 
 mkdir -p "$out/overlay/sbin" "$out/overlay/etc"
+cc -static -Os -Wall -Wextra -Werror \
+    -o "$out/overlay/sbin/veyra-wipe-root" \
+    /work/tests/fixtures/snapcore-wipe-root.c
+chmod 0755 "$out/overlay/sbin/veyra-wipe-root"
 : > "$out/ext4-ldd-output"
 for tool in mkfs.ext4 e2fsck; do
     binary=$(command -v "$tool")
