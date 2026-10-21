@@ -326,6 +326,20 @@ def main() -> None:
                 b"VEYRA_SNAPCORE_ROOT_ONLY_RESTORE_HOME_PRESERVED_PASS",
                 "ab",
             )
+            boot(
+                "destroy-root",
+                b"VEYRA_SNAPCORE_FULL_USER_ROOT_DELETE_PASS",
+                "ab",
+            )
+            run_cli(root_store, "verify")
+            run_cli(root_store, "rollback", "clean-user-root")
+            run_cli(root_store, "verify")
+
+            boot(
+                "verify-root-after-delete",
+                b"VEYRA_SNAPCORE_FULL_ROOT_RESTORE_HOME_PRESERVED_PASS",
+                "ab",
+            )
             run_cli(home_store, "rollback", "clean-home")
             run_cli(home_store, "verify")
 
@@ -334,10 +348,10 @@ def main() -> None:
                 b"VEYRA_SNAPCORE_SEPARATE_HOME_RESTORE_PASS",
                 "ab",
             )
-            print("VEYRA_SNAPCORE_QEMU_EXT4_ROOT_HOME_RESTORE_PASS")
+            print("VEYRA_SNAPCORE_QEMU_EXT4_FULL_ROOT_HOME_RESTORE_PASS")
             print(
-                "NOTE: root and /home use separate file-backed SnapCore volumes "
-                "exported through host kernel NBD devices."
+                "NOTE: full user-root deletion and separate /home restoration were "
+                "tested using file-backed SnapCore volumes exported through host kernel NBD."
             )
         finally:
             active_error = sys.exc_info()[0] is not None
