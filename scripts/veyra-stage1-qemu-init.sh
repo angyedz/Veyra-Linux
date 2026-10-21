@@ -53,7 +53,15 @@ verify_autologin() {
     for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
         actual=$(/bin/busybox cat /mnt/veyra-user/home/veyrauser/.veyra-stage1-autologin 2>/dev/null || :)
         if [ "$actual" = "uid=1000 count=$expected_count" ]; then
-            echo "VEYRA_STAGE1_AUTOLOGIN_PASS uid=1000 count=$expected_count"
+            actual_boundary=$(/bin/busybox cat /mnt/veyra-user/home/veyrauser/.veyra-stage1-isolation 2>/dev/null || :)
+            if [ "$actual_boundary" != "uid=1000 count=$expected_count host-run-isolated=1 manager-socket-isolated=1" ]; then
+                fail "inner user root could not prove isolated /run at count $expected_count"
+            fi
+            host_run_marker=$(/bin/busybox cat /run/.veyra-stage1-run-boundary 2>/dev/null || :)
+            if [ "$host_run_marker" != "system-only" ]; then
+                fail "user environment changed system /run marker at count $expected_count"
+            fi
+            echo "VEYRA_STAGE1_AUTOLOGIN_PASS uid=1000 count=$expected_count host-run-isolated=1 manager-socket-isolated=1"
             return 0
         fi
         /bin/busybox sleep 1
@@ -64,6 +72,11 @@ trap cleanup EXIT INT TERM
 
 /sbin/openrc sysinit || fail 'system OpenRC sysinit failed'
 /sbin/openrc boot || fail 'system OpenRC boot failed'
+if [ -e /run/.veyra-stage1-run-boundary ]; then
+    fail 'system /run boundary marker unexpectedly exists before test setup'
+fi
+/bin/busybox printf 'system-only\n' > /run/.veyra-stage1-run-boundary
+/bin/busybox chmod 0400 /run/.veyra-stage1-run-boundary
 /sbin/openrc default || fail 'system OpenRC default runlevel failed'
 manager_status=$(/host-supervisor status 2>/dev/null || :)
 case "$manager_status" in
