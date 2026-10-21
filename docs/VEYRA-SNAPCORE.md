@@ -1,6 +1,6 @@
 # Veyra SnapCore — protected block-level snapshots of the user environment
 
-**Status (2026-10-21): experimental file-backed engine prototype v0.2 in review.** The Python prototype and rootless replay tests live in `snapcore/` and `tests/test_snapcore.py`. Commit `b21fc70` added four fixed-seed reference-model histories with pruning, GC and reopen; those 26 tests passed locally as an unprivileged user and in [dedicated SnapCore CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39509850855), while [full integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39509850737) passed separately. Follow-up commit `6f1ae9c` expands the model to 16 reproducible seeds and adds same-handle threaded read/write/checkpoint coverage; all 27 tests pass locally and in [SnapCore CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39514199712), while [full integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39514199819) passed separately. A follow-up now injects `ENOSPC` during a multi-block write: all 28 tests pass locally, while CI for this addition is pending. The simulated failure preserves the prior head and checkpoint and leaves only garbage that the collector removes. It remains disconnected from boot, user storage, VRE and Guardian and is not production-ready. Related: [Veyra Resilience](VEYRA-RESILIENCE.md), [VRE](VEYRA-RECOVERY.md), [Roadmap](ROADMAP.md).
+**Status (2026-10-21): experimental file-backed engine prototype v0.2 in review.** On PR #16 head `b3073b1`, all 28 unit tests pass in [SnapCore CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39557242223), [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39557242224), and the [QEMU/ext4 rollback workflow](https://github.com/angyedz/Veyra-Linux/actions/runs/39557242322). The test-only fixture attaches an NBDKit export to host kernel `/dev/nbd0`; the Alpine guest uses that block device via QEMU virtio, formats ext4, takes an offline checkpoint, mutates data on a later boot, rolls back while stopped, then passes `e2fsck -f -n` and verifies the original data and removal of the mutation-only file. The kernel NBD device is a test frontend; SnapCore backing remains files. This is not a production block-device implementation. The engine remains disconnected from the installed user root, boot, VRE and Guardian and is not production-ready. Related: [Veyra Resilience](VEYRA-RESILIENCE.md), [VRE](VEYRA-RECOVERY.md), [Roadmap](ROADMAP.md).
 
 ## Decision and objectives
 
@@ -27,7 +27,13 @@ The implementation in `snapcore/engine.py` uses a private test directory instead
 - The developer CLI is `scripts/veyra-snapcore.py` (`format`, `write`, `read`, `snapshot`, `delete-snapshot`, `rollback`, `prune`, `verify`, `status`, and `gc`). Format v2 has no migration path from the earlier prototype format. This prototype still has no block-device interface, filesystem freeze/thaw, filesystem-consistency guarantee, encryption, authenticated metadata, dual-superblock recovery or VRE reader. Checksums detect accidental corruption; they do not authenticate the store against a privileged attacker.
 - Operations through one open handle are serialized with a reentrant in-process lock; independent handles/processes are serialized with the volume lock. This makes the simulator's public API safe for concurrent callers, but does not add parallel block I/O.
 
-The crash tests terminate a writer process at deterministic persistence boundaries and reopen the store. They test journal replay and incomplete-tail recovery, **not** physical power loss, device-cache behavior, kernel `ublk` semantics or filesystem recovery. No real ext4/XFS/F2FS volume is mounted on this prototype.
+The crash tests terminate a writer process at deterministic persistence boundaries and reopen the store. They test journal replay and incomplete-tail recovery, **not** physical power loss, device-cache behavior, production `ublk` semantics or filesystem recovery. The QEMU fixture routes ext4 I/O through host kernel NBD `/dev/nbd0`, but NBDKit forwards requests into the file-based engine; it does not test production `ublk` or raw physical storage, XFS/F2FS, or power-loss behavior.
+
+### QEMU ext4 fixture (test-only)
+
+The [PR #16 workflow](https://github.com/angyedz/Veyra-Linux/actions/runs/39556916441) uses a local NBDKit Python plugin to forward guest block requests into the experimental `SnapCoreVolume`, then attaches that export to host kernel NBD `/dev/nbd0` for QEMU. It is a test adapter, not a trusted service or production interface. An Alpine 3.22 QEMU guest formats ext4, writes a baseline file and cleanly unmounts. The host then records a checkpoint. A second boot mutates the filesystem and cleanly unmounts; while the guest is stopped, SnapCore rolls back to the checkpoint. On a third boot, `e2fsck -f -n` passes and a read-only mount confirms that the baseline file is restored and the mutation-only file is absent. The [QEMU workflow](https://github.com/angyedz/Veyra-Linux/actions/runs/39556916441) and [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39556916497) passed on code commit `afa462c`.
+
+This demonstrates ext4 block I/O and offline rollback through the file-backed prototype. It does **not** demonstrate a kernel `ublk` or raw-device backend, online freeze/thaw consistency, physical storage durability, hardware-cache ordering, power-loss recovery, production privilege boundaries or VRE compatibility.
 
 ## Logical architecture
 
@@ -43,6 +49,33 @@ INDEPENDENT VRE (separate kernel + initramfs)
     └── compatible SnapCore recovery reader/engine and A/B recovery engine`
 
 `ublk` is a *candidate*, not a committed production dependency; evaluate kernel versions, failure semantics, I/O flush/ordering, security and Recovery availability. The SnapCore service must be started **before** the user rootfs is mounted, and VRE must be able to open the on-disk format without loading any binaries from a broken installed user environment.
+
+#### Required ublk integration proof (not implemented)
+
+Before selecting ublk as the production block interface, run it with the actual
+Veyra system kernel and verify the required driver/configuration and control
+node exist. The kernel ublk model forwards block requests from `/dev/ublkb*` to
+a userspace server; the server owns request handling and device lifecycle
+([kernel ublk documentation](https://docs.kernel.org/block/ublk.html)). This
+makes the server and its metadata part of SnapCore's trusted system boundary.
+
+The server must run in a **dedicated mount namespace** separate from every
+filesystem consumer of its own block device. The upstream libublk-rs project
+documents that sharing a mount namespace can deadlock shutdown when unmount
+flushes I/O through a server that is exiting
+([mount-namespace caveat](https://github.com/ublk-org/libublk-rs#mount-namespace-caveat)).
+The system manager must control the device node and prevent the user root from
+accessing `/dev/ublk-control`, the server control socket, or protected backing
+storage. Shutdown and recovery must stop consumer I/O, unmount/flush the
+filesystem, then stop and delete the device in a tested order; abrupt server
+loss must fail the volume closed without acknowledging incomplete writes.
+
+Acceptance requires a QEMU guest using the selected Veyra kernel to create a
+real `/dev/ublkbN`, format ext4 on it, write and sync data, checkpoint offline,
+mutate it, unmount, restore the prior logical block map, then remount and pass
+`e2fsck -f -n` plus content assertions. Also inject server termination and
+reboot at documented transaction boundaries. Passing the existing NBDKit test
+is not evidence for this ublk gate.
 
 ### Snapshot representation
 
@@ -108,11 +141,11 @@ The common [Recovery Engine](VEYRA-RESILIENCE.md) accepts only authorized reques
 - [x] Fail closed after uncertain journal I/O: poison the in-memory handle after append/fsync errors, require close and replay before any further state access, and test partial append, complete append and post-fsync failures. All 20 tests pass locally and in [dedicated SnapCore CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39505268065) plus [full integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39505267978) on `45bb114`.
 - [x] Define prototype retention policy and safe generation pruning; prove it retains the active head, every named checkpoint and at least one verified recovery point. This does not yet define a production quota or age-based policy.
 - [x] Add 16 fixed-seed reference-model histories that interleave partial/sparse writes, checkpoint creation/deletion, rollback, pruning, GC and reopen; compare the active volume and all retained checkpoint contents after each operation. Add same-handle threaded partial-write/read/checkpoint tests; all 27 tests pass locally and in [SnapCore CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39514199712), while [full integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39514199819) passes separately.
-- [ ] Extend storage-boundary coverage: an injected `ENOSPC` on the second extent of a multi-block write passes locally in the 28-test suite and proves the previous head/checkpoint survive and orphan data is collected; CI is pending. Actual device exhaustion and reference-accounting audits remain open.
+- [x] Inject `ENOSPC` on the second extent of a multi-block write; the 28-test suite proves the previous head/checkpoint survive and orphan data is collected ([SnapCore CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39556916350)). Actual device exhaustion and reference-accounting audits remain open.
 - [ ] Broader property/fuzz and storage-boundary testing: extent reference accounting, real device exhaustion and last-known-good retention.
 - [ ] Test actual power loss or storage fault behavior on supported filesystems and devices; process termination tests do not prove hardware flush semantics.
 - [ ] Evaluate Linux `ublk` (or alternative reviewed virtual block interface), its flush/discard and kernel requirements; keep backend and raw device unexposed to user root.
-- [ ] Boot disposable QEMU with ext4 formatted on SnapCore; create snapshot; destructively mutate **only the disposable user rootfs**; restore the snapshot without filesystem-tree copy.
+- [x] Boot disposable QEMU with ext4 formatted on the file-backed SnapCore prototype through the test-only NBDKit adapter attached to host kernel `/dev/nbd0`; checkpoint after clean unmount, mutate on a later boot, roll back while stopped, then run `e2fsck -f -n` and verify the original file returns and the mutation-only file is absent. [QEMU CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39556916441). This proves only the test frontend; production block-interface and online filesystem-consistency gates remain open.
 - [ ] Test filesystem-consistent checkpoints, freeze/thaw failure recovery, mounted-device safeguards and flush semantics on ext4, XFS, F2FS and optionally Btrfs.
 - [ ] Test separate user-root and `/home` volumes: destroy user-root files, restore user OS, and prove a newer personal document remains.
 - [ ] Test ENOSPC, metadata corruption, malicious snapshot catalog, invalid keys, damaged current head, backend crash, repeated rollback and interrupted restore.
