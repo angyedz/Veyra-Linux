@@ -6,6 +6,9 @@ on:
     paths:
       - 'scripts/veyra-stage1-qemu-init.sh'
       - 'scripts/veyra-stage1-system-root-init.sh'
+      - 'scripts/veyra-stage1-user-provision.sh'
+      - 'tests/fixtures/stage1-user-provision.initd'
+      - 'tests/fixtures/stage1-system-manager-b.initd'
       - 'tests/fixtures/stage1-system-qa.initd'
       - 'tests/stage1-user-supervisor.c'
       - 'tests/test-stage1-user-openrc-qemu.py'
@@ -18,6 +21,9 @@ on:
     paths:
       - 'scripts/veyra-stage1-qemu-init.sh'
       - 'scripts/veyra-stage1-system-root-init.sh'
+      - 'scripts/veyra-stage1-user-provision.sh'
+      - 'tests/fixtures/stage1-user-provision.initd'
+      - 'tests/fixtures/stage1-system-manager-b.initd'
       - 'tests/fixtures/stage1-system-qa.initd'
       - 'tests/stage1-user-supervisor.c'
       - 'tests/test-stage1-user-openrc-qemu.py'
@@ -165,7 +171,7 @@ jobs:
           if-no-files-found: ignore
 
   dual-root-boot:
-    name: Alpine system ext4 root, system OpenRC, persistent user ext4 root and autologin
+    name: Alpine system OpenRC with auto-provisioned per-account persistent roots
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
@@ -189,7 +195,7 @@ jobs:
               test -n "$kernel"
               cc -static -Os -Wall -Wextra -Werror \
                 -o /out/host-supervisor /work/tests/stage1-user-supervisor.c
-              mkdir -p /out/systemroot /out/userroot
+              mkdir -p /out/systemroot /out/userroot /out/user-store
               apk --root /out/systemroot --initdb \
                 --keys-dir /etc/apk/keys \
                 --repositories-file /etc/apk/repositories \
@@ -202,13 +208,23 @@ jobs:
                 /out/systemroot/etc/runlevels/boot \
                 /out/systemroot/etc/runlevels/default \
                 /out/systemroot/mnt/veyra-user \
+                /out/systemroot/mnt/veyra-user-b \
+                /out/systemroot/var/lib/veyra-user-store \
                 /out/systemroot/usr/local/sbin
               cp /work/tests/fixtures/stage1-system-manager.initd \
                 /out/systemroot/etc/init.d/veyra-stage1-system-manager
+              cp /work/tests/fixtures/stage1-system-manager-b.initd \
+                /out/systemroot/etc/init.d/veyra-stage1-system-manager-b
+              cp /work/tests/fixtures/stage1-user-provision.initd \
+                /out/systemroot/etc/init.d/veyra-stage1-user-provision
               cp /work/tests/fixtures/stage1-system-qa.initd \
                 /out/systemroot/etc/init.d/veyra-stage1-system-qa
               chmod 0755 /out/systemroot/etc/init.d/veyra-stage1-system-manager \
+                /out/systemroot/etc/init.d/veyra-stage1-system-manager-b \
+                /out/systemroot/etc/init.d/veyra-stage1-user-provision \
                 /out/systemroot/etc/init.d/veyra-stage1-system-qa
+              ln -s /etc/init.d/veyra-stage1-user-provision \
+                /out/systemroot/etc/runlevels/default/veyra-stage1-user-provision
               ln -s /etc/init.d/veyra-stage1-system-manager \
                 /out/systemroot/etc/runlevels/default/veyra-stage1-system-manager
               ln -s /etc/init.d/veyra-stage1-system-qa \
@@ -216,11 +232,10 @@ jobs:
               cp /out/host-supervisor /out/systemroot/host-supervisor
               cp /work/scripts/veyra-stage1-qemu-init.sh \
                 /out/systemroot/usr/local/sbin/veyra-stage1-qemu-qa
-              chmod 0755 /out/systemroot/usr/local/sbin/veyra-stage1-qemu-qa
-              truncate -s 512M /out/veyra-system-root.raw
-              mkfs.ext4 -F -q -L VEYRA_SYSTEM_ROOT \
-                -d /out/systemroot /out/veyra-system-root.raw
-
+              cp /work/scripts/veyra-stage1-user-provision.sh \
+                /out/systemroot/usr/local/sbin/veyra-stage1-user-provision
+              chmod 0755 /out/systemroot/usr/local/sbin/veyra-stage1-qemu-qa \
+                /out/systemroot/usr/local/sbin/veyra-stage1-user-provision
               apk --root /out/userroot --initdb \
                 --keys-dir /etc/apk/keys \
                 --repositories-file /etc/apk/repositories \
@@ -268,20 +283,26 @@ jobs:
               chown -hR 100000:100000 /out/userroot
               chmod 4755 /out/userroot/usr/bin/sudo
               chown 101000:101000 /out/userroot/home/veyrauser
-              truncate -s 180M /out/veyra-user-root.raw
-              mkfs.ext4 -F -q -L VEYRA_USER_ROOT \
-                -E root_owner=100000:100000 \
-                -d /out/userroot /out/veyra-user-root.raw
-              chmod 0666 /out/veyra-user-root.raw
+              mkdir -p /out/systemroot/usr/share/veyra
+              cp -a /out/userroot /out/systemroot/usr/share/veyra/stage1-user-template
+              chown -hR 0:0 /out/systemroot/usr/share/veyra/stage1-user-template
+              mkdir -p /out/user-store
+              truncate -s 512M /out/veyra-user-store.raw
+              mkfs.ext4 -F -q -L VEYRA_USER_STORE \
+                -E root_owner=0:0 -d /out/user-store /out/veyra-user-store.raw
+              chmod 0666 /out/veyra-user-store.raw
+              truncate -s 1024M /out/veyra-system-root.raw
+              mkfs.ext4 -F -q -L VEYRA_SYSTEM_ROOT \
+                -d /out/systemroot /out/veyra-system-root.raw
               mkinitfs -F "base ext4 virtio" \
                 -i /work/scripts/veyra-stage1-system-root-init.sh \
                 -o /out/veyra-stage1-system-root-initramfs "$kernel"
               cp /boot/vmlinuz-lts /out/veyra-stage1-system-root-kernel
-              chmod 0666 /out/veyra-system-root.raw /out/veyra-user-root.raw
+              chmod 0666 /out/veyra-system-root.raw /out/veyra-user-store.raw
               chmod 0644 /out/veyra-stage1-system-root-initramfs \
                 /out/veyra-stage1-system-root-kernel
               test -s /out/veyra-system-root.raw
-              test -s /out/veyra-user-root.raw
+              test -s /out/veyra-user-store.raw
               test -s /out/veyra-stage1-system-root-kernel
               test -s /out/veyra-stage1-system-root-initramfs
             '
@@ -291,7 +312,7 @@ jobs:
           python3 tests/test-stage1-user-openrc-qemu.py \
             /tmp/veyra-stage1-dualroot/veyra-stage1-system-root-kernel \
             /tmp/veyra-stage1-dualroot/veyra-stage1-system-root-initramfs \
-            /tmp/veyra-stage1-dualroot/veyra-user-root.raw \
+            /tmp/veyra-stage1-dualroot/veyra-user-store.raw \
             --system-root-disk /tmp/veyra-stage1-dualroot/veyra-system-root.raw \
             --log /tmp/veyra-stage1-dualroot/serial.log
       - name: Print guest serial errors
