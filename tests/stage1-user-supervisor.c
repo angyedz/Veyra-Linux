@@ -651,6 +651,14 @@ static void inner_pid_one(int root_fd, int ready_fd) {
     const char *bootstrap = "/mnt/veyra-stage1-bootstrap";
     const char *newroot = "/mnt/veyra-stage1-bootstrap/root";
     const char *oldroot = "/mnt/veyra-stage1-bootstrap/root/.veyra-stage1-oldroot";
+    if (mkdir(bootstrap, 0700) < 0 && errno != EEXIST)
+        die("create private intermediate mountpoint");
+    struct stat bootstrap_st;
+    if (lstat(bootstrap, &bootstrap_st) < 0 || !S_ISDIR(bootstrap_st.st_mode) ||
+        bootstrap_st.st_uid != 0 || (bootstrap_st.st_mode & 0777) != 0700) {
+        errno = EPERM;
+        die("private intermediate mountpoint is not root-owned and private");
+    }
     if (mount("tmpfs", bootstrap, "tmpfs", MS_NOSUID | MS_NODEV, "mode=0700") < 0)
         die("mount private intermediate tmpfs root");
     if (mkdir(newroot, 0700) < 0) die("create temporary newroot");
