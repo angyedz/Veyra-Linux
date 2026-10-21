@@ -129,7 +129,11 @@ def run_command(child, command, timeout=300):
         raise RuntimeError("Guest shell timed out while executing a command")
     code = int(child.match.group(1))
     if code:
-        raise RuntimeError(f"Guest command returned {code}: {command[:100]}")
+        output = getattr(child, "before", "")[-1200:].replace("\r", "")
+        raise RuntimeError(
+            f"Guest command returned {code}: {command[:100]}; "
+            f"guest output tail: {output!r}"
+        )
 
 
 
