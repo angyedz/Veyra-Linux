@@ -1,6 +1,6 @@
 # Stage 1: persistent user rootfs and independent init — QEMU prototype
 
-**Status:** the trusted-stage rootfs binding and descriptor-hardening milestone **passed** in [two-boot QEMU CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39404374568) and [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39404374542). This remains test-only and is not enabled by the installed Veyra or Live ISO. Earlier, the QEMU lifecycle and rootfs-validation milestone passed in [PR #10 QEMU CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39312323358) and [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39312323395). The [PR #11 manager-exit cleanup follow-up](https://github.com/angyedz/Veyra-Linux/pull/11) passed [QEMU](https://github.com/angyedz/Veyra-Linux/actions/runs/39318056661) and [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39318056566). The [PR #12 rootfs launch validation follow-up](https://github.com/angyedz/Veyra-Linux/pull/12) passed [QEMU](https://github.com/angyedz/Veyra-Linux/actions/runs/39320831998) and [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39320831889), including both inode-comparator outcomes and rejection of an init symlink that points outside the user rootfs. **Not enabled** by installed Veyra or Live ISO; this remains a disposable prototype, not production security validation.
+**Status:** the trusted-stage rootfs binding and descriptor-hardening milestone **passed** in [two-boot QEMU CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39404374568) and [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39404374542). Review [PR #17](https://github.com/angyedz/Veyra-Linux/pull/17) additionally tests a system OpenRC default-runlevel service that auto-starts the manager and persistent user environment, plus serial autologin as inner UID 1000 across two QEMU boots; [QEMU](https://github.com/angyedz/Veyra-Linux/actions/runs/39550577270) and [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39550577273) pass. These remain test-only and are not enabled by installed Veyra or Live ISO. Earlier, the QEMU lifecycle and rootfs-validation milestone passed in [PR #10 QEMU CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39312323358) and [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39312323395). The [PR #11 manager-exit cleanup follow-up](https://github.com/angyedz/Veyra-Linux/pull/11) passed [QEMU](https://github.com/angyedz/Veyra-Linux/actions/runs/39318056661) and [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39318056566). The [PR #12 rootfs launch validation follow-up](https://github.com/angyedz/Veyra-Linux/pull/12) passed [QEMU](https://github.com/angyedz/Veyra-Linux/actions/runs/39320831998) and [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39320831889), including both inode-comparator outcomes and rejection of an init symlink that points outside the user rootfs. **Not enabled** by installed Veyra or Live ISO; this remains a disposable prototype, not production security validation.
 This prototype is stacked on [Stage 0](DUAL-ENVIRONMENT.md) in PR #8.
 Track product requirements and future steps in [ROADMAP.md](ROADMAP.md).
 
@@ -53,6 +53,7 @@ binary acting as the literal PID 1. The system still has its own init.
   and a test service writing a durable boot counter. A private intermediate
   tmpfs root is used because pivot_root directly from initramfs rootfs returns
   EINVAL.
+- PR #17 adds tests/fixtures/stage1-system-manager.initd to start the manager and user environment from the system OpenRC default runlevel, and tests/fixtures/stage1-user-autologin plus an inittab getty line to exercise no-password serial autologin as UID 1000. This is a disposable QEMU fixture, not an installed login configuration.
 - tests/test-stage1-user-openrc-qemu.py — boots the same disk image twice;
   in each guest boot it tests invalid rootfs ownership and extra setuid
   rejection, an init symlink escape attempt, both inode identity outcomes,
@@ -64,9 +65,19 @@ binary acting as the literal PID 1. The system still has its own init.
   100000, then boots an Alpine LTS kernel and dedicated initramfs. No host disk
   partitions are modified.
 
+
+
+## Test-only OpenRC autostart and serial autologin (PR #17)
+
+The review-branch QEMU fixture installs a minimal Alpine system root with the test manager service enabled in OpenRC's default runlevel. That service starts the system-side manager, which starts the persistent ext4 user rootfs. The user BusyBox init then starts a serial getty whose test login wrapper drops to inner UID 1000 and writes a persistent login proof.
+
+The same user-root disk is reused across two actual QEMU boots. Per boot, assertions cover the OpenRC autostart, user autologin, normal lifecycle, manager/PID 1 failure cleanup and service recovery; the persistent login counter advances from 1–5 on the first boot to 6–10 on the second. Evidence: [PR #17 QEMU workflow](https://github.com/angyedz/Veyra-Linux/actions/runs/39550577270) and [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39550577273).
+
+This verifies the test fixture's service ordering and serial user-side login only. It does not install this OpenRC service, enable no-password login in Veyra, implement graphical authentication/session management, or provide production storage isolation or security review.
+
 ## System-side lifecycle manager and rootfs checks
 
-The QEMU system init starts one foreground manager in the initial namespaces.
+The baseline QEMU system init starts one foreground manager in the initial namespaces. Review PR #17 replaces this manual startup in its disposable fixture with a system OpenRC default-runlevel service; that service also auto-starts the user environment and the test serial login. The installed system still has no production manager service or login path.
 System-side test commands send start, status or stop over
 /run/veyra-user-manager/control.sock. Its parent directory is root-owned mode
 0700; the socket is mode 0600, and the server accepts only peer UID 0 as seen
