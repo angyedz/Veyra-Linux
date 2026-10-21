@@ -73,8 +73,16 @@ static void set_error(char *error, size_t size, const char *message) {
     if (size) snprintf(error, size, "%s", message);
 }
 static void die(const char *message) {
+    int saved_errno = errno;
+    int console_fd = open("/dev/console", O_WRONLY | O_CLOEXEC);
+    if (console_fd >= 0) {
+        dprintf(console_fd, "VEYRA_STAGE1_FAILURE: %s (errno=%d: %s)\n",
+                message, saved_errno, strerror(saved_errno));
+        close(console_fd);
+    }
+    errno = saved_errno;
     fprintf(stderr, "VEYRA_STAGE1_FAILURE: %s (errno=%d: %s)\n",
-            message, errno, strerror(errno));
+            message, saved_errno, strerror(saved_errno));
     fflush(stderr);
     _exit(1);
 }
