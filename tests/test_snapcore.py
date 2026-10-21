@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import json
 import os
@@ -766,6 +767,52 @@ class SnapCoreTests(unittest.TestCase):
             self.assertEqual((self.store / "journal.log").stat().st_size, journal_size)
             with self.assertRaises(IntegrityError):
                 reopened.snapshots(verify=True)
+
+    def test_enospc_during_multiblock_write_preserves_last_known_good(self) -> None:
+        self.volume.write(0, b"last-known-good")
+        saved = self.volume.snapshot("last-known-good")
+        previous_generation = self.volume.head_generation
+        previous_journal = (self.store / "journal.log").read_bytes()
+        previous_contents = self.volume.read(0, self.volume.size_bytes)
+        extent_attempts = 0
+
+        def exhaust_storage(point: str) -> None:
+            nonlocal extent_attempts
+            if point == "extent_temp":
+                extent_attempts += 1
+                if extent_attempts == 2:
+                    raise OSError(errno.ENOSPC, "injected no space left on device")
+
+        self.volume._fault_hook = exhaust_storage
+        payload = bytes(range(2 * self.block_size))
+        with self.assertRaises(OSError) as raised:
+            self.volume.write(2 * self.block_size, payload)
+        self.assertEqual(raised.exception.errno, errno.ENOSPC)
+        self.assertEqual(extent_attempts, 2)
+        self.assertEqual(self.volume.head_generation, previous_generation)
+        self.assertEqual(self.volume.read(0, self.volume.size_bytes), previous_contents)
+        self.assertEqual((self.store / "journal.log").read_bytes(), previous_journal)
+        self.assertEqual(
+            self.volume.snapshots(verify=True),
+            [{"name": "last-known-good", **saved}],
+        )
+        self.assertFalse(
+            any(
+                path.name.startswith(".pending-")
+                for path in (self.store / "extents").iterdir()
+            )
+        )
+
+        self.volume._fault_hook = None
+        collected = self.volume.collect_garbage()
+        self.assertEqual(collected["removed_extents"], 1)
+        self.assertEqual(self.volume.head_generation, previous_generation)
+        self.assertEqual(self.volume.read(0, self.volume.size_bytes), previous_contents)
+        self.assertEqual(
+            self.volume.snapshots(verify=True),
+            [{"name": "last-known-good", **saved}],
+        )
+        self.volume.verify()
 
     def test_process_crash_during_snapshot_or_rollback_replays_atomically(self) -> None:
         snapshot_script = (
