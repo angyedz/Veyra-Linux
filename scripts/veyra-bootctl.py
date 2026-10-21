@@ -32,6 +32,30 @@ class VeyraError(Exception):
     pass
 
 
+def _mountinfo_unescape(field):
+    return re.sub(
+        r"\\([0-7]{3})",
+        lambda match: chr(int(match.group(1), 8)),
+        field,
+    )
+
+
+def _is_mountpoint(path):
+    """Detect ordinary and bind mounts from this process's mount namespace."""
+    target = os.path.normpath(str(path))
+    try:
+        with open("/proc/self/mountinfo", encoding="utf-8") as mountinfo:
+            for line in mountinfo:
+                fields = line.split()
+                if len(fields) >= 6 and os.path.normpath(
+                    _mountinfo_unescape(fields[4])
+                ) == target:
+                    return True
+    except OSError:
+        return False
+    return False
+
+
 def require_safe_path(path):
     if not path.is_absolute() or path == Path("/"):
         raise VeyraError("store must be an absolute dedicated mountpoint, never /")
@@ -40,7 +64,7 @@ def require_safe_path(path):
             break
         if part.is_symlink():
             raise VeyraError(f"symlink in store path: {part}")
-    if not path.is_dir() or not os.path.ismount(path):
+    if not path.is_dir() or not _is_mountpoint(path):
         raise VeyraError("store must be an independently mounted directory")
     if (path / ".veyra-deployment-store").is_symlink():
         raise VeyraError("symlinked deployment marker")

@@ -39,6 +39,14 @@ for fs in ext4 xfs; do
     python3 "$root/scripts/veyra-bootctl.py" --store "$top" init \
         --uuid "$uuid" --fstype "$fs" --default A
     python3 "$root/scripts/veyra-bootctl.py" --store "$top" status
+    # Python's os.path.ismount misses some bind mounts on the same filesystem.
+    # SnapCore/A-B boots expose the backing store this way inside the selected root.
+    bind="$tmp/store bind"
+    mkdir -p "$bind"
+    mount --bind "$top" "$bind"
+    python3 "$root/scripts/veyra-bootctl.py" --store "$bind" status >/dev/null
+    umount "$bind"
+    rmdir "$bind"
     grep -q "veyra_deployment=A" "$top/boot/grub/grub.cfg"
     grep -q "veyra_deployment=B" "$top/boot/grub/grub.cfg"
     grep -q "rootfstype=$fs" "$top/boot/grub/grub.cfg"
