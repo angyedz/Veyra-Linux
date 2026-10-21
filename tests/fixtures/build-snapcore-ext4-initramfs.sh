@@ -2,7 +2,7 @@
 # Build ext4-capable Alpine initramfs images for disposable SnapCore QEMU tests.
 set -eu
 out=${1:-/out}
-apk add --no-cache linux-lts mkinitfs e2fsprogs cpio gzip build-base \
+apk add --no-cache linux-lts mkinitfs e2fsprogs cpio gzip build-base file \
     git autoconf automake libtool pkgconf g++ liburing-dev linux-headers util-linux
 apk add --no-cache alpine-base openrc
 kernel=$(basename "$(find /lib/modules -mindepth 1 -maxdepth 1 -type d -print -quit)")
@@ -130,13 +130,26 @@ for binary in /usr/sbin/ublk /usr/sbin/ublk.loop "$(command -v unshare)"; do
     else
         cp -L "$binary" "$out/overlay$binary"
     fi
-    if ! readelf -h "$binary" >/dev/null 2>&1; then
-        echo "invalid ublk fixture executable: $binary" >&2
-        exit 1
-    fi
-    if readelf -l "$binary" | grep -q 'INTERP'; then
-        ldd "$binary" >> "$out/ublk-ldd-output"
-    fi
+    binary_info=$(file "$binary")
+    case "$binary_info" in
+        *ELF*) ;;
+        *)
+            printf '%s\n' "$binary_info" >&2
+            echo "invalid ublk fixture executable: $binary" >&2
+            exit 1
+            ;;
+    esac
+    case "$binary_info" in
+        *"dynamically linked"*)
+            ldd "$binary" >> "$out/ublk-ldd-output"
+            ;;
+        *"statically linked"*|*"static-pie linked"*) ;;
+        *)
+            printf '%s\n' "$binary_info" >&2
+            echo "cannot determine ublk fixture runtime: $binary" >&2
+            exit 1
+            ;;
+    esac
 done
 
 cat "$out/ext4-ldd-output" "$out/ublk-ldd-output" > "$out/initramfs-ldd-output"
