@@ -2,6 +2,7 @@
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <linux/magic.h>
 #include <linux/reboot.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -9,6 +10,7 @@
 #include <sys/reboot.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/vfs.h>
 #include <unistd.h>
 
 static void power_off(void) {
@@ -94,6 +96,56 @@ static int require_absent(int root_fd, const char *name) {
     return errno == ENOENT ? 0 : -1;
 }
 
+
+static int has_fixture_marker(void) {
+    static const char expected[] = "DISPOSABLE_QEMU_ROOT_V1\n";
+    int fd = open("/etc/veyra-snapcore-root-fixture", O_RDONLY | O_CLOEXEC);
+    if (fd < 0) return 0;
+    char actual[sizeof(expected)];
+    ssize_t length = read(fd, actual, sizeof(actual));
+    int saved_errno = errno;
+    close(fd);
+    errno = saved_errno;
+    return length == (ssize_t)(sizeof(expected) - 1) &&
+           !memcmp(actual, expected, sizeof(expected) - 1);
+}
+
+static int has_qemu_fixture_argument(void) {
+    int fd = open("/proc/cmdline", O_RDONLY | O_CLOEXEC);
+    if (fd < 0) return 0;
+    char command_line[4096];
+    ssize_t length = read(fd, command_line, sizeof(command_line) - 1);
+    close(fd);
+    if (length <= 0) return 0;
+    command_line[length] = '\0';
+    return strstr(command_line, "veyra_snapcore_fixture=booted-root-test") != NULL;
+}
+
+static int is_ext4_qemu_root(void) {
+    FILE *mounts = fopen("/proc/mounts", "r");
+    if (!mounts) return 0;
+    char source[256], target[256], type[64], options[1024];
+    unsigned long dump, pass;
+    int valid = 0;
+    while (fscanf(mounts, "%255s %255s %63s %1023s %lu %lu",
+                  source, target, type, options, &dump, &pass) == 6) {
+        if (!strcmp(target, "/")) {
+            valid = !strcmp(source, "/dev/vda") && !strcmp(type, "ext4");
+            break;
+        }
+    }
+    fclose(mounts);
+    return valid;
+}
+
+static int fixture_guard(int root_fd) {
+    struct statfs filesystem;
+    if (fstatfs(root_fd, &filesystem) < 0) return 0;
+    return filesystem.f_type == EXT4_SUPER_MAGIC &&
+           has_fixture_marker() && has_qemu_fixture_argument() &&
+           is_ext4_qemu_root();
+}
+
 int main(void) {
     static const char *const removed[] = {
         "bin", "etc", "home", "lib", "lib64", "opt", "root",
@@ -101,6 +153,10 @@ int main(void) {
     };
     int root_fd = open("/", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
     if (root_fd < 0) fail("open root directory");
+    if (!fixture_guard(root_fd)) {
+        errno = EPERM;
+        fail("refuse deletion outside the disposable QEMU ext4 fixture");
+    }
     if (remove_directory_contents(root_fd, 1) < 0)
         fail("remove root entries outside mounted pseudo-filesystems");
     for (size_t i = 0; i < sizeof(removed) / sizeof(removed[0]); ++i) {
