@@ -40,7 +40,8 @@ jobs:
       - name: Compile SnapCore and QEMU test harness
         run: |
           python3 -m py_compile snapcore/*.py scripts/veyra-snapcore.py \
-            tests/fixtures/snapcore-nbdkit-plugin.py tests/test-snapcore-ext4-qemu.py
+            tests/fixtures/snapcore-nbdkit-plugin.py \
+            tests/test-snapcore-ext4-qemu.py tests/test-snapcore-booted-root-qemu.py
       - name: Build Alpine kernel and initramfs images for ext4 QEMU tests
         run: |
           set -euo pipefail
