@@ -1,0 +1,48 @@
+#!/sbin/openrc-run
+# Test-only manager launch for the manifest-created Eve root.
+description="Veyra Stage 1 manifest-authenticated user manager fixture"
+command="/host-supervisor"
+command_args="serve /mnt/veyra-user eve /mnt/veyra-home 300000"
+command_background=true
+pidfile="/run/veyra-manifest-auth-manager.pid"
+
+depend() {
+    need veyra-stage1-user-manifest-auth-setup
+}
+
+start_pre() {
+    [ -d /mnt/veyra-user ] &&
+        [ ! -L /mnt/veyra-user ] &&
+        [ "$(/bin/busybox cat /mnt/veyra-user/.veyra-stage1-account 2>/dev/null || :)" = eve ]
+}
+
+start_post() {
+    local attempt=0 manager_status start_result
+    while [ "$attempt" -lt 15 ]; do
+        manager_status=$(/host-supervisor status 2>/dev/null || :)
+        if [ "$manager_status" = STOPPED ]; then
+            break
+        fi
+        attempt=$((attempt + 1))
+        sleep 1
+    done
+    if [ "$manager_status" != STOPPED ]; then
+        eerror "system-side manager did not become ready"
+        return 1
+    fi
+    if start_result=$(/host-supervisor start 2>&1); then
+        :
+    else
+        eerror "manager could not start the manifest-provisioned root: $start_result"
+        return 1
+    fi
+    case "$start_result" in
+        RUNNING\ pid=*\ count=*) ;;
+        *) eerror "unexpected user-environment start result: $start_result"; return 1 ;;
+    esac
+    echo "VEYRA_STAGE1_MANIFEST_AUTH_MANAGER_READY account=eve outer-uid-base=300000"
+}
+
+stop_pre() {
+    /host-supervisor stop >/dev/null 2>&1 || :
+}

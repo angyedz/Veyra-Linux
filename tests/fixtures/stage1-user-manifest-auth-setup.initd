@@ -1,0 +1,76 @@
+#!/sbin/openrc-run
+# Test-only adapter: adds one authenticated test account to a manifest-built root.
+description="Veyra Stage 1 manifest account authentication fixture"
+
+depend() {
+    need veyra-stage1-user-provision
+    before veyra-stage1-manifest-auth-manager
+}
+
+start() {
+    ebegin "Preparing the manifest-provisioned Eve login fixture"
+    eve_root=/var/lib/veyra-user-store/users/eve
+    hash_file=/etc/veyra/stage1-eve-test-password-hash
+    expected_home_source=/dev/vdc
+
+    if [ ! -d "$eve_root" ] || [ -L "$eve_root" ] ||
+       [ "$(/bin/busybox cat "$eve_root/.veyra-stage1-account" 2>/dev/null || :)" != eve ]; then
+        eerror "manifest-provisioned Eve root is missing or has the wrong identity"
+        eend 1
+        return 1
+    fi
+    if [ "$(/bin/busybox stat -c '%u:%g:%a' "$eve_root")" != "300000:301000:710" ]; then
+        eerror "manifest-provisioned Eve root has the wrong mapped ownership"
+        eend 1
+        return 1
+    fi
+    if [ ! -f "$hash_file" ] || [ -L "$hash_file" ] ||
+       [ "$(/bin/busybox stat -c '%u:%g:%a' "$hash_file")" != "0:0:600" ]; then
+        eerror "test password hash is not a private system-owned file"
+        eend 1
+        return 1
+    fi
+    test_hash=$(/bin/busybox cat "$hash_file")
+    case "$test_hash" in
+        '$6$veyraauth$'*) ;;
+        *) eerror "test password hash has an unexpected format"; eend 1; return 1 ;;
+    esac
+    home_source=$(/bin/busybox awk '$2 == "/mnt/veyra-home" { print $1; exit }' /proc/mounts)
+    home_type=$(/bin/busybox awk '$2 == "/mnt/veyra-home" { print $3; exit }' /proc/mounts)
+    if [ "$home_source" != "$expected_home_source" ] || [ "$home_type" != ext4 ]; then
+        eerror "separate home fixture is not mounted from ext4 /dev/vdc"
+        eend 1
+        return 1
+    fi
+    if [ "$(/bin/busybox stat -c '%u:%g:%a' /mnt/veyra-home/eve 2>/dev/null || :)" != "301000:301000:700" ]; then
+        eerror "Eve's separate home directory has the wrong mapped ownership"
+        eend 1
+        return 1
+    fi
+
+    /bin/busybox sed -i '/^veyrauser:/d;/^eve:/d' "$eve_root/etc/passwd"
+    /bin/busybox sed -i '/^veyrauser:/d;/^eve:/d' "$eve_root/etc/group"
+    /bin/busybox sed -i '/^veyrauser:/d;/^eve:/d' "$eve_root/etc/shadow"
+    /bin/busybox rm -f "$eve_root/etc/sudoers.d/veyrauser"
+    /bin/busybox printf 'eve:x:1000:1000:Eve:/home/eve:/bin/sh\n' >> "$eve_root/etc/passwd"
+    /bin/busybox printf 'eve:x:1000:\n' >> "$eve_root/etc/group"
+    /bin/busybox printf 'eve:%s:19700:0:99999:7:::\n' "$test_hash" >> "$eve_root/etc/shadow"
+    /bin/busybox printf 'eve ALL=(ALL) NOPASSWD: ALL\n' > "$eve_root/etc/sudoers.d/eve"
+    /bin/busybox chown 300000:300000 "$eve_root/etc/passwd" "$eve_root/etc/group" "$eve_root/etc/shadow" "$eve_root/etc/sudoers.d/eve"
+    /bin/busybox chmod 0644 "$eve_root/etc/passwd" "$eve_root/etc/group"
+    /bin/busybox chmod 0640 "$eve_root/etc/shadow"
+    /bin/busybox chmod 0440 "$eve_root/etc/sudoers.d/eve"
+
+    if /bin/busybox awk '$5 == "/mnt/veyra-user" { found=1 } END { exit !found }' /proc/self/mountinfo; then
+        eerror "the account root mountpoint is already occupied"
+        eend 1
+        return 1
+    fi
+    /bin/busybox mount --bind "$eve_root" /mnt/veyra-user || {
+        eerror "could not bind the manifest-provisioned Eve root"
+        eend 1
+        return 1
+    }
+    echo "VEYRA_STAGE1_MANIFEST_EVE_SELECTED account=eve outer-uid-base=300000"
+    eend 0
+}

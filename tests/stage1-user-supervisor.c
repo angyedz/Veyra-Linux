@@ -67,6 +67,17 @@ static int valid_normal_user(const char *name) {
     return 1;
 }
 
+static int parse_outer_uid_base(const char *text, unsigned *base_out) {
+    if (!text || !*text || text[0] == '0') return -1;
+    errno = 0;
+    char *end = NULL;
+    unsigned long value = strtoul(text, &end, 10);
+    if (errno || end == text || *end || value < 100000UL ||
+        value > 2147400000UL || value % 100000UL != 0)
+        return -1;
+    *base_out = (unsigned)value;
+    return 0;
+}
 static int user_file_path(char *buffer, size_t size, const char *name,
                           int absolute) {
     int length = snprintf(buffer, size, absolute ? "/home/%s/%s" : "home/%s/%s",
@@ -489,7 +500,7 @@ static int check_proofs(int rootfd, int homefd, char *error, size_t error_size) 
     int fd = open_in_root(proof_root, proof_path, O_RDONLY);
     if (fd < 0 || fstat(fd, &st) < 0 || st.st_uid != outer_normal_uid) {
         if (fd >= 0) close(fd);
-        set_error(error, error_size, "ordinary user write did not map to outside UID 101000");
+        snprintf(error, error_size, "ordinary user write did not map to outside UID %u", outer_normal_uid);
         return -1;
     }
     close(fd);
@@ -918,7 +929,7 @@ static void launch_user(const struct child_args *ctx) {
     close_unlisted_fds(permitted_fds,
                        sizeof(permitted_fds) / sizeof(permitted_fds[0]));
     if (setgroups(0, NULL) < 0 || setgid(outer_root_uid) < 0 ||
-        setuid(outer_root_uid) < 0) die("drop to unprivileged outside UID 100000");
+        setuid(outer_root_uid) < 0) die("drop to unprivileged mapped outer UID");
     /* Credential changes clear PR_SET_PDEATHSIG, so arm it again after the
      * drop and verify that the system-side manager is still our parent.
      */
@@ -1257,8 +1268,8 @@ static int start_environment(char *response, size_t response_size) {
             check_proofs(rootfd, homefd, error, sizeof(error)) == 0) {
             boot_count = count;
             state = STATE_RUNNING;
-            printf("VEYRA_STAGE1_SUDO_READY count=%d inside-uid=0 outside-uid=100000\n",
-                   boot_count);
+            printf("VEYRA_STAGE1_SUDO_READY count=%d inside-uid=0 outside-uid=%u\n",
+                   boot_count, outer_root_uid);
             printf("VEYRA_STAGE1_USER_OPENRC_READY count=%d\n", boot_count);
             if (homefd >= 0)
                 puts("VEYRA_STAGE1_AUTH_HOME_VOLUME_PASS separate-ext4-mounted-at-home");
@@ -1451,7 +1462,7 @@ static int manager_client(const char *command) {
 int main(int argc, char **argv) {
     if (argc == 2 && !strcmp(argv[1], "test-inode-guard"))
         return test_directory_identity_guard();
-    if ((argc >= 3 && argc <= 5) && !strcmp(argv[1], "serve") &&
+    if ((argc >= 3 && argc <= 6) && !strcmp(argv[1], "serve") &&
         (!strcmp(argv[2], PRIMARY_ROOT_PATH) ||
          !strcmp(argv[2], SECONDARY_ROOT_PATH))) {
         if (argc >= 4) {
@@ -1461,15 +1472,19 @@ int main(int argc, char **argv) {
             }
             snprintf(normal_user, sizeof(normal_user), "%s", argv[3]);
         }
-        if (argc == 5) {
+        if (argc >= 5) {
             if (strcmp(argv[4], HOME_VOLUME_PATH)) {
                 fprintf(stderr, "invalid test home-volume path\n");
                 return 2;
             }
             snprintf(home_path, sizeof(home_path), "%s", argv[4]);
         }
-        const unsigned selected_base = !strcmp(argv[2], PRIMARY_ROOT_PATH)
+        unsigned selected_base = !strcmp(argv[2], PRIMARY_ROOT_PATH)
             ? DEFAULT_OUTER_ROOT_UID : SECONDARY_OUTER_ROOT_UID;
+        if (argc == 6 && parse_outer_uid_base(argv[5], &selected_base) < 0) {
+            fprintf(stderr, "invalid mapped outer UID/GID base\n");
+            return 2;
+        }
         if (snprintf(root_path, sizeof(root_path), "%s", argv[2])
             >= (int)sizeof(root_path)) die("user rootfs path is too long");
         outer_root_uid = selected_base;
@@ -1483,7 +1498,7 @@ int main(int argc, char **argv) {
                       !strcmp(argv[1], "status") ||
                       !strcmp(argv[1], "stop")))
         return manager_client(argv[1]);
-    fprintf(stderr, "usage: %s serve %s [account] [home-volume] | serve %s [account] [home-volume] | start | status | stop\n",
+    fprintf(stderr, "usage: %s serve %s [account [home-volume [outer-uid-base]]] | serve %s [account [home-volume [outer-uid-base]]] | start | status | stop\n",
             argv[0], PRIMARY_ROOT_PATH, SECONDARY_ROOT_PATH);
     return 2;
 }

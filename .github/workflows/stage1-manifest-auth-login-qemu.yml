@@ -1,0 +1,214 @@
+name: Veyra Stage 1 manifest-provisioned authenticated login QEMU
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/stage1-manifest-auth-login-qemu.yml'
+      - 'scripts/veyra-stage1-system-manifest-auth-init.sh'
+      - 'scripts/veyra-stage1-user-provision.sh'
+      - 'tests/fixtures/stage1-user-accounts.conf'
+      - 'tests/fixtures/stage1-user-auth-inittab'
+      - 'tests/fixtures/stage1-user-auth-profile'
+      - 'tests/fixtures/stage1-user-openrc.initd'
+      - 'tests/fixtures/stage1-user-provision.initd'
+      - 'tests/fixtures/stage1-user-manifest-auth-*.initd'
+      - 'tests/stage1-user-supervisor.c'
+      - 'tests/test-stage1-provisioned-auth-login-qemu.py'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/stage1-manifest-auth-login-qemu.yml'
+      - 'scripts/veyra-stage1-system-manifest-auth-init.sh'
+      - 'scripts/veyra-stage1-user-provision.sh'
+      - 'tests/fixtures/stage1-user-accounts.conf'
+      - 'tests/fixtures/stage1-user-auth-inittab'
+      - 'tests/fixtures/stage1-user-auth-profile'
+      - 'tests/fixtures/stage1-user-openrc.initd'
+      - 'tests/fixtures/stage1-user-provision.initd'
+      - 'tests/fixtures/stage1-user-manifest-auth-*.initd'
+      - 'tests/stage1-user-supervisor.c'
+      - 'tests/test-stage1-provisioned-auth-login-qemu.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  manifest-authenticated-login:
+    name: Authenticate an arbitrary manifest-provisioned account in QEMU
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install QEMU and serial assertion tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-system-x86 python3-pexpect
+      - name: Build generic account template and three ext4 guest volumes
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/veyra-stage1-manifest-auth
+          docker run --rm -v "$PWD:/work:ro" \
+            -v /tmp/veyra-stage1-manifest-auth:/out alpine:3.22 sh -ec '
+              apk add --no-cache alpine-base openrc linux-lts mkinitfs \
+                build-base linux-headers e2fsprogs cpio gzip openssl sudo
+              kernel=$(basename "$(find /lib/modules -mindepth 1 -maxdepth 1 -type d -print -quit)")
+              test -n "$kernel"
+              cc -static -Os -Wall -Wextra -Werror \
+                -o /out/host-supervisor /work/tests/stage1-user-supervisor.c
+
+              mkdir -p /out/template /out/systemroot
+              apk --root /out/template --initdb \
+                --keys-dir /etc/apk/keys \
+                --repositories-file /etc/apk/repositories \
+                add alpine-base openrc sudo
+              rm -rf /out/template/etc/runlevels
+              mkdir -p /out/template/etc/runlevels/sysinit \
+                /out/template/etc/runlevels/boot \
+                /out/template/etc/runlevels/default \
+                /out/template/etc/init.d \
+                /out/template/home/veyrauser \
+                /out/template/lost+found \
+                /out/template/var/lib/veyra-user \
+                /out/template/usr/local/sbin \
+                /out/template/etc/sudoers.d
+              cp /work/tests/fixtures/stage1-user-auth-inittab \
+                /out/template/etc/inittab
+              cp /work/tests/fixtures/stage1-user-openrc.initd \
+                /out/template/etc/init.d/veyra-stage1-user
+              chmod 0755 /out/template/etc/init.d/veyra-stage1-user
+              ln -s /etc/init.d/veyra-stage1-user \
+                /out/template/etc/runlevels/default/veyra-stage1-user
+              printf "format=stage1\\n" > /out/template/.veyra-stage1-rootfs
+              printf "veyrauser:x:1000:1000:Template User:/home/veyrauser:/bin/sh\\n" \
+                >> /out/template/etc/passwd
+              printf "veyrauser:x:1000:\\n" >> /out/template/etc/group
+              printf "veyrauser ALL=(ALL) NOPASSWD: ALL\\n" \
+                > /out/template/etc/sudoers.d/veyrauser
+              chmod 0440 /out/template/etc/sudoers.d/veyrauser
+              test -x /out/template/usr/bin/sudo
+              for dev in console null zero tty random urandom; do
+                rm -f "/out/template/dev/$dev"
+              done
+              mknod -m 0600 /out/template/dev/console c 5 1
+              mknod -m 0666 /out/template/dev/null c 1 3
+              mknod -m 0666 /out/template/dev/zero c 1 5
+              mknod -m 0666 /out/template/dev/tty c 5 0
+              mknod -m 0666 /out/template/dev/random c 1 8
+              mknod -m 0666 /out/template/dev/urandom c 1 9
+              mkdir -p /out/template/dev/pts
+              rm -f /out/template/dev/ptmx
+              ln -s pts/ptmx /out/template/dev/ptmx
+              chown -hR 0:0 /out/template
+              chmod 4755 /out/template/usr/bin/sudo
+
+              apk --root /out/systemroot --initdb \
+                --keys-dir /etc/apk/keys \
+                --repositories-file /etc/apk/repositories \
+                add alpine-base openrc
+              test -x /out/systemroot/sbin/init
+              rm -rf /out/systemroot/etc/runlevels
+              mkdir -p /out/systemroot/etc/veyra \
+                /out/systemroot/etc/init.d \
+                /out/systemroot/etc/runlevels/sysinit \
+                /out/systemroot/etc/runlevels/boot \
+                /out/systemroot/etc/runlevels/default \
+                /out/systemroot/usr/share/veyra \
+                /out/systemroot/usr/local/sbin \
+                /out/systemroot/var/lib/veyra-user-store \
+                /out/systemroot/mnt/veyra-user \
+                /out/systemroot/mnt/veyra-home
+              cp -a /out/template \
+                /out/systemroot/usr/share/veyra/stage1-user-template
+              cp /work/scripts/veyra-stage1-user-provision.sh \
+                /out/systemroot/usr/local/sbin/veyra-stage1-user-provision
+              chmod 0755 /out/systemroot/usr/local/sbin/veyra-stage1-user-provision
+              cp /out/host-supervisor /out/systemroot/host-supervisor
+              cp /work/tests/fixtures/stage1-user-provision.initd \
+                /out/systemroot/etc/init.d/veyra-stage1-user-provision
+              cp /work/tests/fixtures/stage1-user-manifest-auth-setup.initd \
+                /out/systemroot/etc/init.d/veyra-stage1-user-manifest-auth-setup
+              cp /work/tests/fixtures/stage1-user-manifest-auth-manager.initd \
+                /out/systemroot/etc/init.d/veyra-stage1-manifest-auth-manager
+              cp /work/tests/fixtures/stage1-user-manifest-auth-qa.initd \
+                /out/systemroot/etc/init.d/veyra-stage1-manifest-auth-qa
+              chmod 0755 /out/systemroot/etc/init.d/veyra-stage1-user-provision \
+                /out/systemroot/etc/init.d/veyra-stage1-user-manifest-auth-setup \
+                /out/systemroot/etc/init.d/veyra-stage1-manifest-auth-manager \
+                /out/systemroot/etc/init.d/veyra-stage1-manifest-auth-qa
+              cp /work/tests/fixtures/stage1-user-accounts.conf \
+                /out/systemroot/etc/veyra/stage1-user-accounts
+              chmod 0644 /out/systemroot/etc/veyra/stage1-user-accounts
+              ln -s /etc/init.d/veyra-stage1-user-provision \
+                /out/systemroot/etc/runlevels/default/veyra-stage1-user-provision
+              ln -s /etc/init.d/veyra-stage1-user-manifest-auth-setup \
+                /out/systemroot/etc/runlevels/default/veyra-stage1-user-manifest-auth-setup
+              ln -s /etc/init.d/veyra-stage1-manifest-auth-manager \
+                /out/systemroot/etc/runlevels/default/veyra-stage1-manifest-auth-manager
+              ln -s /etc/init.d/veyra-stage1-manifest-auth-qa \
+                /out/systemroot/etc/runlevels/default/veyra-stage1-manifest-auth-qa
+              printf "::sysinit:/sbin/openrc sysinit\n::sysinit:/sbin/openrc boot\n::wait:/sbin/openrc default\n::shutdown:/sbin/openrc shutdown\n" \
+                > /out/systemroot/etc/inittab
+              test_password="Veyra-Stage1-QEMU-only!"
+              openssl passwd -6 -salt veyraauth "$test_password" \
+                > /out/systemroot/etc/veyra/stage1-eve-test-password-hash
+              chown 0:0 /out/systemroot/etc/veyra/stage1-eve-test-password-hash
+              chmod 0600 /out/systemroot/etc/veyra/stage1-eve-test-password-hash
+
+              mkdir -p /out/home/eve /out/home/lost+found
+              cp /work/tests/fixtures/stage1-user-auth-profile /out/home/eve/.profile
+              chown -hR 300000:300000 /out/home
+              chown -hR 301000:301000 /out/home/eve
+              chmod 0700 /out/home/eve
+              chmod 0644 /out/home/eve/.profile
+
+              mkdir -p /out/user-store/lost+found
+              truncate -s 768M /out/veyra-user-store.raw
+              mkfs.ext4 -F -q -L VEYRA_USER_STORE \
+                -E root_owner=0:0 -d /out/user-store /out/veyra-user-store.raw
+              truncate -s 48M /out/veyra-user-home.raw
+              mkfs.ext4 -F -q -L VEYRA_USER_HOME \
+                -E root_owner=300000:300000 -d /out/home /out/veyra-user-home.raw
+              truncate -s 768M /out/veyra-system-root.raw
+              mkfs.ext4 -F -q -L VEYRA_SYSTEM_ROOT \
+                -E root_owner=0:0 -d /out/systemroot /out/veyra-system-root.raw
+              chmod 0666 /out/veyra-system-root.raw \
+                /out/veyra-user-store.raw /out/veyra-user-home.raw
+
+              mkinitfs -F "base ext4 virtio" \
+                -i /work/scripts/veyra-stage1-system-manifest-auth-init.sh \
+                -o /out/veyra-stage1-manifest-auth-initramfs "$kernel"
+              cp /boot/vmlinuz-lts /out/veyra-stage1-kernel
+              chmod 0644 /out/veyra-stage1-kernel \
+                /out/veyra-stage1-manifest-auth-initramfs
+              test -s /out/veyra-system-root.raw
+              test -s /out/veyra-user-store.raw
+              test -s /out/veyra-user-home.raw
+              test -s /out/veyra-stage1-kernel
+              test -s /out/veyra-stage1-manifest-auth-initramfs
+            '
+      - name: Reject a wrong password and authenticate the generic manifest account
+        run: |
+          python3 tests/test-stage1-provisioned-auth-login-qemu.py \
+            /tmp/veyra-stage1-manifest-auth/veyra-stage1-kernel \
+            /tmp/veyra-stage1-manifest-auth/veyra-stage1-manifest-auth-initramfs \
+            /tmp/veyra-stage1-manifest-auth/veyra-system-root.raw \
+            /tmp/veyra-stage1-manifest-auth/veyra-user-store.raw \
+            /tmp/veyra-stage1-manifest-auth/veyra-user-home.raw \
+            --log /tmp/veyra-stage1-manifest-auth/serial.log
+      - name: Print guest serial errors
+        if: failure()
+        run: |
+          test ! -s /tmp/veyra-stage1-manifest-auth/serial.log || \
+            tail -n 200 /tmp/veyra-stage1-manifest-auth/serial.log
+      - name: Save guest serial proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: veyra-stage1-manifest-authenticated-login-serial
+          path: /tmp/veyra-stage1-manifest-auth/serial.log
+          retention-days: 7
+          if-no-files-found: ignore
