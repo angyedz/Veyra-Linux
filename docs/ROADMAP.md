@@ -27,7 +27,7 @@ Parallel tracks are intentional; avoid turning prototypes on in the normal boot 
 | Alpine 3.22, OpenRC, KDE Live ISO | Existing conventional image and installer tests | Final dual-environment installed runtime |
 | Desktop installer | Experimental shell/QEMU install/reboot path | KDE-only Calamares install into separate system/user roots and real graphical click-through |
 | Atomic boot | Offline FS-neutral staging, GRUB/initramfs selectors and QEMU automation | Passing and reviewed full A -> B -> A; authenticated, power-loss-safe updates |
-| Dual environments | PRs #8–13 **merged into `main`**: namespace probes; Alpine user-root/OpenRC PID 1; multi-ID mapping and inner `sudo`; QEMU lifecycle manager, rootfs staging, descriptor checks, pidfd safety | Installed manager and login, real host privilege-boundary audit, production user storage/KDE/network integration |
+| Dual environments | PRs #8–13 **merged into `main`**: namespace probes; Alpine user-root/OpenRC PID 1; multi-ID mapping and inner `sudo`; QEMU lifecycle manager, rootfs staging, descriptor checks and pidfd safety. Review PR #17 adds a test-only system OpenRC default-runlevel service that starts the manager and persistent user environment, plus serial autologin as inner UID 1000 across two QEMU boots | Installed manager and graphical login/authentication, real host privilege-boundary audit, A/B-independent production user storage, KDE/network integration |
 | VPN isolation | Design | veth/network policy, DNS, user VPN and kill-switch tests |
 | KDE cross-boundary launch | Design and experimental KRunner preflight in PR #8 | System-selected read-only KDE runtime, user session, safe Alt+F2, D-Bus/Wayland integration |
 | vpkg | APK-derived prototype plus early Go frontend | Final installed-engine replacement, user root integration, inactive-generation updater |
@@ -43,7 +43,7 @@ Parallel tracks are intentional; avoid turning prototypes on in the normal boot 
 | Stage | State as of 2026-10-20 | Evidence / next boundary |
 | --- | --- | --- |
 | **0 — Experimental audit/CI** | **Merged QEMU/static baseline** | PR #8; threat model still incomplete |
-| **1 — Persistent user environment** | **QEMU prototype milestones passed**, not deployed | PRs #9–13; production OpenRC service, default login and A/B-independent storage pending |
+| **1 — Persistent user environment** | **QEMU prototypes passed**, not deployed: system OpenRC default-runlevel auto-start and test serial autologin are in review PR #17 | Production service/provisioning, authenticated graphical login, security review and A/B-independent storage pending |
 | **1S — SnapCore snapshots (parallel research)** | **Architecture only; no prototype** | CoW block-map engine, immutable generations, FS-specific tests and safe user rollback pending |
 | **2 — System/user isolation** | **Partial defensive proofs only** | Rootfs validation, FD filtering and pidfd tests; full adversarial host boundary unproven |
 | **3 — User network/VPN** | Not integrated | Virtual link, independent routing/DNS/TUN and VPN tests pending |
@@ -84,6 +84,8 @@ Parallel tracks are intentional; avoid turning prototypes on in the normal boot 
 
 **Process-signal safety (merged PR #13):** manager uses `pidfd_open` and `pidfd_send_signal` for nested init STOP/timeout handling, rejects missing/stale pidfd handles rather than falling back to a numeric PID, and verifies a reaped task's pidfd returns `ESRCH`. This mitigates PID reuse in the disposable supervisor, **not** the need for production cgroup/service lifecycle controls. [Merged PR #13](https://github.com/angyedz/Veyra-Linux/pull/13) · [passing QEMU on `main`](https://github.com/angyedz/Veyra-Linux/actions/runs/39452117206).
 
+**System OpenRC/autologin test milestone (PR #17):** the disposable QEMU init runs system OpenRC's default runlevel; its test-only service starts the manager, which automatically starts the persistent user environment. A user-rootfs serial getty autologs as inner UID 1000. The same ext4 root disk passes two QEMU boots, with the persistent login counter advancing from 1–5 to 6–10 while assertions cover manual lifecycle, nested PID 1 crash, manager-death cleanup and OpenRC service restart. [QEMU evidence](https://github.com/angyedz/Veyra-Linux/actions/runs/39550577270) · [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39550577273). This remains a custom initramfs fixture; the installed image has no production OpenRC service, authentication flow or KDE login/session broker.
+
 ### Verified Stage 1 QEMU milestones
 
 - [x] Prepare a separate persistent Alpine 3.22 ext4 test rootfs and boot a **distinct BusyBox PID 1** that invokes user-environment OpenRC runlevels; system init remains independent.
@@ -94,6 +96,7 @@ Parallel tracks are intentional; avoid turning prototypes on in the normal boot 
 - [x] Verify rootfs source-path substitution cannot redirect a mount pinned through the trusted system-side FD staging; keep the validated FD for readiness.
 - [x] Verify child FD cleanup beyond explicitly permitted startup channels, and pidfd-based safe signal delivery / rejection of stale targets.
 - [x] Merge this QEMU-prototype sequence, [PRs #9–13](https://github.com/angyedz/Veyra-Linux/pull/13), into `main`, with [full CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39452117275) and [QEMU](https://github.com/angyedz/Veyra-Linux/actions/runs/39452117206) passing.
+- [x] In review-branch disposable QEMU, start the system-side manager from the system OpenRC default runlevel and auto-start the persistent user environment; verify test serial autologin as inner UID 1000, with the persistent login counter advancing from 1–5 to 6–10 across two guest boots. [PR #17 QEMU](https://github.com/angyedz/Veyra-Linux/actions/runs/39550577270) · [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39550577273). The service and no-password serial login remain test-only.
 
 ### Still required for the **installed** Stage 1
 
@@ -101,9 +104,9 @@ Parallel tracks are intentional; avoid turning prototypes on in the normal boot 
 - [ ] Port the guest-only supervisor into a reviewed, correctly managed **system OpenRC service** with safe provisioning, stop/restart, cgroup/process ownership, crash recovery, cleanup of trusted stage mounts and protected manager controls.
 - [ ] Define production `/dev`, `/proc`, `/sys`, `/run`, capabilities and inherited FD 0–2 policy; check isolation against a hostile user environment, not only the QEMU smoke test.
 - [ ] Provision real accounts, authentication and inner `sudo` policy **without** the disposable test fixture's `NOPASSWD` rule.
-- [ ] Auto-enter the user environment at normal login; prove service lifecycle, shutdown, reboot and persistent user state in a **clean installed VM** rather than a custom initramfs harness.
+- [ ] Integrate authenticated normal login into the user environment; the PR #17 serial getty autologin is only a disposable fixture. Prove the graphical/session-broker path, service lifecycle, shutdown, reboot and persistent user state in a **clean installed VM**.
 
-**Gate:** the **disposable QEMU prototype portion passed** (two user OpenRC guest boots, mapped `sudo`, persistent state, manager lifecycle and focused safety tests). **Stage 1 as an installed feature is still OPEN**: normal interactive login, production supervision, system A/B-independent storage, security review and boot integration are unproven.
+**Gate:** the **disposable QEMU prototype portion passed**: two user OpenRC guest boots, mapped `sudo`, persistent state, manager lifecycle and focused safety tests; review PR #17 additionally proves system OpenRC default-runlevel autostart and a test-only serial login as inner UID 1000. **Stage 1 as an installed feature is still OPEN**: production supervision, authenticated graphical login/session integration, A/B-independent storage, security review and boot integration are unproven.
 
 ## Stage 1S — SnapCore protected user-environment snapshots (parallel R&D)
 
@@ -281,7 +284,7 @@ Parallel tracks are intentional; avoid turning prototypes on in the normal boot 
 ## Immediate execution order
 
 1. **Stage 0 prototype complete and merged**: PR #8 QEMU/static gates verified; continue its unfinished threat-model work under Stage 2.
-2. **Stage 1 QEMU milestone complete and merged**: PRs #9–13; **next** productionize the tested system manager as a real OpenRC service, finalize persistent rootfs outside A/B, add normal login/auth and trusted cleanup.
+2. **Stage 1 QEMU baseline merged**: PRs #9–13. Review PR #17 adds a QEMU-only system OpenRC autostart and serial-login milestone; **next** productionize manager/service and login integration, finalize persistent rootfs outside A/B, and add trusted cleanup.
 3. **In parallel Stage 1S:** prototype SnapCore genuine block-level CoW with crash-consistent mapping roots, power-cut tests and independent root vs `/home` recovery; preserve system A/B's snapshot-free contract.
 4. Stage 2: adversarially prove the production inner `sudo` cannot escape or control host kernel/devices/boot/network/services; extend inherited-FD/cgroup/LSM audits.
 5. Stage 3: controlled user internet and VPN while host network stays independent.
