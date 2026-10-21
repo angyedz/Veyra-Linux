@@ -322,6 +322,23 @@ runs a user VPN without touching host networking, persists user rootfs across
 reboot and successfully rolls back system A/B independently. A broken user
 environment must not prevent the system's maintenance/recovery path. Before advertising snapshots or automatic recovery, a later end-to-end gate must also prove that destroying the disposable user environment triggers **independent Guardian/TTY or VRE**, restores a verified user-root snapshot without rolling back newer separate `/home` data, and that VRE independently repairs a failed system A/B generation. These are **future tasks**, not current alpha claims.
 
+### Distance to the first integrated Alpha (2026-10-21)
+
+**0 of 8 acceptance conditions have been demonstrated together** in one clean,
+installed QEMU run. Individual QEMU fixtures cover parts of the design, including
+per-account root provisioning, password-authenticated test login, persistence,
+and the separate A/B rollback protocol; they do not yet compose into an installed
+Dual Environment system.
+
+The remaining integration blocks are production account enrollment and the
+system OpenRC/session manager; persistent per-user roots and `/home` outside
+system A/B; the system KDE to user Plasma/KRunner session path and a confined
+inner-`sudo` policy; user-only package installation and VPN/network isolation;
+and a maintenance/recovery path that remains available when the user root fails.
+After those blocks, the clean-install QEMU gate must pass end to end, followed by
+the required independent security review before enabling the profile. Guardian,
+VRE snapshots, and automatic cross-environment recovery remain later work.
+
 No checklist item may be marked complete solely because a script or a
 GitHub Actions workflow exists; attach actual test evidence.
 
