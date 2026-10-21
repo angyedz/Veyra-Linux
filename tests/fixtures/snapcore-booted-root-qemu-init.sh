@@ -28,7 +28,7 @@ fi
 phase=
 for item in $("$BB" cat /proc/cmdline); do
     case "$item" in
-        veyra_snapcore_phase=*) phase=\${item#*=} ;;
+        veyra_snapcore_phase=*) phase=${item#*=} ;;
     esac
 done
 
@@ -71,7 +71,7 @@ exec </dev/console >/dev/console 2>&1
 phase=
 for item in $("$BB" cat /proc/cmdline); do
     case "$item" in
-        veyra_snapcore_phase=*) phase=\${item#*=} ;;
+        veyra_snapcore_phase=*) phase=${item#*=} ;;
     esac
 done
 root_source=$("$BB" awk '$2 == "/" { print $1; exit }' /proc/mounts)
