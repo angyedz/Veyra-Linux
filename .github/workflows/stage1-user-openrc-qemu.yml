@@ -7,6 +7,7 @@ on:
       - 'scripts/veyra-stage1-qemu-init.sh'
       - 'scripts/veyra-stage1-system-root-init.sh'
       - 'scripts/veyra-stage1-user-provision.sh'
+      - 'tests/fixtures/stage1-user-accounts.conf'
       - 'tests/fixtures/stage1-user-provision.initd'
       - 'tests/fixtures/stage1-system-manager-b.initd'
       - 'tests/fixtures/stage1-system-qa.initd'
@@ -22,6 +23,7 @@ on:
       - 'scripts/veyra-stage1-qemu-init.sh'
       - 'scripts/veyra-stage1-system-root-init.sh'
       - 'scripts/veyra-stage1-user-provision.sh'
+      - 'tests/fixtures/stage1-user-accounts.conf'
       - 'tests/fixtures/stage1-user-provision.initd'
       - 'tests/fixtures/stage1-system-manager-b.initd'
       - 'tests/fixtures/stage1-system-qa.initd'
@@ -203,7 +205,8 @@ jobs:
               test -x /out/systemroot/sbin/init
               test -x /out/systemroot/sbin/openrc
               rm -rf /out/systemroot/etc/runlevels
-              mkdir -p /out/systemroot/etc/init.d \
+              mkdir -p /out/systemroot/etc/veyra \
+                /out/systemroot/etc/init.d \
                 /out/systemroot/etc/runlevels/sysinit \
                 /out/systemroot/etc/runlevels/boot \
                 /out/systemroot/etc/runlevels/default \
@@ -219,6 +222,9 @@ jobs:
                 /out/systemroot/etc/init.d/veyra-stage1-user-provision
               cp /work/tests/fixtures/stage1-system-qa.initd \
                 /out/systemroot/etc/init.d/veyra-stage1-system-qa
+              cp /work/tests/fixtures/stage1-user-accounts.conf \
+                /out/systemroot/etc/veyra/stage1-user-accounts
+              chmod 0644 /out/systemroot/etc/veyra/stage1-user-accounts
               chmod 0755 /out/systemroot/etc/init.d/veyra-stage1-system-manager \
                 /out/systemroot/etc/init.d/veyra-stage1-system-manager-b \
                 /out/systemroot/etc/init.d/veyra-stage1-user-provision \
