@@ -82,124 +82,105 @@ def guest_boot(
             guest.close(force=True)
 
 
+def kernel_nbd_size(device: pathlib.Path) -> int | None:
+    result = subprocess.run(
+        ["sudo", "-n", "blockdev", "--getsize64", str(device)],
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=5,
+    )
+    if result.returncode != 0 or not result.stdout.strip().isdigit():
+        return None
+    return int(result.stdout.strip())
+
+
+def disconnect_kernel_nbd(qemu_nbd: str, device: pathlib.Path) -> None:
+    result = subprocess.run(
+        ["sudo", "-n", qemu_nbd, "--disconnect", str(device)],
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        timeout=30,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"could not disconnect kernel NBD device {device}: {result.stdout.strip()}"
+        )
+
+    deadline = time.monotonic() + 15
+    while time.monotonic() < deadline:
+        if kernel_nbd_size(device) == 0:
+            return
+        time.sleep(0.05)
+    raise TimeoutError(f"kernel NBD device {device} stayed attached after disconnect")
+
+
 def connect_kernel_nbd(
     qemu_nbd: str,
     socket: pathlib.Path,
     device: pathlib.Path,
     expected_size: int,
     log_path: pathlib.Path,
-) -> subprocess.Popen[bytes]:
+) -> None:
     subprocess.run(["sudo", "-n", "modprobe", "nbd"], check=True, timeout=30)
     deadline = time.monotonic() + 15
     while not device.exists() and time.monotonic() < deadline:
         time.sleep(0.05)
     if not device.exists():
         raise RuntimeError(f"kernel NBD device was not created: {device}")
-    current = subprocess.run(
-        ["sudo", "-n", "blockdev", "--getsize64", str(device)],
-        check=True,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        timeout=5,
-    )
-    if not current.stdout.strip().isdigit() or int(current.stdout.strip()) != 0:
+    current_size = kernel_nbd_size(device)
+    if current_size is None:
+        raise RuntimeError(f"could not inspect kernel NBD device: {device}")
+    if current_size != 0:
         raise RuntimeError(f"kernel NBD device is already attached: {device}")
 
-    with log_path.open("wb") as device_log:
-        server = subprocess.Popen(
-            [
-                "sudo", "-n", qemu_nbd, "--connect", str(device),
-                "--format=raw", f"nbd:unix:{socket}",
-            ],
-            stdout=device_log,
-            stderr=subprocess.STDOUT,
-        )
-
+    connect_attempted = False
     try:
+        # qemu-nbd daemonizes in --connect mode; its parent exiting is expected.
+        connect_attempted = True
+        with log_path.open("wb") as device_log:
+            result = subprocess.run(
+                [
+                    "sudo", "-n", qemu_nbd, "--connect", str(device),
+                    "--format=raw", f"nbd:unix:{socket}",
+                ],
+                check=False,
+                stdout=device_log,
+                stderr=subprocess.STDOUT,
+                timeout=30,
+            )
+        if result.returncode != 0:
+            details = log_path.read_text(errors="replace")
+            raise RuntimeError(
+                f"qemu-nbd attachment failed with status {result.returncode}: "
+                f"{details[-4000:]}"
+            )
+
         deadline = time.monotonic() + 15
         while time.monotonic() < deadline:
-            if server.poll() is not None:
-                details = log_path.read_text(errors="replace")
+            actual_size = kernel_nbd_size(device)
+            if actual_size == expected_size:
+                return
+            if actual_size not in (None, 0):
                 raise RuntimeError(
-                    f"qemu-nbd exited during attachment with status {server.returncode}: "
-                    f"{details[-4000:]}"
+                    f"{device} has unexpected size {actual_size}, expected {expected_size}"
                 )
-            result = subprocess.run(
-                ["sudo", "-n", "blockdev", "--getsize64", str(device)],
-                check=False,
-                text=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                timeout=5,
-            )
-            if result.returncode == 0 and result.stdout.strip().isdigit():
-                actual_size = int(result.stdout.strip())
-                if actual_size == expected_size:
-                    return server
-                if actual_size != 0:
-                    raise RuntimeError(
-                        f"{device} has unexpected size {actual_size}, expected {expected_size}"
-                    )
             time.sleep(0.05)
-        raise TimeoutError(f"kernel NBD device {device} did not become ready")
-    except Exception:
-        if server.poll() is None:
-            try:
-                subprocess.run(
-                    ["sudo", "-n", qemu_nbd, "--disconnect", str(device)],
-                    check=False,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    timeout=15,
-                )
-            except (OSError, subprocess.SubprocessError):
-                pass
-            if server.poll() is None:
-                server.terminate()
-        try:
-            server.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            server.kill()
-            server.wait(timeout=5)
-        raise
-
-
-def disconnect_kernel_nbd(
-    qemu_nbd: str,
-    device: pathlib.Path,
-    server: subprocess.Popen[bytes],
-) -> None:
-    disconnect_error = None
-    try:
-        result = subprocess.run(
-            ["sudo", "-n", qemu_nbd, "--disconnect", str(device)],
-            check=False,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            timeout=15,
+        details = log_path.read_text(errors="replace")
+        raise TimeoutError(
+            f"kernel NBD device {device} did not become ready; qemu-nbd log: "
+            f"{details[-4000:]}"
         )
-        if result.returncode != 0:
-            disconnect_error = RuntimeError(
-                f"could not disconnect kernel NBD device {device}: {result.stdout.strip()}"
-            )
-    except (OSError, subprocess.SubprocessError) as error:
-        disconnect_error = error
-
-    try:
-        server.wait(timeout=15)
-    except subprocess.TimeoutExpired:
-        server.terminate()
-        try:
-            server.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            server.kill()
-            server.wait(timeout=5)
-    if disconnect_error is not None:
-        raise RuntimeError(f"could not disconnect kernel NBD device {device}: {disconnect_error}")
-    if server.returncode not in (0, -15):
-        raise RuntimeError(f"qemu-nbd exited with status {server.returncode}")
+    except Exception:
+        if connect_attempted:
+            try:
+                disconnect_kernel_nbd(qemu_nbd, device)
+            except (OSError, RuntimeError, TimeoutError, subprocess.SubprocessError):
+                pass
+        raise
 
 
 def guest_boot_via_kernel_nbd(
@@ -214,7 +195,7 @@ def guest_boot_via_kernel_nbd(
     logfile,
     nbd_log_path: pathlib.Path,
 ) -> None:
-    server = connect_kernel_nbd(
+    connect_kernel_nbd(
         qemu_nbd, socket, device, VOLUME_SIZE, nbd_log_path
     )
     try:
@@ -222,7 +203,8 @@ def guest_boot_via_kernel_nbd(
             qemu, kernel, initramfs, device, phase, expected_marker, logfile
         )
     finally:
-        disconnect_kernel_nbd(qemu_nbd, device, server)
+        disconnect_kernel_nbd(qemu_nbd, device)
+
 
 def main() -> None:
     parser = argparse.ArgumentParser()
@@ -287,6 +269,7 @@ def main() -> None:
             print("VEYRA_SNAPCORE_QEMU_EXT4_ROLLBACK_PASS")
             print("NOTE: ext4 uses the host kernel NBD device; SnapCore storage remains file-backed.")
         finally:
+            active_error = sys.exc_info()[0] is not None
             server.terminate()
             try:
                 server.wait(timeout=10)
@@ -295,9 +278,13 @@ def main() -> None:
                 server.wait(timeout=5)
             if server.returncode not in (0, -15):
                 details = server_log_path.read_text(errors="replace")
-                raise RuntimeError(
+                message = (
                     f"nbdkit exited with status {server.returncode}:\\n{details[-12000:]}"
                 )
+                if active_error:
+                    print(message, file=sys.stderr, flush=True)
+                else:
+                    raise RuntimeError(message)
 
 
 if __name__ == "__main__":
