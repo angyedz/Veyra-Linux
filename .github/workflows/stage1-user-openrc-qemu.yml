@@ -273,8 +273,8 @@ jobs:
                 -i /work/scripts/veyra-stage1-system-root-init.sh \
                 -o /out/veyra-stage1-system-root-initramfs "$kernel"
               cp /boot/vmlinuz-lts /out/veyra-stage1-system-root-kernel
-              chmod 0644 /out/veyra-system-root.raw \
-                /out/veyra-user-root.raw /out/veyra-stage1-system-root-initramfs \
+              chmod 0666 /out/veyra-system-root.raw /out/veyra-user-root.raw
+              chmod 0644 /out/veyra-stage1-system-root-initramfs \
                 /out/veyra-stage1-system-root-kernel
               test -s /out/veyra-system-root.raw
               test -s /out/veyra-user-root.raw
