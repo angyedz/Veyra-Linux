@@ -38,7 +38,9 @@ list_output=$($UBLK list -n 0 -v 2>&1) || {
     exit 1
 }
 printf '%s\n' "$list_output"
-daemon_pid=$(printf '%s\n' "$list_output" | \
+# ublk add reports the live daemon pid in its human-readable output.
+# The verbose list JSON currently reports ublksrv_pid=-1.
+daemon_pid=$(printf '%s\n%s\n' "$add_output" "$list_output" | \
     "$BB" sed -n 's/.*daemon pid \([0-9][0-9]*\).*/\1/p' | "$BB" sed -n '1p')
 case "$daemon_pid" in
     ''|*[!0-9]*)
