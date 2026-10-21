@@ -154,7 +154,8 @@ if tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/runlevels/default/veyr
 fi
 tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'usr/local/lib/veyra/live-mode.sh'
 tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'usr/local/lib/veyra/tui-install.sh'
-tar -tvzf "$tmpdir/veyra.apkovl.tar.gz" | grep 'usr/local/lib/veyra/live-mode.sh
+tar -tvzf "$tmpdir/veyra.apkovl.tar.gz" | grep 'usr/local/lib/veyra/live-mode.sh$' | grep -q '^-rwxr-xr-x'
+tar -tvzf "$tmpdir/veyra.apkovl.tar.gz" | grep 'etc/init.d/veyra-x11-sockets$' | grep -q '^-rwxr-xr-x'
 tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/calamares/settings.conf'
 tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/calamares/modules/locale.conf'
 tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/calamares/branding/veyra/desktop-plasma.svg'
