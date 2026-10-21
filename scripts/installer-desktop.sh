@@ -15,6 +15,8 @@ esac
 case "$choice" in
     plasma)
         display_manager=sddm
+        # Create Xwayland's socket directory after /tmp is mounted and before SDDM.
+        chroot "$target" rc-update add veyra-x11-sockets default
         # Live ISO already contains Plasma, no network fetch needed here.
         ;;
     gnome)

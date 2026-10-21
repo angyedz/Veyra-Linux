@@ -3,12 +3,19 @@
 set -eu
 [ -r /etc/veyra-release ] || exit 0
 mode=''
+serial_console=0
 # Read kernel arguments as words, not lines.
 # shellcheck disable=SC2013
 for arg in $(cat /proc/cmdline); do
-    case "$arg" in veyra.mode=tty) mode='tty' ;; veyra.mode=kde) mode='kde' ;; esac
+    case "$arg" in
+        veyra.mode=tty) mode='tty' ;;
+        veyra.mode=kde) mode='kde' ;;
+        console=ttyS*|console=hvc*) serial_console=1 ;;
+    esac
 done
-if [ -z "$mode" ] && [ -c /dev/tty1 ]; then
+# A serial console has no interactive input on tty1. Skip the timed prompt
+# there and use the normal KDE default; physical tty1 still gets the menu.
+if [ -z "$mode" ] && [ -c /dev/tty1 ] && [ "$serial_console" -eq 0 ]; then
     printf '\033[2J\033[H' > /dev/tty1
     printf 'Veyra Linux Live\n\n  1) Veyra Live KDE\n  2) Veyra Live TTY\n\nSelect [1, default KDE in 12 seconds]: ' > /dev/tty1
     choice=''

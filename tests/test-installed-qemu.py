@@ -24,11 +24,11 @@ def install_script(desktop, firmware="bios"):
     if firmware not in {"bios", "uefi"}:
         raise ValueError("Invalid firmware")
     service_check = (
-        'test ! -e "$target/etc/runlevels/default/sddm" && '
-        'test ! -e "$target/etc/runlevels/default/gdm" && '
-        'test ! -e "$target/etc/runlevels/default/lightdm"'
+        'for service in sddm gdm lightdm; do '
+        'if chroot "$target" test -e "/etc/runlevels/default/$service"; then exit 1; fi; '
+        'done'
         if desktop == "minimal" else
-        'test -e "$target/etc/runlevels/default/SERVICE"'
+        'chroot "$target" test -e "/etc/runlevels/default/SERVICE"'
     )
     if firmware == "uefi":
         disk_setup = """parted -s "$disk" mklabel gpt
@@ -105,6 +105,8 @@ echo 'root:veyra-test' | chroot "$target" chpasswd
 chroot "$target" adduser -D -s /bin/ash e2euser
 echo 'e2euser:veyra-test' | chroot "$target" chpasswd
 if [ "DESKTOP" = plasma ]; then
+    chroot "$target" test -x /etc/init.d/veyra-x11-sockets
+    chroot "$target" test -e /etc/runlevels/default/veyra-x11-sockets
     test -s "$target/home/e2euser/.config/kwinrc"
     test -s "$target/home/e2euser/.config/autostart/veyra-plasma-watchdog.desktop"
     grep -q '^Enabled=false$' "$target/home/e2euser/.config/kwinrc"
@@ -346,6 +348,11 @@ def main():
                     run_command(child, "test -d /sys/firmware/efi", 30)
                     run_command(child, "test -s /boot/efi/EFI/BOOT/BOOTX64.EFI", 30)
                 if args.desktop == "plasma":
+                    run_command(
+                        child,
+                        'test -d /tmp/.X11-unix && test "$(stat -c %a /tmp/.X11-unix)" -eq 1777',
+                        30,
+                    )
                     run_command(
                         child,
                         "found=0; for i in $(seq 1 45); do if ps -ef | grep -Eq '[k]win_(wayland|x11)' && ps -ef | grep -q '[p]lasmashell'; then found=1; break; fi; sleep 2; done; if test \"$found\" = 1; then echo 'Installed Plasma compositor and shell are running'; else echo 'Installed Plasma compositor or shell did not start'; cat /home/e2euser/.local/share/sddm/wayland-session.log 2>&1 || true; ps -ef | grep -E 'sddm|kwin|plasma|startplasma' || true; false; fi",

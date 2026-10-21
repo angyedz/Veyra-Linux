@@ -107,6 +107,7 @@ elif [ "${VEYRA_REQUIRE_GLENV_MANAGER:-0}" = 1 ]; then
 fi
 cp "$root/images/veyra-live.initd" etc/init.d/veyra-live
 cp "$root/images/veyra-live-mode.initd" etc/init.d/veyra-live-mode
+cp "$root/images/veyra-x11-sockets.initd" etc/init.d/veyra-x11-sockets
 cp "$root/images/veyra-live-mode.sh" usr/local/lib/veyra/live-mode.sh
 cp "$root/images/veyra-tui-install.sh" usr/local/lib/veyra/tui-install.sh
 cp "$root/images/veyra-live-user.sh" usr/local/lib/veyra/live-user.sh
@@ -125,7 +126,7 @@ cp "$root/calamares/modules/"*.conf etc/calamares/modules/
 cp "$root/calamares/branding/veyra/branding.desc" etc/calamares/branding/veyra/branding.desc
 cp "$root/calamares/branding/veyra/show.qml" etc/calamares/branding/veyra/show.qml
 chmod 755 etc/init.d/veyra-live etc/init.d/veyra-live-mode \
-    usr/local/lib/veyra/live-user.sh usr/local/lib/veyra/live-mode.sh \
+    etc/init.d/veyra-x11-sockets usr/local/lib/veyra/live-user.sh usr/local/lib/veyra/live-mode.sh \
     usr/local/lib/veyra/tui-install.sh usr/local/lib/veyra/plasma-watchdog.sh \
     usr/local/bin/veyra-install usr/local/bin/veyra-install-tui \
     usr/local/lib/veyra/installer-copy.sh usr/local/lib/veyra/installer-prepare.sh \

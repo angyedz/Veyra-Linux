@@ -1,0 +1,14 @@
+#!/sbin/openrc-run
+description="Prepare the X11 socket directory for Xwayland"
+
+depend() {
+    need localmount
+    before sddm
+}
+
+start() {
+    ebegin "Preparing Xwayland socket directory"
+    mkdir -p /tmp/.X11-unix || eend $? "Cannot create /tmp/.X11-unix"
+    chmod 1777 /tmp /tmp/.X11-unix || eend $? "Cannot set X11 socket directory permissions"
+    eend 0
+}
