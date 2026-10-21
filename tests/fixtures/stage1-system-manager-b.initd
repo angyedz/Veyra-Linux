@@ -1,0 +1,68 @@
+#!/sbin/openrc-run
+# Disposable QEMU fixture: production Veyra does not install this service yet.
+description="Veyra Stage 1 test user-environment manager for bob"
+command="/host-supervisor"
+command_args="serve /mnt/veyra-user-b"
+command_background=true
+pidfile="/run/veyra-user-manager-b.pid"
+
+depend() {
+    need veyra-stage1-user-provision
+}
+
+start_pre() {
+    [ -d /mnt/veyra-user-b ] &&
+        [ ! -L /mnt/veyra-user-b ] &&
+        [ -f /mnt/veyra-user-b/.veyra-stage1-rootfs ] &&
+        [ "$(/bin/busybox cat /mnt/veyra-user-b/.veyra-stage1-account)" = bob ]
+}
+
+start_post() {
+    local attempt=0 start_result count actual manager_status account_state
+    while [ "$attempt" -lt 15 ]; do
+        manager_status=$(/host-supervisor status 2>/dev/null || :)
+        if [ "$manager_status" = "STOPPED" ]; then
+            break
+        fi
+        attempt=$((attempt + 1))
+        sleep 1
+    done
+    if [ "$manager_status" != "STOPPED" ]; then
+        eerror "system-side manager for bob did not enter STOPPED state"
+        return 1
+    fi
+    echo "VEYRA_STAGE1_SYSTEM_OPENRC_MANAGER_BOB_READY"
+    if start_result=$(/host-supervisor start 2>&1); then
+        :
+    else
+        start_status=$?
+        eerror "system-side manager could not start bob's environment: $start_result"
+        return "$start_status"
+    fi
+    case "$start_result" in
+        RUNNING\ pid=*\ count=*) ;;
+        *) eerror "unexpected bob environment start result: $start_result"; return 1 ;;
+    esac
+    count=${start_result##*count=}
+    case "$count" in
+        ''|*[!0-9]*) eerror "invalid bob boot count: $count"; return 1 ;;
+    esac
+    attempt=0
+    while [ "$attempt" -lt 15 ]; do
+        actual=$(/bin/busybox cat /mnt/veyra-user-b/home/veyrauser/.veyra-stage1-autologin 2>/dev/null || :)
+        account_state=$(/bin/busybox cat /mnt/veyra-user-b/home/veyrauser/.veyra-stage1-user-state 2>/dev/null || :)
+        if [ "$actual" = "uid=1000 count=$count" ] &&
+           [ "$account_state" = "account=bob count=$count" ]; then
+            echo "VEYRA_STAGE1_SYSTEM_OPENRC_AUTOLOGIN_READY account=bob uid=1000 count=$count"
+            return 0
+        fi
+        attempt=$((attempt + 1))
+        sleep 1
+    done
+    eerror "bob's user environment did not auto-login as inner UID 1000"
+    return 1
+}
+
+stop_pre() {
+    /host-supervisor stop >/dev/null 2>&1 || :
+}
