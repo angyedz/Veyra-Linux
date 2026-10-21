@@ -44,6 +44,14 @@ func TestAtomicModeRequiresEngineEvenForQueries(t *testing.T){
  }
 }
 
+func TestAtomicAutomaticSearchRequiresNativeEngine(t *testing.T) {
+ useTestMode(t,"atomic-v1")
+ t.Setenv("PATH",t.TempDir())
+ if err:=dispatch("search","auto",[]string{"plasma"});err==nil ||
+    !strings.Contains(err.Error(),"requires native vpkg-engine") {
+  t.Fatalf("automatic search fell back to upstream APK: %v",err)
+ }
+}
 func TestAtomicModeRejectsUnknownPolicy(t *testing.T){
  useTestMode(t,"unknown")
  if err:=dispatch("update","alpine",nil);err==nil{

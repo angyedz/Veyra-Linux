@@ -21,6 +21,34 @@ Calamares/TUI installation or A/B boot process.
 The system and user environments share one Linux kernel. A/B changes the
 system deployment, not the persistent user environment.
 
+## Per-account environment provisioning
+
+Each ordinary Veyra account must receive its **own persistent user rootfs and
+package/service state**. Two accounts must never share a writable user root,
+OpenRC state, package database, session bus, or mutable application state.
+The account's numeric identity maps to a reserved, non-overlapping host UID/GID
+range; inner root and inner users remain unprivileged in the initial namespace.
+
+A trusted **system-side provisioner** creates and validates the environment
+idempotently when an account is created (or, as a recovery-safe fallback,
+before that account's first login). It allocates that account's storage,
+installs the approved base rootfs, initializes its private OpenRC state and
+user account, applies ownership/mapping policy, then marks provisioning
+complete only after checksums/layout/readiness checks pass. Login must wait for
+provisioning to succeed; failures go to system logs/recovery and must not fall
+back to a host shell or a different user's rootfs. Removal/rebuild is an
+explicit system-authorized operation; deleting an account must not silently
+delete its persistent data. Migration, quotas, backup and /home retention
+policy must be defined before release.
+
+Normal login selects the environment by the authenticated account identity,
+starts only that account's supervised PID 1/session, and enters it directly.
+Concurrent accounts use separate roots and namespace instances. The shared
+system KDE runtime remains read-only and version-paired, while per-user
+configuration, session services, app installs and document data stay in that
+account's environment. No per-user provisioner or automatic-login/session
+routing is implemented yet.
+
 **Resilience design (2026-10-20, not implemented):** a system OpenRC-owned [Veyra Guardian](VEYRA-RESILIENCE.md) must detect user-init/Plasma failures without depending on the user rootfs. A system-owned TTY and independently bootable [VRE](VEYRA-RECOVERY.md) provide fallback. [SnapCore](VEYRA-SNAPCORE.md) is a proposed block-level CoW user snapshot layer below ext4/XFS/F2FS, **not** directory copies or a Btrfs/LVM requirement. User-root and `/home` must be separately restorable; system A/B rollback must not implicitly touch them.
 
 ## Privileges

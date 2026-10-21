@@ -1,7 +1,7 @@
 # Veyra Linux development roadmap
 
-**Last reviewed:** 2026-10-20  
-**Status:** engineering plan, not a claim that any unfinished component ships.  
+**Last reviewed:** 2026-10-20
+**Status:** engineering plan, not a claim that any unfinished component ships.
 **Target:** an installed KDE-only, filesystem-neutral, atomic Veyra with **two independently administered Linux environments on one kernel**, plus separately bootable Recovery.
 
 This plan is ordered by **dependencies and acceptance gates**, not by calendar estimates.
@@ -301,4 +301,3 @@ environment must not prevent the system's maintenance/recovery path. Before adve
 
 No checklist item may be marked complete solely because a script or a
 GitHub Actions workflow exists; attach actual test evidence.
-

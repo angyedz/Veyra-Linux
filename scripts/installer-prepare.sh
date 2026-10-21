@@ -13,10 +13,13 @@ mountpoint -q "$target" || { echo 'Target must be mounted' >&2; exit 1; }
 for d in dev proc sys run tmp media mnt boot/efi; do
     mkdir -p "$target/$d"
 done
+chmod 1777 "$target/tmp"
 
 # Avoid live-user autologin and boot initialization on the installed system.
 rm -f "$target/etc/sddm.conf.d/10-veyra-live.conf"
 rm -f "$target/etc/sudoers.d/veyra-live"
+rm -f "$target/etc/polkit-1/rules.d/49-veyra-live.rules"
+rm -f "$target/etc/firefox/policies/policies.json"
 rm -f "$target/etc/runlevels/boot/veyra-live"
 rm -f "$target/etc/runlevels/boot/veyra-live-mode" "$target/etc/runlevels/default/veyra-live-mode"
 rm -f "$target/etc/veyra-release"
@@ -28,6 +31,8 @@ rm -f "$target/etc/runlevels/sysinit/modloop" "$target/etc/runlevels/boot/modloo
 rm -f "$target/usr/share/applications/veyra-install.desktop"
 rm -f "$target/usr/share/applications/veyra-testdisk.desktop" "$target/usr/share/applications/veyra-photorec.desktop"
 rm -f "$target/etc/skel/Desktop/Install Veyra Linux.desktop"
+rm -f "$target/etc/skel/Desktop/Install Veyra Linux Text.desktop"
+rm -f "$target/usr/share/applications/veyra-install-tui.desktop"
 rm -rf "$target/home/veyra"
 if [ -e "$target/etc/passwd" ]; then
     chroot "$target" deluser veyra 2>/dev/null || true

@@ -19,6 +19,12 @@ strings:
   supportUrl: https://github.com/angyedz/Veyra-Linux/issues
   knownIssuesUrl: https://github.com/angyedz/Veyra-Linux/issues
   releaseNotesUrl: https://github.com/angyedz/Veyra-Linux
+slideshow: "show.qml"
+slideshowAPI: 2
+images:
+  productLogo: "veyra-logo.png"
+  productIcon: "veyra-logo.png"
+  productWelcome: "desktop-plasma.svg"
 style:
   SidebarBackground: "#111827"
   SidebarText: "#E5E7EB"

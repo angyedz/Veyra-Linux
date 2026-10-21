@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Validate Veyra's Calamares integration before risking a real disk."""
+import ast
+import re
 from pathlib import Path
 import yaml
 
@@ -16,23 +18,70 @@ for file in configs:
 with (root / "calamares/settings.conf").open(encoding="utf-8") as stream:
     settings = yaml.safe_load(stream)
 assert settings["branding"] == "veyra"
+with (root / "calamares/branding/veyra/branding.desc").open(encoding="utf-8") as stream:
+    branding = yaml.safe_load(stream)
+assert branding["slideshow"] == "show.qml"
+assert branding["slideshowAPI"] == 2
+assert (root / "calamares/branding/veyra/show.qml").is_file()
+assert (root / "calamares/branding/veyra" / branding["images"]["productLogo"]).is_file()
 instances = {instance["id"]: instance for instance in settings["instances"]}
-assert instances["desktop"]["module"] == "packagechooser"
-assert instances["desktop"]["config"] == "packagechooser-desktop.conf"
-with (root / "calamares/modules/packagechooser-desktop.conf").open(encoding="utf-8") as stream:
-    chooser = yaml.safe_load(stream)
-assert chooser["mode"] == "required"
-assert chooser["method"] == "legacy"
-assert chooser["default"] == "plasma"
-assert [item["id"] for item in chooser["items"]] == ["plasma", "gnome", "xfce", "lxqt"]
-for item in chooser["items"]:
-    assert Path(item["screenshot"].removeprefix("/etc/")).name
-    assert (root / f"calamares/branding/veyra/desktop-{item['id']}.svg").exists()
+assert "desktop" not in instances
+
+# Keep the real-disk QEMU install runner selectable for every Calamares option.
+qemu_source = (root / "tests/test-installed-qemu.py").read_text(encoding="utf-8")
+qemu_tree = ast.parse(qemu_source)
+desktop_argument = next(
+    node for node in ast.walk(qemu_tree)
+    if isinstance(node, ast.Call)
+    and isinstance(node.func, ast.Attribute)
+    and node.func.attr == "add_argument"
+    and node.args
+    and isinstance(node.args[0], ast.Constant)
+    and node.args[0].value == "--desktop"
+)
+desktop_choices = next(
+    ast.literal_eval(keyword.value)
+    for keyword in desktop_argument.keywords
+    if keyword.arg == "choices"
+)
+assert desktop_choices == ["plasma", "gnome", "xfce", "lxqt", "minimal"]
+workflow = yaml.safe_load((root / ".github/workflows/iso.yml").read_text(encoding="utf-8"))
+install_matrix = workflow["jobs"]["install-e2e"]["strategy"]["matrix"]
+assert install_matrix["desktop"] == desktop_choices
+assert install_matrix["firmware"] == ["bios"]
+assert {(item["desktop"], item["firmware"]) for item in install_matrix["include"]} == {
+    ("plasma", "uefi"), ("minimal", "uefi")
+}
+firmware_argument = next(
+    node for node in ast.walk(qemu_tree)
+    if isinstance(node, ast.Call)
+    and isinstance(node.func, ast.Attribute)
+    and node.func.attr == "add_argument"
+    and node.args
+    and isinstance(node.args[0], ast.Constant)
+    and node.args[0].value == "--firmware"
+)
+firmware_choices = next(
+    ast.literal_eval(keyword.value)
+    for keyword in firmware_argument.keywords
+    if keyword.arg == "choices"
+)
+assert firmware_choices == ["bios", "uefi"]
+
+with (root / "calamares/modules/services-openrc.conf").open(encoding="utf-8") as stream:
+    openrc = yaml.safe_load(stream)
+service_entries = {entry["name"]: entry for entry in openrc["services"]}
+for name in ("dbus", "elogind", "networkmanager"):
+    assert service_entries[name]["mandatory"] is True
+assert "nix-daemon" in service_entries
+service_loops = re.findall(r"for service in ([a-z0-9 -]+); do", qemu_source)
+assert set(service_entries) in [set(loop.split()) for loop in service_loops]
+assert r"[A-Za-z0-9_.()-]+ )?login:" in qemu_source
 
 seq = settings["sequence"]
 assert any("show" in step for step in seq)
 show_modules = next(step["show"] for step in seq if "show" in step)
-assert show_modules.index("packagechooser@desktop") < show_modules.index("partition")
+assert "packagechooser@desktop" not in show_modules
 exec_modules = next(step["exec"] for step in seq if "exec" in step)
 for name in ("partition", "mount", "shellprocess@copy", "shellprocess@prepare",
              "shellprocess@desktop-install", "shellprocess@hardware",
@@ -55,8 +104,9 @@ for name in ("copy", "prepare", "desktop", "hardware"):
         conf = yaml.safe_load(stream)
     assert conf["dontChroot"] is True
     assert conf["script"]
-assert "gs[packagechooser_desktop]" in str(
-    yaml.safe_load((root / "calamares/modules/shellprocess-desktop.conf").read_text())
-)
+desktop_script = yaml.safe_load(
+    (root / "calamares/modules/shellprocess-desktop.conf").read_text(encoding="utf-8")
+)["script"]
+assert any("installer-desktop.sh ${ROOT} plasma" in command for command in desktop_script)
 
 print("Calamares config validation passed.")
