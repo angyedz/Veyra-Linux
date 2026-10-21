@@ -304,7 +304,7 @@ Parallel tracks are intentional; avoid turning prototypes on in the normal boot 
 ## Immediate execution order
 
 1. **Stage 0 prototype complete and merged**: PR #8 QEMU/static gates verified; continue its unfinished threat-model work under Stage 2.
-2. **Stage 1 QEMU baseline merged**: PRs #9–13. Open PR #17 tests system OpenRC autostart and serial login; draft PRs #18, #24, #25 and #26 add two-root boot, generic root provisioning, named login and manifest-to-authentication proofs. **Next** design and implement production credential enrollment and the installed OpenRC-owned service, then integrate graphical login, finalize persistent roots and personal data outside A/B, and add trusted cleanup.
+2. **Stage 1 QEMU baseline merged**: PRs #9–13. Open PR #17 tests system OpenRC autostart and serial login; draft PRs #18, #24, #25 and #26 add two-root boot, generic root provisioning, named login and manifest-to-authentication proofs. **Next** implement the proposed [production account and login contract](STAGE1-LOGIN-DESIGN.md): credential enrollment and the installed OpenRC-owned session manager, then integrate graphical login, finalize persistent roots and personal data outside A/B, and add trusted cleanup. This design does not enable the feature or change the legacy installer.
 3. **In parallel Stage 1S:** prototype SnapCore genuine block-level CoW with crash-consistent mapping roots, power-cut tests and independent root vs `/home` recovery; preserve system A/B's snapshot-free contract.
 4. Stage 2: adversarially prove the production inner `sudo` cannot escape or control host kernel/devices/boot/network/services; extend inherited-FD/cgroup/LSM audits.
 5. Stage 3: controlled user internet and VPN while host network stays independent.

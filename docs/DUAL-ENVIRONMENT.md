@@ -68,6 +68,10 @@ offer this root handoff. This is a planned feature, not current behavior; the
 authentication mechanism, secure console/UI handoff and threat model require
 design review and adversarial QEMU tests before enablement.
 
+For the production account, password and session ownership contract, see
+[Stage 1 account and login design](STAGE1-LOGIN-DESIGN.md). It is also design
+only; the installed image still uses its legacy single-environment login.
+
 ## Networking and VPN
 
 The host owns physical Wi-Fi/Ethernet and its routing, DNS and firewall.
