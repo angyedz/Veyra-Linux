@@ -3,7 +3,7 @@
 set -eu
 out=${1:-/out}
 apk add --no-cache linux-lts mkinitfs e2fsprogs cpio gzip build-base \
-    git autoconf automake libtool pkgconf g++ liburing-dev util-linux
+    git autoconf automake libtool pkgconf g++ liburing-dev linux-headers util-linux
 apk add --no-cache alpine-base openrc
 kernel=$(basename "$(find /lib/modules -mindepth 1 -maxdepth 1 -type d -print -quit)")
 test -n "$kernel"
