@@ -32,8 +32,10 @@ sed -i 's@^#include <linux/prctl.h>$@@' "$ublksrv_src/lib/ublksrv.c"
     # upstream demos include glibc-only <error.h> and are not runtime inputs.
     make -j2 ublk ublk.loop
     make -C lib install
-    install -D -m 0755 ublk /usr/sbin/ublk
-    install -D -m 0755 ublk.loop /usr/sbin/ublk.loop
+    mkdir -p /usr/sbin
+    cp ublk /usr/sbin/ublk
+    cp ublk.loop /usr/sbin/ublk.loop
+    chmod 0755 /usr/sbin/ublk /usr/sbin/ublk.loop
 )
 test -x /usr/sbin/ublk
 test -x /usr/sbin/ublk.loop
