@@ -330,6 +330,17 @@ per-account root provisioning, password-authenticated test login, persistence,
 and the separate A/B rollback protocol; they do not yet compose into an installed
 Dual Environment system.
 
+**Account-registry progress (2026-10-21):** draft
+[veyra-pkgrepo PR #3](https://github.com/angyedz/veyra-pkgrepo/pull/3) adds a
+system-side account-to-range registry primitive. Its package tests and the
+repository package build both pass ([registry/package CI](https://github.com/angyedz/veyra-pkgrepo/actions/runs/39653527285),
+[source checks](https://github.com/angyedz/veyra-pkgrepo/actions/runs/39653527315)).
+`veyra-pkgrepo` is the canonical source for both system and user APK packages;
+the registry is one system-side package within that mixed repository. It only
+reserves identity ranges and checks enrollment eligibility: it does not yet
+provision installed user roots, homes, sessions, or login. PR #3 remains draft
+pending independent review, so this does not change the integrated Alpha count.
+
 The remaining integration blocks are production account enrollment and the
 system OpenRC/session manager; persistent per-user roots and `/home` outside
 system A/B; the system KDE to user Plasma/KRunner session path and a confined
