@@ -29,7 +29,7 @@ permissions:
 
 jobs:
   separate-user-openrc:
-    name: Supervised lifecycle and persistent rootfs over two QEMU boots
+    name: System OpenRC autostart, user serial login and persistent rootfs over two QEMU boots
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:

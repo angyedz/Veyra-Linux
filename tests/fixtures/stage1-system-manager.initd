@@ -13,16 +13,34 @@ start_pre() {
 }
 
 start_post() {
-    local attempt=0
+    local attempt=0 start_result count actual
+    if [ "$(/host-supervisor status 2>/dev/null)" != "STOPPED" ]; then
+        eerror "system-side manager did not enter STOPPED state"
+        return 1
+    fi
+    echo "VEYRA_STAGE1_SYSTEM_OPENRC_MANAGER_READY"
+    start_result=$(/host-supervisor start) || {
+        eerror "system-side manager could not start the user environment"
+        return 1
+    }
+    case "$start_result" in
+        RUNNING\ pid=*\ count=*) ;;
+        *) eerror "unexpected user-environment start result: $start_result"; return 1 ;;
+    esac
+    count=${start_result##*count=}
+    case "$count" in
+        ''|*[!0-9]*) eerror "invalid user-environment boot count: $count"; return 1 ;;
+    esac
     while [ "$attempt" -lt 15 ]; do
-        if [ "$(/host-supervisor status 2>/dev/null)" = "STOPPED" ]; then
-            echo "VEYRA_STAGE1_SYSTEM_OPENRC_MANAGER_READY"
+        actual=$(cat /mnt/veyra-user/home/veyrauser/.veyra-stage1-autologin 2>/dev/null || :)
+        if [ "$actual" = "uid=1000 count=$count" ]; then
+            echo "VEYRA_STAGE1_SYSTEM_OPENRC_AUTOLOGIN_READY uid=1000 count=$count"
             return 0
         fi
         attempt=$((attempt + 1))
         sleep 1
     done
-    eerror "system-side manager did not become ready"
+    eerror "user environment did not autologin as UID 1000"
     return 1
 }
 

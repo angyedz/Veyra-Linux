@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Exercise a system-side user-environment manager in two QEMU boots.
 
-Each boot validates hostile rootfs metadata, starts/statuses/stops the nested
-init, restarts it, then tests both nested PID 1 crash detection and cleanup
-after killing the system-side manager. The same persistent ext4 disk is
-reused; this is a disposable prototype test only.
+The system OpenRC default runlevel starts the manager and user environment;
+a test-only serial getty autologs in as inner UID 1000. Each boot then checks
+hostile rootfs metadata, manager lifecycle, PID 1 crash cleanup, and rootfs
+persistence. The same ext4 disk is reused; this is a disposable prototype test only.
 """
 import argparse
 import pathlib
@@ -15,9 +15,11 @@ import pexpect
 
 
 def guest_boot(qemu, kernel, initramfs, user_disk, qemu_boot, logfile):
-    first_count = (qemu_boot - 1) * 3 + 1
-    second_count = first_count + 1
-    final_count = qemu_boot * 3
+    auto_count = (qemu_boot - 1) * 5 + 1
+    first_count = auto_count + 1
+    second_count = auto_count + 2
+    final_count = auto_count + 3
+    recovery_count = qemu_boot * 5
     cmd = [
         "-machine", "q35,accel=tcg", "-m", "768", "-smp", "2",
         "-nodefaults", "-nographic", "-no-reboot",
@@ -32,6 +34,7 @@ def guest_boot(qemu, kernel, initramfs, user_disk, qemu_boot, logfile):
     try:
         patterns = [
             b"VEYRA_STAGE1_SYSTEM_OPENRC_MANAGER_READY",
+            f"VEYRA_STAGE1_AUTOLOGIN_PASS uid=1000 count={auto_count}".encode(),
             b"VEYRA_STAGE1_ROOTFS_INODE_GUARD_PASS",
             b"VEYRA_STAGE1_ROOTFS_FD_BIND_SWAP_PASS",
             b"VEYRA_STAGE1_FD_SANITIZATION_PASS",
@@ -54,7 +57,7 @@ def guest_boot(qemu, kernel, initramfs, user_disk, qemu_boot, logfile):
             f"VEYRA_STAGE1_USER_OPENRC_READY count={final_count}".encode(),
             f"VEYRA_STAGE1_AUTOLOGIN_PASS uid=1000 count={final_count}".encode(),
             f"VEYRA_STAGE1_MANAGER_DEATH_CLEANUP_PASS boot={qemu_boot} count={final_count} environment=stopped".encode(),
-            b"VEYRA_STAGE1_MANAGER_RECOVERY_PASS state=STOPPED stale-socket=cleared",
+            f"VEYRA_STAGE1_MANAGER_RECOVERY_PASS state=RUNNING autologin-count={recovery_count} stale-socket=cleared".encode(),
             f"VEYRA_STAGE1_QEMU_SUCCESS: user environment lifecycle and persistence boot {qemu_boot}".encode(),
             b"VEYRA_STAGE1_FAILURE:",
             b"Kernel panic",
@@ -96,7 +99,7 @@ def main():
             guest_boot(qemu, args.kernel, args.initramfs, args.user_disk,
                        qemu_boot, logfile)
             print(f"VEYRA_STAGE1_QEMU_BOOT_{qemu_boot}_PASS", flush=True)
-    print("VEYRA_STAGE1_LIFECYCLE_AND_PERSISTENCE_PASS: counts 3 then 6 including manager-death cleanup")
+    print("VEYRA_STAGE1_LIFECYCLE_AND_PERSISTENCE_PASS: counts 5 then 10 including OpenRC autostart and recovery")
     print("NOTE: guest-only sudo fixture and manager; not installed Veyra security validation")
 
 

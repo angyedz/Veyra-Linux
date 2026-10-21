@@ -66,14 +66,23 @@ trap cleanup EXIT INT TERM
 /sbin/openrc boot || fail 'system OpenRC boot failed'
 /sbin/openrc default || fail 'system OpenRC default runlevel failed'
 manager_status=$(/host-supervisor status 2>/dev/null || :)
-if [ "$manager_status" != "STOPPED" ]; then
-    fail "system OpenRC manager did not start cleanly: $manager_status"
-fi
+case "$manager_status" in
+    RUNNING\ pid=*\ count=*) ;;
+    *) fail "system OpenRC did not auto-start the user environment: $manager_status" ;;
+esac
+boot_login_count=$(((expected - 1) * 5 + 1))
+case "$manager_status" in
+    *"count=$boot_login_count") ;;
+    *) fail "system OpenRC boot count did not match persistent login state: $manager_status" ;;
+esac
+verify_autologin "$boot_login_count"
 manager_pid=$(/bin/busybox cat /run/veyra-user-manager.pid 2>/dev/null || :)
 case "$manager_pid" in
     ''|*[!0-9]*) fail "system OpenRC did not write a valid manager pidfile: $manager_pid" ;;
 esac
-echo "VEYRA_STAGE1_SYSTEM_OPENRC_STARTED pid=$manager_pid"
+echo "VEYRA_STAGE1_SYSTEM_OPENRC_STARTED pid=$manager_pid count=$boot_login_count"
+stopped=$(/host-supervisor stop)
+if [ "$stopped" != "STOPPED" ]; then fail "could not stop system-OpenRC autostarted environment: $stopped"; fi
 
 
 /host-supervisor test-inode-guard || fail 'rootfs inode identity guard self-test failed'
@@ -162,7 +171,7 @@ echo 'VEYRA_STAGE1_ROOTFS_REJECT_INIT_ESCAPE'
 
 first=$(/host-supervisor start)
 case "$first" in RUNNING\ pid=*\ count=*) ;; *) fail "first start failed: $first" ;; esac
-verify_autologin "$(( (expected - 1) * 3 + 1 ))"
+verify_autologin "$(( (expected - 1) * 5 + 2 ))"
 echo "VEYRA_STAGE1_FIRST_RUNNING $first"
 status=$(/host-supervisor status)
 if [ "$status" != "$first" ]; then fail "status disagreed with running start: $status"; fi
@@ -177,11 +186,11 @@ second=$(/host-supervisor start)
 case "$second" in RUNNING\ pid=*\ count=*) ;; *) fail "restart failed: $second" ;; esac
 user_pid=$(/bin/busybox printf '%s\n' "$second" | /bin/busybox cut -d' ' -f2 | /bin/busybox cut -d= -f2)
 second_count=$(/bin/busybox printf '%s\n' "$second" | /bin/busybox cut -d' ' -f3 | /bin/busybox cut -d= -f2)
-expected_count=$((expected * 3 - 1))
+expected_count=$(( (expected - 1) * 5 + 3 ))
 if [ "$second_count" -ne "$expected_count" ]; then
     fail "persistent boot counter was $second_count, expected $expected_count"
 fi
-verify_autologin "$(( (expected - 1) * 3 + 2 ))"
+verify_autologin "$(( (expected - 1) * 5 + 3 ))"
 /bin/busybox kill -KILL "$user_pid"
 crash_seen=0
 for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
@@ -197,7 +206,7 @@ third=$(/host-supervisor start)
 case "$third" in RUNNING\ pid=*\ count=*) ;; *) fail "third start failed: $third" ;; esac
 user_pid=$(/bin/busybox printf '%s\n' "$third" | /bin/busybox cut -d' ' -f2 | /bin/busybox cut -d= -f2)
 third_count=$(/bin/busybox printf '%s\n' "$third" | /bin/busybox cut -d' ' -f3 | /bin/busybox cut -d= -f2)
-expected_third_count=$((expected * 3))
+expected_third_count=$(( (expected - 1) * 5 + 4 ))
 if [ "$third_count" -ne "$expected_third_count" ]; then
     fail "manager-crash test boot counter was $third_count, expected $expected_third_count"
 fi
@@ -227,10 +236,13 @@ echo "VEYRA_STAGE1_MANAGER_DEATH_CLEANUP_PASS boot=$expected count=$third_count 
 manager_status=$(/host-supervisor status 2>/dev/null || :)
 manager_pid=$(/bin/busybox cat /run/veyra-user-manager.pid 2>/dev/null || :)
 case "$manager_pid" in ''|*[!0-9]*) fail "OpenRC restart did not write a valid manager pidfile: $manager_pid" ;; esac
-if [ "$manager_status" != "STOPPED" ]; then
-    fail "manager did not recover cleanly after crash: $manager_status"
-fi
-echo 'VEYRA_STAGE1_MANAGER_RECOVERY_PASS state=STOPPED stale-socket=cleared'
+recovery_count=$((expected * 5))
+case "$manager_status" in
+    *"count=$recovery_count") ;;
+    *) fail "OpenRC restart did not auto-start user environment: $manager_status" ;;
+esac
+verify_autologin "$recovery_count"
+echo "VEYRA_STAGE1_MANAGER_RECOVERY_PASS state=RUNNING autologin-count=$recovery_count stale-socket=cleared"
 echo "VEYRA_STAGE1_QEMU_SUCCESS: user environment lifecycle and persistence boot $expected"
 /bin/busybox sync
 /bin/busybox poweroff -f
