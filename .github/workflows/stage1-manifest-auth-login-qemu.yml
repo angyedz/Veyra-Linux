@@ -11,6 +11,7 @@ on:
       - 'tests/fixtures/stage1-user-auth-profile'
       - 'tests/fixtures/stage1-user-openrc.initd'
       - 'tests/fixtures/stage1-user-provision.initd'
+      - 'tests/fixtures/stage1-user-manifest-auth-provision.initd'
       - 'tests/fixtures/stage1-user-manifest-auth-*.initd'
       - 'tests/stage1-user-supervisor.c'
       - 'tests/test-stage1-provisioned-auth-login-qemu.py'
@@ -127,23 +128,23 @@ jobs:
                 /out/systemroot/usr/local/sbin/veyra-stage1-user-provision
               chmod 0755 /out/systemroot/usr/local/sbin/veyra-stage1-user-provision
               cp /out/host-supervisor /out/systemroot/host-supervisor
-              cp /work/tests/fixtures/stage1-user-provision.initd \
-                /out/systemroot/etc/init.d/veyra-stage1-user-provision
+              cp /work/tests/fixtures/stage1-user-manifest-auth-provision.initd \
+                /out/systemroot/etc/init.d/veyra-stage1-user-manifest-auth-provision
               cp /work/tests/fixtures/stage1-user-manifest-auth-setup.initd \
                 /out/systemroot/etc/init.d/veyra-stage1-user-manifest-auth-setup
               cp /work/tests/fixtures/stage1-user-manifest-auth-manager.initd \
                 /out/systemroot/etc/init.d/veyra-stage1-manifest-auth-manager
               cp /work/tests/fixtures/stage1-user-manifest-auth-qa.initd \
                 /out/systemroot/etc/init.d/veyra-stage1-manifest-auth-qa
-              chmod 0755 /out/systemroot/etc/init.d/veyra-stage1-user-provision \
+              chmod 0755 /out/systemroot/etc/init.d/veyra-stage1-user-manifest-auth-provision \
                 /out/systemroot/etc/init.d/veyra-stage1-user-manifest-auth-setup \
                 /out/systemroot/etc/init.d/veyra-stage1-manifest-auth-manager \
                 /out/systemroot/etc/init.d/veyra-stage1-manifest-auth-qa
               cp /work/tests/fixtures/stage1-user-accounts.conf \
                 /out/systemroot/etc/veyra/stage1-user-accounts
               chmod 0644 /out/systemroot/etc/veyra/stage1-user-accounts
-              ln -s /etc/init.d/veyra-stage1-user-provision \
-                /out/systemroot/etc/runlevels/default/veyra-stage1-user-provision
+              ln -s /etc/init.d/veyra-stage1-user-manifest-auth-provision \
+                /out/systemroot/etc/runlevels/default/veyra-stage1-user-manifest-auth-provision
               ln -s /etc/init.d/veyra-stage1-user-manifest-auth-setup \
                 /out/systemroot/etc/runlevels/default/veyra-stage1-user-manifest-auth-setup
               ln -s /etc/init.d/veyra-stage1-manifest-auth-manager \

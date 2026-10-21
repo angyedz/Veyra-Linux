@@ -1,0 +1,35 @@
+#!/sbin/openrc-run
+# Test-only generic account selection for the manifest-authenticated QEMU guest.
+description="Veyra Stage 1 manifest account selector fixture"
+
+depend() {
+    before veyra-stage1-user-manifest-auth-setup
+}
+
+start() {
+    ebegin "Provisioning and selecting Eve from the system account manifest"
+    /usr/local/sbin/veyra-stage1-user-provision --select eve
+    result=$?
+    if [ "$result" -ne 0 ]; then
+        eend "$result"
+        return "$result"
+    fi
+    eve_root=/var/lib/veyra-user-store/users/eve
+    [ -d "$eve_root" ] && [ ! -L "$eve_root" ] || {
+        eerror "manifest account eve was not provisioned"
+        eend 1
+        return 1
+    }
+    [ "$(/bin/busybox cat "$eve_root/.veyra-stage1-account")" = eve ] || {
+        eerror "selected root has a mismatched account identity"
+        eend 1
+        return 1
+    }
+    [ "$(/bin/busybox stat -c '%u:%g:%a' "$eve_root")" = "300000:301000:710" ] || {
+        eerror "selected root has an unexpected mapped ID range"
+        eend 1
+        return 1
+    }
+    echo "VEYRA_STAGE1_GENERIC_ACCOUNT_SELECTED account=eve root=/mnt/veyra-user outer-uid-base=300000"
+    eend 0
+}

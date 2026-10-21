@@ -14,6 +14,22 @@ fail() {
     echo "VEYRA_STAGE1_FAILURE: user-root provisioning: $*" >&2
     exit 1
 }
+selected_account=
+if [ "$#" -gt 0 ]; then
+    if [ "$#" -ne 2 ] || [ "$1" != "--select" ]; then
+        fail "usage: $0 [--select account]"
+    fi
+    selected_account=$2
+    case "$selected_account" in
+        [a-z_]* ) ;;
+        *) fail "invalid selected account name" ;;
+    esac
+    case "$selected_account" in
+        *[!a-z0-9_-]*) fail "invalid selected account name" ;;
+    esac
+    selected_length=$(/bin/busybox printf '%s' "$selected_account" | /bin/busybox wc -c)
+    [ "$selected_length" -le 32 ] || fail "selected account name exceeds 32 bytes"
+fi
 mount_source=$(awk -v target="$store" '$2 == target { print $1; exit }' /proc/mounts)
 mount_type=$(awk -v target="$store" '$2 == target { print $3; exit }' /proc/mounts)
 if [ "$mount_source" != /dev/vdb ] || [ "$mount_type" != ext4 ]; then
@@ -102,8 +118,15 @@ while IFS=: read -r account base extra || [ -n "$account$base$extra" ]; do
         fail "system manifest exceeds the 64-account test limit"
 done < "$users_file"
 [ "$account_count" -gt 0 ] || fail "system account manifest is empty"
-case "$seen_accounts" in *" alice "*) ;; *) fail "manager fixture requires alice" ;; esac
-case "$seen_accounts" in *" bob "*) ;; *) fail "manager fixture requires bob" ;; esac
+if [ -n "$selected_account" ]; then
+    case "$seen_accounts" in
+        *" $selected_account "*) ;;
+        *) fail "selected account is not present in the system manifest" ;;
+    esac
+else
+    case "$seen_accounts" in *" alice "*) ;; *) fail "default manager fixture requires alice" ;; esac
+    case "$seen_accounts" in *" bob "*) ;; *) fail "default manager fixture requires bob" ;; esac
+fi
 
 for entry in "$users"/*; do
     [ -e "$entry" ] || [ -L "$entry" ] || continue
@@ -180,6 +203,11 @@ bind_root() {
             fail "cannot mount persistent account root at $target"
     fi
 }
-bind_root "$users/alice" "$root_a" /users/alice
-bind_root "$users/bob" "$root_b" /users/bob
-echo "VEYRA_STAGE1_USER_ROOTS_READY alice=$root_a bob=$root_b distinct-id-ranges=1"
+if [ -n "$selected_account" ]; then
+    bind_root "$users/$selected_account" "$root_a" "/users/$selected_account"
+    echo "VEYRA_STAGE1_USER_ROOT_READY account=$selected_account root=$root_a"
+else
+    bind_root "$users/alice" "$root_a" /users/alice
+    bind_root "$users/bob" "$root_b" /users/bob
+    echo "VEYRA_STAGE1_USER_ROOTS_READY alice=$root_a bob=$root_b distinct-id-ranges=1"
+fi

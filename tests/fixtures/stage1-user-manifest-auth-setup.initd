@@ -3,7 +3,7 @@
 description="Veyra Stage 1 manifest account authentication fixture"
 
 depend() {
-    need veyra-stage1-user-provision
+    need veyra-stage1-user-manifest-auth-provision
     before veyra-stage1-manifest-auth-manager
 }
 
@@ -61,16 +61,11 @@ start() {
     /bin/busybox chmod 0640 "$eve_root/etc/shadow"
     /bin/busybox chmod 0440 "$eve_root/etc/sudoers.d/eve"
 
-    if /bin/busybox awk '$5 == "/mnt/veyra-user" { found=1 } END { exit !found }' /proc/self/mountinfo; then
-        eerror "the account root mountpoint is already occupied"
+    if ! /bin/busybox awk '$5 == "/mnt/veyra-user" && $4 == "/users/eve" { found=1 } END { exit !found }' /proc/self/mountinfo; then
+        eerror "generic provisioner did not select the manifest Eve root"
         eend 1
         return 1
     fi
-    /bin/busybox mount --bind "$eve_root" /mnt/veyra-user || {
-        eerror "could not bind the manifest-provisioned Eve root"
-        eend 1
-        return 1
-    }
     echo "VEYRA_STAGE1_MANIFEST_EVE_SELECTED account=eve outer-uid-base=300000"
     eend 0
 }
