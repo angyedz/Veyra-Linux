@@ -31,6 +31,7 @@
 
 #define PRIMARY_ROOT_PATH "/mnt/veyra-user"
 #define SECONDARY_ROOT_PATH "/mnt/veyra-user-b"
+#define HOME_VOLUME_PATH "/mnt/veyra-home"
 #define ALICE_STORE_ROOT "/var/lib/veyra-user-store/users/alice"
 #define BOB_STORE_ROOT "/var/lib/veyra-user-store/users/bob"
 #define RUN_DIR "/run/veyra-user-manager"
@@ -41,11 +42,13 @@
  */
 #define PIN_PARENT "/run/veyra-user-rootfs-pin"
 #define PIN_PATH PIN_PARENT "/rootfs"
+#define PIN_HOME_PATH PIN_PARENT "/home"
 #define BOOTSTRAP_PATH PIN_PARENT "/bootstrap"
 #define DEFAULT_OUTER_ROOT_UID 100000U
 #define SECONDARY_OUTER_ROOT_UID 200000U
 #define USER_NAMESPACE_ID_COUNT 65536U
 static char root_path[PATH_MAX] = PRIMARY_ROOT_PATH;
+static char home_path[PATH_MAX] = "";
 static char normal_user[33] = "veyrauser";
 
 static int valid_normal_user(const char *name) {
@@ -81,7 +84,7 @@ enum manager_state { STATE_STOPPED, STATE_STARTING, STATE_RUNNING,
                      STATE_STOPPING, STATE_FAILED };
 struct child_args {
     int ready_write, proceed_read, pid_write;
-    int root_fd;
+    int root_fd, home_fd;
     pid_t expected_parent;
 };
 struct scan_state {
@@ -270,7 +273,7 @@ static int scan_directory(int fd, const char *parent, int depth,
     closedir(dir);
     return 0;
 }
-static int check_mount_table(char *error, size_t error_size) {
+static int check_mount_table(const char *mount_path, char *error, size_t error_size) {
     FILE *mounts = fopen("/proc/self/mountinfo", "r");
     if (!mounts) {
         set_error(error, error_size, "cannot read mount table");
@@ -286,9 +289,9 @@ static int check_mount_table(char *error, size_t error_size) {
             if (!field) break;
         }
         if (!field) continue;
-        size_t root_len = strlen(root_path);
-        if (!strcmp(field, root_path)) exact++;
-        else if (!strncmp(field, root_path, root_len) && field[root_len] == '/')
+        size_t root_len = strlen(mount_path);
+        if (!strcmp(field, mount_path)) exact++;
+        else if (!strncmp(field, mount_path, root_len) && field[root_len] == '/')
             nested++;
     }
     free(line);
@@ -332,7 +335,7 @@ static int validate_rootfs(int *rootfd_out, char *error, size_t error_size) {
         set_error(error, error_size, "rootfs inode must be mapped root-owned and not group/world writable");
         return -1;
     }
-    if (check_mount_table(error, error_size) < 0) {
+    if (check_mount_table(root_path, error, error_size) < 0) {
         close(rootfd);
         return -1;
     }
@@ -374,7 +377,88 @@ static int validate_rootfs(int *rootfd_out, char *error, size_t error_size) {
         return -1;
     }
     close(sudofd);
+    if (home_path[0]) {
+        int user_home = openat(rootfd, "home",
+                               O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+        struct stat home_st;
+        if (user_home < 0 || fstat(user_home, &home_st) < 0 ||
+            home_st.st_uid != outer_root_uid || home_st.st_gid != outer_root_uid ||
+            (home_st.st_mode & 0022)) {
+            if (user_home >= 0) close(user_home);
+            close(rootfd);
+            set_error(error, error_size,
+                      "user rootfs /home mountpoint must be a mapped-root-owned directory");
+            return -1;
+        }
+        close(user_home);
+    }
     *rootfd_out = rootfd;
+    return 0;
+}
+static int validate_home(int rootfd, int *homefd_out,
+                          char *error, size_t error_size) {
+    *homefd_out = -1;
+    if (!home_path[0]) return 0;
+    struct stat path_st, parent_st, root_st, home_st;
+    struct statfs fs;
+    if (lstat(home_path, &path_st) < 0 || !S_ISDIR(path_st.st_mode)) {
+        set_error(error, error_size, "persistent home mountpoint is missing or not a directory");
+        return -1;
+    }
+    int parentfd = open("/mnt", O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    if (parentfd < 0 || fstat(parentfd, &parent_st) < 0 ||
+        fstat(rootfd, &root_st) < 0) {
+        if (parentfd >= 0) close(parentfd);
+        set_error(error, error_size, "cannot inspect persistent home mount parent");
+        return -1;
+    }
+    close(parentfd);
+    int homefd = open(home_path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    if (homefd < 0 || fstat(homefd, &home_st) < 0 || fstatfs(homefd, &fs) < 0) {
+        if (homefd >= 0) close(homefd);
+        set_error(error, error_size, "cannot open persistent home volume safely");
+        return -1;
+    }
+    if (home_st.st_dev == parent_st.st_dev || home_st.st_dev == root_st.st_dev ||
+        fs.f_type == TMPFS_MAGIC || fs.f_type == RAMFS_MAGIC) {
+        close(homefd);
+        set_error(error, error_size,
+                  "home volume is not a separate persistent filesystem from the user rootfs");
+        return -1;
+    }
+    if (home_st.st_uid != outer_root_uid || home_st.st_gid != outer_root_uid ||
+        (home_st.st_mode & 0022)) {
+        close(homefd);
+        set_error(error, error_size,
+                  "home volume inode must be mapped root-owned and not group/world writable");
+        return -1;
+    }
+    if (check_mount_table(home_path, error, error_size) < 0) {
+        close(homefd);
+        return -1;
+    }
+    struct scan_state scan = {
+        .device = home_st.st_dev, .entries = 0, .error = error,
+        .error_size = error_size,
+    };
+    if (scan_directory(homefd, "", 0, &scan) < 0) {
+        close(homefd);
+        return -1;
+    }
+    int userfd = openat(homefd, normal_user,
+                        O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    struct stat user_st;
+    if (userfd < 0 || fstat(userfd, &user_st) < 0 ||
+        !S_ISDIR(user_st.st_mode) || user_st.st_uid != outer_normal_uid ||
+        user_st.st_gid != outer_normal_uid || (user_st.st_mode & 0077)) {
+        if (userfd >= 0) close(userfd);
+        close(homefd);
+        set_error(error, error_size,
+                  "named home directory must be mapped-user-owned and private");
+        return -1;
+    }
+    close(userfd);
+    *homefd_out = homefd;
     return 0;
 }
 static int read_boot_count(int rootfd) {
@@ -391,25 +475,32 @@ static int read_boot_count(int rootfd) {
     while (*end == '\n' || *end == '\r' || *end == ' ') end++;
     return *end ? -1 : (int)value;
 }
-static int check_proofs(int rootfd, char *error, size_t error_size) {
+static int check_proofs(int rootfd, int homefd, char *error, size_t error_size) {
     struct stat st;
     char proof_path[PATH_MAX];
-    if (user_file_path(proof_path, sizeof(proof_path), "normal-user-proof", 0) < 0) {
+    int proof_root = homefd >= 0 ? homefd : rootfd;
+    int path_length = snprintf(proof_path, sizeof(proof_path),
+                               homefd >= 0 ? "%s/normal-user-proof" : "home/%s/normal-user-proof",
+                               normal_user);
+    if (path_length < 0 || path_length >= (int)sizeof(proof_path)) {
         set_error(error, error_size, "normal-user proof path is too long");
         return -1;
     }
-    int fd = open_in_root(rootfd, proof_path, O_RDONLY);
+    int fd = open_in_root(proof_root, proof_path, O_RDONLY);
     if (fd < 0 || fstat(fd, &st) < 0 || st.st_uid != outer_normal_uid) {
         if (fd >= 0) close(fd);
         set_error(error, error_size, "ordinary user write did not map to outside UID 101000");
         return -1;
     }
     close(fd);
-    if (user_file_path(proof_path, sizeof(proof_path), "inner-sudo-proof", 0) < 0) {
+    path_length = snprintf(proof_path, sizeof(proof_path),
+                           homefd >= 0 ? "%s/inner-sudo-proof" : "home/%s/inner-sudo-proof",
+                           normal_user);
+    if (path_length < 0 || path_length >= (int)sizeof(proof_path)) {
         set_error(error, error_size, "sudo proof path is too long");
         return -1;
     }
-    fd = open_in_root(rootfd, proof_path, O_RDONLY);
+    fd = open_in_root(proof_root, proof_path, O_RDONLY);
     char value[16] = {0};
     ssize_t n = fd >= 0 ? read(fd, value, sizeof(value) - 1) : -1;
     if (fd >= 0) close(fd);
@@ -417,7 +508,7 @@ static int check_proofs(int rootfd, char *error, size_t error_size) {
         set_error(error, error_size, "namespace-local sudo did not create inner UID 0 proof");
         return -1;
     }
-    fd = open_in_root(rootfd, proof_path, O_PATH);
+    fd = open_in_root(proof_root, proof_path, O_PATH);
     if (fd < 0 || fstat(fd, &st) < 0 || st.st_uid != outer_root_uid) {
         if (fd >= 0) close(fd);
         set_error(error, error_size, "namespace-local sudo escaped its mapped outside UID");
@@ -640,6 +731,7 @@ static int ensure_pin_directory(void) {
         return -1;
     }
     if (mkdir(PIN_PATH, 0700) < 0 && errno != EEXIST) return -1;
+    if (mkdir(PIN_HOME_PATH, 0700) < 0 && errno != EEXIST) return -1;
     if (mkdir(BOOTSTRAP_PATH, 0700) < 0 && errno != EEXIST) return -1;
     if (lstat(BOOTSTRAP_PATH, &st) < 0 || !S_ISDIR(st.st_mode) ||
         (st.st_uid != 0 && st.st_uid != DEFAULT_OUTER_ROOT_UID &&
@@ -682,6 +774,23 @@ static int stage_validated_rootfs(int rootfd) {
     }
     return 0;
 }
+static int stage_validated_home(int homefd) {
+    if (umount2(PIN_HOME_PATH, MNT_DETACH) < 0 && errno != EINVAL)
+        return -1;
+    struct stat st;
+    if (lstat(PIN_HOME_PATH, &st) < 0 || !S_ISDIR(st.st_mode) ||
+        st.st_uid != 0 || (st.st_mode & 07777) != 0700) {
+        errno = EPERM;
+        return -1;
+    }
+    if (bind_directory_fd(homefd, PIN_HOME_PATH) < 0) return -1;
+    if (directory_identity_matches(homefd, PIN_HOME_PATH) != 1) {
+        (void)umount2(PIN_HOME_PATH, MNT_DETACH);
+        errno = ESTALE;
+        return -1;
+    }
+    return 0;
+}
 static int test_directory_identity_guard(void) {
     if (geteuid() != 0) {
         fprintf(stderr, "rootfs inode guard test requires system-side UID 0\n");
@@ -703,7 +812,7 @@ static int test_directory_identity_guard(void) {
         return 1;
     return 0;
 }
-static void inner_pid_one(int root_fd, int ready_fd) {
+static void inner_pid_one(int root_fd, int home_fd, int ready_fd) {
     /* The launcher waits for this acknowledgment before reporting the PID.
      * If the launcher dies before this signal is armed, the pipe is closed
      * and this process exits instead of becoming an orphaned environment.
@@ -740,6 +849,20 @@ static void inner_pid_one(int root_fd, int ready_fd) {
         if (identity_matches < 0) die("inspect bound user rootfs identity");
         errno = ESTALE;
         die("bound user rootfs is not the validated directory inode");
+    }
+    if (home_fd >= 0) {
+        char home_target[PATH_MAX];
+        if (snprintf(home_target, sizeof(home_target), "%s/home", newroot)
+            >= (int)sizeof(home_target)) die("home mount target path is too long");
+        if (mount(PIN_HOME_PATH, home_target, NULL, MS_BIND, NULL) < 0)
+            die("bind trusted system-staged home volume");
+        identity_matches = directory_identity_matches(home_fd, home_target);
+        if (identity_matches != 1) {
+            if (identity_matches < 0) die("inspect bound persistent home identity");
+            errno = ESTALE;
+            die("bound home volume is not the validated directory inode");
+        }
+        close(home_fd);
     }
     close(root_fd);
     if (mkdir(oldroot, 0700) < 0 && errno != EEXIST) die("create oldroot directory");
@@ -789,7 +912,8 @@ static void inner_pid_one(int root_fd, int ready_fd) {
 }
 static void launch_user(const struct child_args *ctx) {
     const int permitted_fds[] = {
-        ctx->ready_write, ctx->proceed_read, ctx->pid_write, ctx->root_fd
+        ctx->ready_write, ctx->proceed_read, ctx->pid_write,
+        ctx->root_fd, ctx->home_fd
     };
     close_unlisted_fds(permitted_fds,
                        sizeof(permitted_fds) / sizeof(permitted_fds[0]));
@@ -823,11 +947,12 @@ static void launch_user(const struct child_args *ctx) {
     if (!pid1) {
         close(init_ready[0]);
         close(ctx->pid_write);
-        inner_pid_one(ctx->root_fd, init_ready[1]);
+        inner_pid_one(ctx->root_fd, ctx->home_fd, init_ready[1]);
         _exit(1);
     }
     close(init_ready[1]);
     close(ctx->root_fd);
+    if (ctx->home_fd >= 0) close(ctx->home_fd);
     char init_ready_signal = 0;
     if (read_one_timeout(init_ready[0], &init_ready_signal, 10000) < 0 ||
         init_ready_signal != 'D') {
@@ -981,6 +1106,11 @@ static int verify_per_user_root_isolation(char *error, size_t error_size) {
     return 0;
 }
 
+static void close_fd_pair(int first, int second) {
+    if (first >= 0) close(first);
+    if (second >= 0) close(second);
+}
+
 static int start_environment(char *response, size_t response_size) {
     reap_child();
     if (launcher_pid > 0) {
@@ -988,7 +1118,7 @@ static int start_environment(char *response, size_t response_size) {
                  (long)user_pid1, boot_count);
         return 0;
     }
-    int rootfd = -1;
+    int rootfd = -1, homefd = -1;
     char error[256] = {0};
     if (validate_rootfs(&rootfd, error, sizeof(error)) < 0) {
         snprintf(response, response_size, "ERROR rootfs: %s", error);
@@ -1000,29 +1130,37 @@ static int start_environment(char *response, size_t response_size) {
         snprintf(response, response_size, "ERROR rootfs: %s", error);
         return -1;
     }
-    if (stage_validated_rootfs(rootfd) < 0) {
+    if (validate_home(rootfd, &homefd, error, sizeof(error)) < 0) {
         close(rootfd);
+        snprintf(response, response_size, "ERROR home: %s", error);
+        return -1;
+    }
+    if (stage_validated_rootfs(rootfd) < 0 ||
+        (homefd >= 0 && stage_validated_home(homefd) < 0)) {
+        close_fd_pair(rootfd, homefd);
+        (void)umount2(PIN_HOME_PATH, MNT_DETACH);
+        (void)umount2(PIN_PATH, MNT_DETACH);
         snprintf(response, response_size,
-                 "ERROR rootfs: cannot mount validated FD into trusted system stage");
+                 "ERROR rootfs: cannot mount validated volume FDs into trusted system stage");
         return -1;
     }
     int baseline = read_boot_count(rootfd);
     if (baseline < 0) {
-        close(rootfd);
+        close_fd_pair(rootfd, homefd);
         snprintf(response, response_size, "ERROR rootfs: invalid persistent boot counter");
         return -1;
     }
     int ready[2], proceed[2], pid_pipe[2];
     if (pipe2(ready, O_CLOEXEC) < 0 || pipe2(proceed, O_CLOEXEC) < 0 ||
         pipe2(pid_pipe, O_CLOEXEC) < 0) {
-        close(rootfd);
+        close_fd_pair(rootfd, homefd);
         snprintf(response, response_size, "ERROR manager: cannot create launch pipes");
         return -1;
     }
     pid_t expected_parent = getpid();
     pid_t pid = fork();
     if (pid < 0) {
-        close(rootfd);
+        close_fd_pair(rootfd, homefd);
         snprintf(response, response_size, "ERROR manager: cannot fork launcher");
         return -1;
     }
@@ -1033,15 +1171,15 @@ static int start_environment(char *response, size_t response_size) {
         close(ready[0]); close(proceed[1]); close(pid_pipe[0]);
         struct child_args args = {
             .ready_write = ready[1], .proceed_read = proceed[0],
-            .pid_write = pid_pipe[1], .root_fd = rootfd,
+            .pid_write = pid_pipe[1], .root_fd = rootfd, .home_fd = homefd,
             .expected_parent = expected_parent,
         };
         launch_user(&args);
         _exit(1);
     }
     close(ready[1]); close(proceed[0]); close(pid_pipe[1]);
-    /* Hold the validated directory FD throughout readiness checks.
-     * Re-opening root_path here would reintroduce path-replacement TOCTOU.
+    /* Hold the validated volume FDs through readiness checks. Re-opening the
+     * source paths here would reintroduce path-replacement TOCTOU.
      */
     launcher_pid = pid;
     state = STATE_STARTING;
@@ -1052,7 +1190,7 @@ static int start_environment(char *response, size_t response_size) {
         (void)wait_for_child(STOP_TIMEOUT_MS);
         state = STATE_FAILED;
         snprintf(response, response_size, "ERROR launch: user-namespace launcher failed");
-        close(rootfd);
+        close_fd_pair(rootfd, homefd);
         return -1;
     }
     close(ready[0]);
@@ -1079,7 +1217,7 @@ static int start_environment(char *response, size_t response_size) {
         (void)wait_for_child(STOP_TIMEOUT_MS);
         state = STATE_FAILED;
         snprintf(response, response_size, "ERROR launch: user PID 1 did not start");
-        close(rootfd);
+        close_fd_pair(rootfd, homefd);
         return -1;
     }
     /* pidfd_open is mandatory, not an optional optimisation. If the nested
@@ -1090,7 +1228,7 @@ static int start_environment(char *response, size_t response_size) {
         (void)wait_for_child(STOP_TIMEOUT_MS);
         state = STATE_FAILED;
         snprintf(response, response_size, "ERROR launch: invalid user PID 1");
-        close(rootfd);
+        close_fd_pair(rootfd, homefd);
         return -1;
     }
     int pinned_pid = (int)syscall(SYS_pidfd_open, (pid_t)nested_pid, 0);
@@ -1099,7 +1237,7 @@ static int start_environment(char *response, size_t response_size) {
         (void)wait_for_child(STOP_TIMEOUT_MS);
         state = STATE_FAILED;
         snprintf(response, response_size, "ERROR launch: cannot pin user PID 1");
-        close(rootfd);
+        close_fd_pair(rootfd, homefd);
         return -1;
     }
     user_pid1 = (pid_t)nested_pid;
@@ -1111,28 +1249,32 @@ static int start_environment(char *response, size_t response_size) {
             snprintf(response, response_size,
                      "ERROR launch: user PID 1 exited before readiness (launcher exit=%d)",
                      last_exit_code);
-            close(rootfd);
+            close_fd_pair(rootfd, homefd);
             return -1;
         }
         int count = read_boot_count(rootfd);
-        if (count == baseline + 1 && check_proofs(rootfd, error, sizeof(error)) == 0) {
-                boot_count = count;
-                state = STATE_RUNNING;
-                printf("VEYRA_STAGE1_SUDO_READY count=%d inside-uid=0 outside-uid=100000\n",
-                       boot_count);
-                printf("VEYRA_STAGE1_USER_OPENRC_READY count=%d\n", boot_count);
-                fflush(stdout);
-                snprintf(response, response_size, "RUNNING pid=%ld count=%d",
-                         (long)user_pid1, boot_count);
-                close(rootfd);
-                return 0;
+        if (count == baseline + 1 &&
+            check_proofs(rootfd, homefd, error, sizeof(error)) == 0) {
+            boot_count = count;
+            state = STATE_RUNNING;
+            printf("VEYRA_STAGE1_SUDO_READY count=%d inside-uid=0 outside-uid=100000\n",
+                   boot_count);
+            printf("VEYRA_STAGE1_USER_OPENRC_READY count=%d\n", boot_count);
+            if (homefd >= 0)
+                puts("VEYRA_STAGE1_AUTH_HOME_VOLUME_PASS separate-ext4-mounted-at-home");
+            fflush(stdout);
+            snprintf(response, response_size, "RUNNING pid=%ld count=%d",
+                     (long)user_pid1, boot_count);
+            close_fd_pair(rootfd, homefd);
+            return 0;
         }
         if (count > baseline + 1) {
             (void)signal_user_pid1(SIGKILL);
             (void)wait_for_child(STOP_TIMEOUT_MS);
             state = STATE_FAILED;
-            snprintf(response, response_size, "ERROR launch: persistent boot counter jumped unexpectedly");
-            close(rootfd);
+            snprintf(response, response_size,
+                     "ERROR launch: persistent boot counter jumped unexpectedly");
+            close_fd_pair(rootfd, homefd);
             return -1;
         }
         usleep(100000);
@@ -1141,7 +1283,7 @@ static int start_environment(char *response, size_t response_size) {
     (void)wait_for_child(STOP_TIMEOUT_MS);
     state = STATE_FAILED;
     snprintf(response, response_size, "ERROR launch: OpenRC readiness timed out");
-    close(rootfd);
+    close_fd_pair(rootfd, homefd);
     return -1;
 }
 static const char *state_name(void) {
@@ -1235,13 +1377,18 @@ static int prepare_socket(void) {
 }
 static int manager_service(void) {
     if (geteuid() != 0) { errno = EPERM; return -1; }
-    int rootfd = -1;
+    int rootfd = -1, homefd = -1;
     char error[256] = {0};
     if (validate_rootfs(&rootfd, error, sizeof(error)) < 0) {
         fprintf(stderr, "VEYRA_STAGE1_FAILURE: rootfs rejected: %s\n", error);
         return -1;
     }
-    close(rootfd);
+    if (validate_home(rootfd, &homefd, error, sizeof(error)) < 0) {
+        close(rootfd);
+        fprintf(stderr, "VEYRA_STAGE1_FAILURE: home volume rejected: %s\n", error);
+        return -1;
+    }
+    close_fd_pair(rootfd, homefd);
     if (ensure_pin_directory() < 0 || prepare_socket() < 0)
         return -1;
     struct sigaction action = {0};
@@ -1272,6 +1419,8 @@ static int manager_service(void) {
     /* Normal shutdown drops the trusted mount. A SIGKILL leaves it
      * to be safely detached on the next start.
      */
+    if (umount2(PIN_HOME_PATH, MNT_DETACH) < 0 && errno != EINVAL)
+        perror("detach trusted home stage");
     if (umount2(PIN_PATH, MNT_DETACH) < 0 && errno != EINVAL)
         perror("detach trusted rootfs stage");
     (void)unlink(SOCKET_PATH);
@@ -1302,15 +1451,22 @@ static int manager_client(const char *command) {
 int main(int argc, char **argv) {
     if (argc == 2 && !strcmp(argv[1], "test-inode-guard"))
         return test_directory_identity_guard();
-    if ((argc == 3 || argc == 4) && !strcmp(argv[1], "serve") &&
+    if ((argc >= 3 && argc <= 5) && !strcmp(argv[1], "serve") &&
         (!strcmp(argv[2], PRIMARY_ROOT_PATH) ||
          !strcmp(argv[2], SECONDARY_ROOT_PATH))) {
-        if (argc == 4) {
+        if (argc >= 4) {
             if (!valid_normal_user(argv[3])) {
                 fprintf(stderr, "invalid normal-user account name\n");
                 return 2;
             }
             snprintf(normal_user, sizeof(normal_user), "%s", argv[3]);
+        }
+        if (argc == 5) {
+            if (strcmp(argv[4], HOME_VOLUME_PATH)) {
+                fprintf(stderr, "invalid test home-volume path\n");
+                return 2;
+            }
+            snprintf(home_path, sizeof(home_path), "%s", argv[4]);
         }
         const unsigned selected_base = !strcmp(argv[2], PRIMARY_ROOT_PATH)
             ? DEFAULT_OUTER_ROOT_UID : SECONDARY_OUTER_ROOT_UID;
@@ -1327,7 +1483,7 @@ int main(int argc, char **argv) {
                       !strcmp(argv[1], "status") ||
                       !strcmp(argv[1], "stop")))
         return manager_client(argv[1]);
-    fprintf(stderr, "usage: %s serve %s [account] | serve %s [account] | start | status | stop\n",
+    fprintf(stderr, "usage: %s serve %s [account] [home-volume] | serve %s [account] [home-volume] | start | status | stop\n",
             argv[0], PRIMARY_ROOT_PATH, SECONDARY_ROOT_PATH);
     return 2;
 }

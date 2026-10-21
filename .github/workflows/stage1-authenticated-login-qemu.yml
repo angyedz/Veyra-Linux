@@ -64,6 +64,7 @@ jobs:
                 /out/userroot/etc/runlevels/default \
                 /out/userroot/etc/init.d \
                 /out/userroot/home/eve \
+                /out/userroot/lost+found \
                 /out/userroot/var/lib/veyra-user \
                 /out/userroot/usr/local/sbin \
                 /out/userroot/etc/sudoers.d
@@ -87,9 +88,11 @@ jobs:
               printf "eve ALL=(ALL) NOPASSWD: ALL\\n" \
                 > /out/userroot/etc/sudoers.d/eve
               chmod 0440 /out/userroot/etc/sudoers.d/eve
+              mkdir -p /out/home/eve /out/home/lost+found
               cp /work/tests/fixtures/stage1-user-auth-profile \
-                /out/userroot/home/eve/.profile
-              chmod 0644 /out/userroot/home/eve/.profile
+                /out/home/eve/.profile
+              chmod 0700 /out/home/eve
+              chmod 0644 /out/home/eve/.profile
               test -x /out/userroot/usr/bin/sudo
 
               for dev in console null zero tty random urandom; do
@@ -106,13 +109,18 @@ jobs:
               ln -s pts/ptmx /out/userroot/dev/ptmx
 
               chown -hR 100000:100000 /out/userroot
-              chown -hR 101000:101000 /out/userroot/home/eve
+              chown -hR 100000:100000 /out/home
+              chown -hR 101000:101000 /out/home/eve
               chmod 4755 /out/userroot/usr/bin/sudo
               truncate -s 180M /out/veyra-user-root.raw
               mkfs.ext4 -F -q -L VEYRA_AUTH_ROOT \
                 -E root_owner=100000:100000 \
                 -d /out/userroot /out/veyra-user-root.raw
-              chmod 0666 /out/veyra-user-root.raw
+              truncate -s 48M /out/veyra-user-home.raw
+              mkfs.ext4 -F -q -L VEYRA_AUTH_HOME \
+                -E root_owner=100000:100000 \
+                -d /out/home /out/veyra-user-home.raw
+              chmod 0666 /out/veyra-user-root.raw /out/veyra-user-home.raw
 
               cp /work/scripts/veyra-stage1-auth-login-init.sh /out/auth-init
               chmod 0755 /out/auth-init
@@ -124,10 +132,11 @@ jobs:
               (cd /out/overlay && find . -print | cpio --quiet -o -H newc | gzip -9) \
                 >> /out/veyra-stage1-auth-initramfs
               cp /boot/vmlinuz-lts /out/veyra-stage1-kernel
-              chmod 0666 /out/veyra-user-root.raw
+              chmod 0666 /out/veyra-user-root.raw /out/veyra-user-home.raw
               chmod 0644 /out/veyra-stage1-kernel \
                 /out/veyra-stage1-auth-initramfs
               test -s /out/veyra-user-root.raw
+              test -s /out/veyra-user-home.raw
               test -s /out/veyra-stage1-kernel
               test -s /out/veyra-stage1-auth-initramfs
             '
@@ -137,6 +146,7 @@ jobs:
             /tmp/veyra-stage1-auth-login/veyra-stage1-kernel \
             /tmp/veyra-stage1-auth-login/veyra-stage1-auth-initramfs \
             /tmp/veyra-stage1-auth-login/veyra-user-root.raw \
+            /tmp/veyra-stage1-auth-login/veyra-user-home.raw \
             --log /tmp/veyra-stage1-auth-login/serial.log
       - name: Print guest serial errors
         if: failure()

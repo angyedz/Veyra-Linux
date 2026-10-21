@@ -23,7 +23,7 @@ trap cleanup EXIT INT TERM
 "$bb" mount -t proc proc /proc
 "$bb" mount -t sysfs sysfs /sys
 "$bb" mount -t devtmpfs devtmpfs /dev
-"$bb" mkdir -p /dev/pts /run /tmp /mnt/veyra-user
+"$bb" mkdir -p /dev/pts /run /tmp /mnt/veyra-user /mnt/veyra-home
 "$bb" mount -t devpts devpts /dev/pts
 "$bb" mount -t tmpfs -o mode=0755 tmpfs /run
 "$bb" mount -t tmpfs -o mode=1777 tmpfs /tmp
@@ -40,11 +40,13 @@ done
 [ "$disk_ready" -eq 1 ] || fail "disposable /dev/vda unavailable"
 "$bb" mount -t ext4 -o rw /dev/vda /mnt/veyra-user ||
     fail "could not mount the persistent user rootfs"
+"$bb" mount -t ext4 -o rw /dev/vdb /mnt/veyra-home ||
+    fail "could not mount the separate persistent home volume"
 [ -x /mnt/veyra-user/sbin/init ] || fail "user rootfs lacks executable /sbin/init"
-[ ! -e /mnt/veyra-user/home/eve/.veyra-stage1-authenticated-login ] ||
-    fail "fresh QEMU rootfs already contains an authentication proof"
+[ ! -e /mnt/veyra-home/eve/.veyra-stage1-authenticated-login ] ||
+    fail "fresh QEMU home volume already contains an authentication proof"
 
-"/host-supervisor" serve /mnt/veyra-user eve >/run/veyra-stage1-auth-manager.log 2>&1 &
+"/host-supervisor" serve /mnt/veyra-user eve /mnt/veyra-home >/run/veyra-stage1-auth-manager.log 2>&1 &
 manager_pid=$!
 socket_ready=0
 for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
@@ -67,7 +69,7 @@ case "$start_result" in
 esac
 echo "VEYRA_STAGE1_AUTH_ENVIRONMENT_STARTED account=eve count=1"
 
-proof=/mnt/veyra-user/home/eve/.veyra-stage1-authenticated-login
+proof=/mnt/veyra-home/eve/.veyra-stage1-authenticated-login
 for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do
     if [ -f "$proof" ]; then
         proof_text=$("$bb" cat "$proof")
@@ -76,6 +78,7 @@ for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27
             fail "login proof has an unexpected identity: $proof_text"
         [ "$owner" = "101000:101000:600" ] ||
             fail "login proof has an unexpected mapped owner or mode: $owner"
+        echo "VEYRA_STAGE1_AUTH_HOME_VOLUME_PASS separate-ext4-mounted-at-home"
         echo "VEYRA_STAGE1_AUTH_LOGIN_QEMU_SUCCESS account=eve uid=1000 outer-uid=101000"
         "$bb" sync
         cleanup

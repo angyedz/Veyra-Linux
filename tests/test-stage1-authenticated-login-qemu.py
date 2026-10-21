@@ -16,6 +16,7 @@ def main():
     parser.add_argument("kernel", type=pathlib.Path)
     parser.add_argument("initramfs", type=pathlib.Path)
     parser.add_argument("user_disk", type=pathlib.Path)
+    parser.add_argument("home_disk", type=pathlib.Path)
     parser.add_argument(
         "--log", type=pathlib.Path,
         default=pathlib.Path("veyra-stage1-auth-login-serial.log"),
@@ -24,7 +25,7 @@ def main():
 
     qemu = shutil.which("qemu-system-x86_64")
     if not qemu or not all(path.is_file() for path in
-                           (args.kernel, args.initramfs, args.user_disk)):
+                           (args.kernel, args.initramfs, args.user_disk, args.home_disk)):
         parser.error("QEMU, initramfs, kernel and user-root disk are required")
 
     args.log.parent.mkdir(parents=True, exist_ok=True)
@@ -35,6 +36,7 @@ def main():
         "-kernel", str(args.kernel.resolve()),
         "-initrd", str(args.initramfs.resolve()),
         "-drive", f"file={args.user_disk.resolve()},if=virtio,format=raw,cache=writeback",
+        "-drive", f"file={args.home_disk.resolve()},if=virtio,format=raw,cache=writeback",
         "-append", "console=ttyS0,115200 panic=1",
     ]
 
@@ -63,6 +65,10 @@ def main():
                 timeout=60,
             )
             guest.expect(
+                b"VEYRA_STAGE1_AUTH_HOME_VOLUME_PASS separate-ext4-mounted-at-home",
+                timeout=60,
+            )
+            guest.expect(
                 b"VEYRA_STAGE1_AUTH_LOGIN_QEMU_SUCCESS account=eve uid=1000 outer-uid=101000",
                 timeout=60,
             )
@@ -72,7 +78,7 @@ def main():
 
     print(
         "VEYRA_STAGE1_AUTH_LOGIN_TEST_PASS: wrong password rejected; "
-        "Eve authenticated in the managed rootfs as inner UID 1000"
+        "Eve authenticated in the managed rootfs with a separate home volume as inner UID 1000"
     )
 
 
