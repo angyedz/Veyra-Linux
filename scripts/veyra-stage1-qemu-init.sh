@@ -52,6 +52,19 @@ fail() {
     /bin/busybox poweroff -f
     exit 1
 }
+wait_for_manager_running() {
+    attempt=0
+    manager_status=""
+    while [ "$attempt" -lt 15 ]; do
+        manager_status=$(/host-supervisor status 2>/dev/null || :)
+        case "$manager_status" in
+            RUNNING\ pid=*\ count=*) return 0 ;;
+        esac
+        attempt=$((attempt + 1))
+        /bin/busybox sleep 1
+    done
+    return 1
+}
 verify_autologin() {
     expected_count=$1
     account=$(/bin/busybox cat /mnt/veyra-user/.veyra-stage1-account 2>/dev/null || printf default)
@@ -100,11 +113,10 @@ else
     fi
     echo "VEYRA_STAGE1_SYSTEM_ROOT_EXT4_OPENRC_PASS root=$root_source"
 fi
-manager_status=$(/host-supervisor status 2>/dev/null || :)
-case "$manager_status" in
-    RUNNING\ pid=*\ count=*) ;;
-    *) fail "system OpenRC did not auto-start the user environment: $manager_status" ;;
-esac
+if ! wait_for_manager_running; then
+    echo "VEYRA_STAGE1_MANAGER_STATUS_DIAGNOSTIC stage=initial status=$manager_status"
+    fail "system OpenRC did not auto-start the user environment"
+fi
 boot_login_count=$(((expected - 1) * 5 + 1))
 case "$manager_status" in
     *"count=$boot_login_count") ;;
@@ -268,7 +280,10 @@ echo "VEYRA_STAGE1_MANAGER_DEATH_CLEANUP_PASS boot=$expected count=$third_count 
 
 # Restart through system OpenRC also exercises stale socket and pidfile recovery.
 /sbin/rc-service veyra-stage1-system-manager restart || fail 'OpenRC could not restart the manager'
-manager_status=$(/host-supervisor status 2>/dev/null || :)
+if ! wait_for_manager_running; then
+    echo "VEYRA_STAGE1_MANAGER_STATUS_DIAGNOSTIC stage=restart status=$manager_status"
+    fail "OpenRC restart did not auto-start the user environment"
+fi
 manager_pid=$(/bin/busybox cat /run/veyra-user-manager.pid 2>/dev/null || :)
 case "$manager_pid" in ''|*[!0-9]*) fail "OpenRC restart did not write a valid manager pidfile: $manager_pid" ;; esac
 recovery_count=$((expected * 5))
@@ -305,7 +320,11 @@ if [ -f /mnt/veyra-user-b/.veyra-stage1-account ]; then
         fail "could not stop the alice manager before switching accounts"
     /sbin/rc-service veyra-stage1-system-manager-b start ||
         fail "system OpenRC could not start bob's provisioned rootfs"
-    bob_status=$(/host-supervisor status 2>/dev/null || :)
+    if ! wait_for_manager_running; then
+        echo "VEYRA_STAGE1_MANAGER_STATUS_DIAGNOSTIC stage=bob status=$manager_status"
+        fail "bob manager did not become ready"
+    fi
+    bob_status=$manager_status
     case "$bob_status" in
         RUNNING\ pid=*\ count=$expected) ;;
         *) fail "bob manager did not start with his own persistent count: $bob_status" ;;
