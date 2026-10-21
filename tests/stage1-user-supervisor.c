@@ -38,6 +38,7 @@
  */
 #define PIN_PARENT "/run/veyra-user-rootfs-pin"
 #define PIN_PATH PIN_PARENT "/rootfs"
+#define BOOTSTRAP_PATH PIN_PARENT "/bootstrap"
 #define OUTER_ROOT_UID 100000U
 #define OUTER_NORMAL_UID 101000U
 #define MAPPED_ID_LIMIT 165536U
@@ -591,6 +592,25 @@ static int ensure_pin_directory(void) {
         return -1;
     }
     if (mkdir(PIN_PATH, 0700) < 0 && errno != EEXIST) return -1;
+    if (mkdir(BOOTSTRAP_PATH, 0700) < 0 && errno != EEXIST) return -1;
+    if (lstat(BOOTSTRAP_PATH, &st) < 0 || !S_ISDIR(st.st_mode) ||
+        (st.st_uid != 0 && st.st_uid != OUTER_ROOT_UID)) {
+        errno = EPERM;
+        return -1;
+    }
+    /* The nested user namespace maps UID/GID 0 to OUTER_ROOT_UID. Give
+     * its PID 1 a private, pre-existing system-side mountpoint; it cannot
+     * create one under the outer root's /mnt after dropping privileges.
+     */
+    if (chown(BOOTSTRAP_PATH, OUTER_ROOT_UID, OUTER_ROOT_UID) < 0 ||
+        chmod(BOOTSTRAP_PATH, 0700) < 0)
+        return -1;
+    if (lstat(BOOTSTRAP_PATH, &st) < 0 || !S_ISDIR(st.st_mode) ||
+        st.st_uid != OUTER_ROOT_UID || st.st_gid != OUTER_ROOT_UID ||
+        (st.st_mode & 07777) != 0700) {
+        errno = EPERM;
+        return -1;
+    }
     return 0;
 }
 static int stage_validated_rootfs(int rootfd) {
@@ -648,16 +668,14 @@ static void inner_pid_one(int root_fd, int ready_fd) {
     if (sethostname("veyra-user", 10) < 0) die("namespace hostname");
     if (mount(NULL, "/", NULL, MS_REC | MS_PRIVATE, NULL) < 0)
         die("private mount propagation");
-    const char *bootstrap = "/mnt/veyra-stage1-bootstrap";
-    const char *newroot = "/mnt/veyra-stage1-bootstrap/root";
-    const char *oldroot = "/mnt/veyra-stage1-bootstrap/root/.veyra-stage1-oldroot";
-    if (mkdir(bootstrap, 0700) < 0 && errno != EEXIST)
-        die("create private intermediate mountpoint");
+    const char *bootstrap = BOOTSTRAP_PATH;
+    const char *newroot = BOOTSTRAP_PATH "/root";
+    const char *oldroot = BOOTSTRAP_PATH "/root/.veyra-stage1-oldroot";
     struct stat bootstrap_st;
     if (lstat(bootstrap, &bootstrap_st) < 0 || !S_ISDIR(bootstrap_st.st_mode) ||
-        bootstrap_st.st_uid != 0 || (bootstrap_st.st_mode & 0777) != 0700) {
+        bootstrap_st.st_uid != 0 || (bootstrap_st.st_mode & 07777) != 0700) {
         errno = EPERM;
-        die("private intermediate mountpoint is not root-owned and private");
+        die("private intermediate mountpoint is not mapped-root-owned and private");
     }
     if (mount("tmpfs", bootstrap, "tmpfs", MS_NOSUID | MS_NODEV, "mode=0700") < 0)
         die("mount private intermediate tmpfs root");
