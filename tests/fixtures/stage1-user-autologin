@@ -10,8 +10,11 @@ exec /bin/busybox su -l -s /bin/sh -c '
     /usr/bin/sudo -n /bin/busybox test ! -e "$manager_socket" || exit 1
     /usr/bin/sudo -n /bin/busybox sh -c "printf %s user-only > $run_boundary" || exit 1
     [ "$(/bin/busybox cat "$run_boundary")" = "user-only" ] || exit 1
+    account=$(/bin/busybox cat /.veyra-stage1-account 2>/dev/null || printf default)
+    case "$account" in default|alice|bob) ;; *) exit 1 ;; esac
     proof="$HOME/.veyra-stage1-autologin"
     isolation_proof="$HOME/.veyra-stage1-isolation"
+    account_state="$HOME/.veyra-stage1-user-state"
     previous=0
     if [ -r "$proof" ]; then
         saved=$(/bin/busybox cat "$proof")
@@ -26,6 +29,7 @@ exec /bin/busybox su -l -s /bin/sh -c '
     count=$((previous + 1))
     /bin/busybox printf "uid=1000 count=%s host-run-isolated=1 manager-socket-isolated=1\n" "$count" > "$isolation_proof"
     /bin/busybox printf "uid=1000 count=%s\n" "$count" > "$proof"
+    /bin/busybox printf "account=%s count=%s\n" "$account" "$count" > "$account_state"
     /bin/busybox sync
     exec /bin/sh -l
 ' veyrauser
