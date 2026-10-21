@@ -35,15 +35,11 @@ if [ "$expected" -lt 1 ] || [ "$expected" -gt 2 ]; then
     echo 'VEYRA_STAGE1_FAILURE: expected QEMU run must be 1 or 2'
     /bin/busybox poweroff -f
 fi
-echo "VEYRA_STAGE1_OUTER_INIT: starting lifecycle manager, QEMU boot $expected"
+echo "VEYRA_STAGE1_OUTER_INIT: starting system OpenRC, QEMU boot $expected"
 
 manager_pid=0
 cleanup() {
-    if [ "$manager_pid" -gt 0 ]; then
-        /host-supervisor stop >/dev/null 2>&1 || :
-        /bin/busybox kill -TERM "$manager_pid" 2>/dev/null || :
-        wait "$manager_pid" 2>/dev/null || :
-    fi
+    /sbin/rc-service veyra-stage1-system-manager stop >/dev/null 2>&1 || :
 }
 fail() {
     echo "VEYRA_STAGE1_FAILURE: $*"
@@ -51,22 +47,34 @@ fail() {
     /bin/busybox poweroff -f
     exit 1
 }
+verify_autologin() {
+    expected_count=$1
+    actual=""
+    for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+        actual=$(/bin/busybox cat /mnt/veyra-user/home/veyrauser/.veyra-stage1-autologin 2>/dev/null || :)
+        if [ "$actual" = "uid=1000 count=$expected_count" ]; then
+            echo "VEYRA_STAGE1_AUTOLOGIN_PASS uid=1000 count=$expected_count"
+            return 0
+        fi
+        /bin/busybox sleep 1
+    done
+    fail "user environment did not autologin as UID 1000 with count $expected_count (got: $actual)"
+}
 trap cleanup EXIT INT TERM
 
-/host-supervisor serve /mnt/veyra-user &
-manager_pid=$!
-manager_ready=0
-manager_status=""
-for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
-    if manager_status=$(/host-supervisor status 2>/dev/null); then
-        manager_ready=1
-        break
-    fi
-    /bin/busybox sleep 1
-done
-if [ "$manager_ready" -ne 1 ] || [ "$manager_status" != "STOPPED" ]; then
-    fail 'system-side manager did not enter STOPPED state'
+/sbin/openrc sysinit || fail 'system OpenRC sysinit failed'
+/sbin/openrc boot || fail 'system OpenRC boot failed'
+/sbin/openrc default || fail 'system OpenRC default runlevel failed'
+manager_status=$(/host-supervisor status 2>/dev/null || :)
+if [ "$manager_status" != "STOPPED" ]; then
+    fail "system OpenRC manager did not start cleanly: $manager_status"
 fi
+manager_pid=$(/bin/busybox cat /run/veyra-user-manager.pid 2>/dev/null || :)
+case "$manager_pid" in
+    ''|*[!0-9]*) fail "system OpenRC did not write a valid manager pidfile: $manager_pid" ;;
+esac
+echo "VEYRA_STAGE1_SYSTEM_OPENRC_STARTED pid=$manager_pid"
+
 
 /host-supervisor test-inode-guard || fail 'rootfs inode identity guard self-test failed'
 
@@ -154,6 +162,7 @@ echo 'VEYRA_STAGE1_ROOTFS_REJECT_INIT_ESCAPE'
 
 first=$(/host-supervisor start)
 case "$first" in RUNNING\ pid=*\ count=*) ;; *) fail "first start failed: $first" ;; esac
+verify_autologin "$(( (expected - 1) * 3 + 1 ))"
 echo "VEYRA_STAGE1_FIRST_RUNNING $first"
 status=$(/host-supervisor status)
 if [ "$status" != "$first" ]; then fail "status disagreed with running start: $status"; fi
@@ -172,6 +181,7 @@ expected_count=$((expected * 3 - 1))
 if [ "$second_count" -ne "$expected_count" ]; then
     fail "persistent boot counter was $second_count, expected $expected_count"
 fi
+verify_autologin "$(( (expected - 1) * 3 + 2 ))"
 /bin/busybox kill -KILL "$user_pid"
 crash_seen=0
 for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
@@ -191,6 +201,7 @@ expected_third_count=$((expected * 3))
 if [ "$third_count" -ne "$expected_third_count" ]; then
     fail "manager-crash test boot counter was $third_count, expected $expected_third_count"
 fi
+verify_autologin "$expected_third_count"
 /bin/busybox kill -KILL "$manager_pid"
 wait "$manager_pid" 2>/dev/null || :
 manager_pid=0
@@ -211,19 +222,12 @@ if [ "$user_gone" -ne 1 ]; then
 fi
 echo "VEYRA_STAGE1_MANAGER_DEATH_CLEANUP_PASS boot=$expected count=$third_count environment=stopped"
 
-# Restart also exercises stale control-socket cleanup after an unclean exit.
-/host-supervisor serve /mnt/veyra-user &
-manager_pid=$!
-manager_ready=0
-manager_status=""
-for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
-    if manager_status=$(/host-supervisor status 2>/dev/null); then
-        manager_ready=1
-        break
-    fi
-    /bin/busybox sleep 1
-done
-if [ "$manager_ready" -ne 1 ] || [ "$manager_status" != "STOPPED" ]; then
+# Restart through system OpenRC also exercises stale socket and pidfile recovery.
+/sbin/rc-service veyra-stage1-system-manager restart || fail 'OpenRC could not restart the manager'
+manager_status=$(/host-supervisor status 2>/dev/null || :)
+manager_pid=$(/bin/busybox cat /run/veyra-user-manager.pid 2>/dev/null || :)
+case "$manager_pid" in ''|*[!0-9]*) fail "OpenRC restart did not write a valid manager pidfile: $manager_pid" ;; esac
+if [ "$manager_status" != "STOPPED" ]; then
     fail "manager did not recover cleanly after crash: $manager_status"
 fi
 echo 'VEYRA_STAGE1_MANAGER_RECOVERY_PASS state=STOPPED stale-socket=cleared'

@@ -8,6 +8,8 @@ on:
       - 'tests/stage1-user-supervisor.c'
       - 'tests/test-stage1-user-openrc-qemu.py'
       - 'tests/fixtures/stage1-user-inittab'
+      - 'tests/fixtures/stage1-system-manager.initd'
+      - 'tests/fixtures/stage1-user-autologin'
       - 'tests/fixtures/stage1-user-openrc.initd'
       - '.github/workflows/stage1-user-openrc-qemu.yml'
   pull_request:
@@ -16,6 +18,8 @@ on:
       - 'tests/stage1-user-supervisor.c'
       - 'tests/test-stage1-user-openrc-qemu.py'
       - 'tests/fixtures/stage1-user-inittab'
+      - 'tests/fixtures/stage1-system-manager.initd'
+      - 'tests/fixtures/stage1-user-autologin'
       - 'tests/fixtures/stage1-user-openrc.initd'
       - '.github/workflows/stage1-user-openrc-qemu.yml'
   workflow_dispatch:
@@ -36,20 +40,36 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq qemu-system-x86 python3-pexpect
-      - name: Build isolated Alpine user rootfs, kernel and system supervisor
+      - name: Build test OpenRC manager, user autologin rootfs, kernel and QEMU initramfs
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p /tmp/veyra-stage1-qemu
           docker run --rm -v "$PWD:/work:ro" \
             -v /tmp/veyra-stage1-qemu:/out alpine:3.22 sh -ec '
-              apk add --no-cache alpine-base linux-lts mkinitfs \
+              apk add --no-cache alpine-base openrc linux-lts mkinitfs \
                 build-base linux-headers e2fsprogs cpio gzip
               kernel=$(basename "$(find /lib/modules -mindepth 1 -maxdepth 1 -type d -print -quit)")
               test -n "$kernel"
               cc -static -Os -Wall -Wextra -Werror \
                 -o /out/host-supervisor /work/tests/stage1-user-supervisor.c
-              mkdir -p /out/userroot
+              mkdir -p /out/userroot /out/systemroot
+              apk --root /out/systemroot --initdb \
+                --keys-dir /etc/apk/keys \
+                --repositories-file /etc/apk/repositories \
+                add alpine-base openrc
+              test -x /out/systemroot/sbin/openrc
+              test -x /out/systemroot/sbin/rc-service
+              rm -rf /out/systemroot/etc/runlevels
+              mkdir -p /out/systemroot/etc/init.d \
+                /out/systemroot/etc/runlevels/sysinit \
+                /out/systemroot/etc/runlevels/boot \
+                /out/systemroot/etc/runlevels/default
+              cp /work/tests/fixtures/stage1-system-manager.initd \
+                /out/systemroot/etc/init.d/veyra-stage1-system-manager
+              chmod 0755 /out/systemroot/etc/init.d/veyra-stage1-system-manager
+              ln -s /etc/init.d/veyra-stage1-system-manager \
+                /out/systemroot/etc/runlevels/default/veyra-stage1-system-manager
               apk --root /out/userroot --initdb \
                 --keys-dir /etc/apk/keys \
                 --repositories-file /etc/apk/repositories \
@@ -75,6 +95,9 @@ jobs:
               mkdir -p /out/userroot/etc/sudoers.d
               printf "veyrauser ALL=(ALL) NOPASSWD: ALL\n"                 > /out/userroot/etc/sudoers.d/veyrauser
               chmod 0440 /out/userroot/etc/sudoers.d/veyrauser
+              cp /work/tests/fixtures/stage1-user-autologin \
+                /out/userroot/usr/local/sbin/veyra-stage1-autologin
+              chmod 0755 /out/userroot/usr/local/sbin/veyra-stage1-autologin
               test -x /out/userroot/usr/bin/sudo
               # No raw block nodes or host devices inside user rootfs.
               for dev in console null zero tty random urandom; do
@@ -102,6 +125,7 @@ jobs:
                 -i /work/scripts/veyra-stage1-qemu-init.sh \
                 -o /out/veyra-stage1-initramfs "$kernel"
               mkdir -p /out/overlay
+              cp -a /out/systemroot/. /out/overlay/
               cp /out/host-supervisor /out/overlay/host-supervisor
               (cd /out/overlay && find . -print | cpio --quiet -o -H newc | gzip -9) \
                 >> /out/veyra-stage1-initramfs
@@ -111,7 +135,7 @@ jobs:
               test -s /out/veyra-stage1-kernel
               test -s /out/veyra-stage1-initramfs
             '
-      - name: Start/status/stop/crash detection and rootfs checks across two QEMU boots
+      - name: OpenRC manager, serial autologin, lifecycle and persistent rootfs checks across two QEMU boots
         run: |
           python3 tests/test-stage1-user-openrc-qemu.py \
             /tmp/veyra-stage1-qemu/veyra-stage1-kernel \

@@ -1,0 +1,31 @@
+#!/sbin/openrc-run
+# Disposable QEMU fixture: production Veyra does not install this service yet.
+description="Veyra Stage 1 test user-environment manager"
+command="/host-supervisor"
+command_args="serve /mnt/veyra-user"
+command_background=true
+pidfile="/run/veyra-user-manager.pid"
+
+start_pre() {
+    [ -d /mnt/veyra-user ] &&
+        [ ! -L /mnt/veyra-user ] &&
+        [ -f /mnt/veyra-user/.veyra-stage1-rootfs ]
+}
+
+start_post() {
+    local attempt=0
+    while [ "$attempt" -lt 15 ]; do
+        if [ "$(/host-supervisor status 2>/dev/null)" = "STOPPED" ]; then
+            echo "VEYRA_STAGE1_SYSTEM_OPENRC_MANAGER_READY"
+            return 0
+        fi
+        attempt=$((attempt + 1))
+        sleep 1
+    done
+    eerror "system-side manager did not become ready"
+    return 1
+}
+
+stop_pre() {
+    /host-supervisor stop >/dev/null 2>&1 || :
+}

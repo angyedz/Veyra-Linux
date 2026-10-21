@@ -31,7 +31,7 @@ def guest_boot(qemu, kernel, initramfs, user_disk, qemu_boot, logfile):
     guest.logfile_read = logfile
     try:
         patterns = [
-            b"VEYRA_STAGE1_MANAGER_READY",
+            b"VEYRA_STAGE1_SYSTEM_OPENRC_MANAGER_READY",
             b"VEYRA_STAGE1_ROOTFS_INODE_GUARD_PASS",
             b"VEYRA_STAGE1_ROOTFS_FD_BIND_SWAP_PASS",
             b"VEYRA_STAGE1_FD_SANITIZATION_PASS",
@@ -43,20 +43,23 @@ def guest_boot(qemu, kernel, initramfs, user_disk, qemu_boot, logfile):
             b"VEYRA_STAGE1_ROOTFS_REJECT_INIT_ESCAPE",
             f"VEYRA_STAGE1_SUDO_READY count={first_count} inside-uid=0 outside-uid=100000".encode(),
             f"VEYRA_STAGE1_USER_OPENRC_READY count={first_count}".encode(),
+            f"VEYRA_STAGE1_AUTOLOGIN_PASS uid=1000 count={first_count}".encode(),
             b"VEYRA_STAGE1_STATUS_RUNNING ",
             b"VEYRA_STAGE1_STATUS_STOPPED",
             f"VEYRA_STAGE1_SUDO_READY count={second_count} inside-uid=0 outside-uid=100000".encode(),
             f"VEYRA_STAGE1_USER_OPENRC_READY count={second_count}".encode(),
+            f"VEYRA_STAGE1_AUTOLOGIN_PASS uid=1000 count={second_count}".encode(),
             f"VEYRA_STAGE1_LIFECYCLE_PASS boot={qemu_boot} starts=2 final-count={second_count} crash=detected".encode(),
             f"VEYRA_STAGE1_SUDO_READY count={final_count} inside-uid=0 outside-uid=100000".encode(),
             f"VEYRA_STAGE1_USER_OPENRC_READY count={final_count}".encode(),
+            f"VEYRA_STAGE1_AUTOLOGIN_PASS uid=1000 count={final_count}".encode(),
             f"VEYRA_STAGE1_MANAGER_DEATH_CLEANUP_PASS boot={qemu_boot} count={final_count} environment=stopped".encode(),
             b"VEYRA_STAGE1_MANAGER_RECOVERY_PASS state=STOPPED stale-socket=cleared",
             f"VEYRA_STAGE1_QEMU_SUCCESS: user environment lifecycle and persistence boot {qemu_boot}".encode(),
             b"VEYRA_STAGE1_FAILURE:",
             b"Kernel panic",
         ]
-        for expected_index in range(21):
+        for expected_index in range(len(patterns) - 2):
             active_patterns = patterns if expected_index == 0 else patterns[1:]
             outcome = guest.expect(active_patterns, timeout=180)
             if expected_index != 0:

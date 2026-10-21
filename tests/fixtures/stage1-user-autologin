@@ -1,0 +1,17 @@
+#!/bin/sh
+# Test-only serial autologin into the isolated user rootfs.
+exec /bin/busybox su -l -s /bin/sh -c '
+    [ "$(/bin/busybox id -u)" = 1000 ] || exit 1
+    proof="$HOME/.veyra-stage1-autologin"
+    previous=0
+    if [ -r "$proof" ]; then
+        previous=$(/bin/busybox cat "$proof")
+    fi
+    case "$previous" in
+        ""|*[!0-9]*) exit 1 ;;
+    esac
+    count=$((previous + 1))
+    /bin/busybox printf "uid=1000 count=%s\n" "$count" > "$proof"
+    /bin/busybox sync
+    exec /bin/sh -l
+' veyrauser
