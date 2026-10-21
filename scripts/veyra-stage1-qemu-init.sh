@@ -84,6 +84,7 @@ if [ "$qa_only" -eq 0 ]; then
     /bin/busybox chmod 0400 /run/.veyra-stage1-run-boundary
     /sbin/openrc default || fail 'system OpenRC default runlevel failed'
 else
+    # shellcheck disable=SC2016
     root_source=$(/bin/busybox awk '$2 == "/" { print $1; exit }' /proc/mounts)
     if [ "$root_source" != "/dev/vda" ]; then
         fail "system root is not the disk-backed ext4 device: $root_source"
