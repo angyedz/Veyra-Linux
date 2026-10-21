@@ -77,10 +77,12 @@ grep -q 'plasma-watchdog.sh' images/veyra-live-user.sh
 grep -qF "rm -f \"\$target/etc/sudoers.d/veyra-live\"" scripts/installer-prepare.sh
 grep -qF "rm -f \"\$target/etc/polkit-1/rules.d/49-veyra-live.rules\"" scripts/installer-prepare.sh
 grep -qF "rm -f \"\$target/etc/firefox/policies/policies.json\"" scripts/installer-prepare.sh
+# Match the literal target path with quotes; no shell expansion is intended.
+# shellcheck disable=SC2016
 grep -qF 'chmod 1777 "$target/tmp"' scripts/installer-prepare.sh
 grep -q '49-veyra-live.rules' images/genapkovl-veyra.sh
 
-grep -q 'GLENV_REF' scripts/bootstrap.sh
+grep -q 'ENABLE_GLENV' scripts/bootstrap.sh
 grep -q '^      - locale$' calamares/settings.conf
 grep -q '^      - keyboard$' calamares/settings.conf
 test -f calamares/modules/locale.conf
