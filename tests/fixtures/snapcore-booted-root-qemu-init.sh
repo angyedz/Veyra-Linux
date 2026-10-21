@@ -50,6 +50,8 @@ if [ "$phase" = "prepare-root" ]; then
         /mnt/snapcore/usr/lib
     "$BB" cp /bin/busybox /mnt/snapcore/bin/busybox ||
         fail 'could not stage the test root shell'
+    "$BB" cp /sbin/veyra-wipe-root /mnt/snapcore/sbin/veyra-wipe-root ||
+        fail 'could not stage the static full-root deletion probe'
     if [ -e /lib/ld-musl-x86_64.so.1 ]; then
         "$BB" cp -L /lib/ld-musl-x86_64.so.1 /mnt/snapcore/lib/ld-musl-x86_64.so.1 ||
             fail 'could not stage the musl loader'
@@ -128,7 +130,7 @@ case "$phase" in
             fail 'e2fsck rejected the checkpoint-restored ext4 root'
         echo 'VEYRA_SNAPCORE_BOOTED_ROOT_E2FSCK_PASS'
         ;;
-    mutate-root|verify-root) ;;
+    mutate-root|delete-root|verify-root) ;;
     *)
         fail "unknown booted-root QEMU phase: $phase"
         ;;
@@ -146,4 +148,6 @@ esac
     fail 'could not move devtmpfs into the restored root'
 "$BB" mount -t tmpfs -o mode=0755 tmpfs /mnt/snapcore/run ||
     fail 'could not mount run in the restored root'
+"$BB" mount -t tmpfs -o mode=1777 tmpfs /mnt/snapcore/tmp ||
+    fail 'could not mount tmp in the restored root'
 exec "$BB" switch_root /mnt/snapcore /sbin/init
