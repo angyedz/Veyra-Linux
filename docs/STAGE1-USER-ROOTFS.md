@@ -227,3 +227,11 @@ a sufficiently recent Linux kernel (supported by the QEMU kernel in CI).
 This is a test-only Stage 1 improvement and **does not** replace cgroup
 service ownership, time-of-check synchronization, host security isolation,
 or a production signal policy.
+
+## Generic account-root manifest milestone (draft PR #24)
+
+The two-account PR #20 fixture is extended by draft PR #24 to read a system-root-owned `/etc/veyra/stage1-user-accounts` file containing `name:uid-base` records. The provisioner validates account-name syntax, unique bases in bounded 100000-ID slots (each mapped namespace uses 65536 IDs), a trusted manifest owner/mode, and unexpected entries in the user store. Each new root is copied into a staging directory, assigned its own outer UID/GID range, then atomically published by rename. Existing roots are checked and reused on later boots.
+
+The QEMU fixture adds `eve:300000` alongside Alice and Bob. In [QEMU run 39609053011](https://github.com/angyedz/Veyra-Linux/actions/runs/39609053011), the [serial artifact](https://github.com/angyedz/Veyra-Linux/actions/runs/39609053011/artifacts/12349862859) records Eve's root being provisioned on the first boot and reused on the second, with root owner/group/mode `300000:301000:0710`. [Integration run 39609052643](https://github.com/angyedz/Veyra-Linux/actions/runs/39609052643) passes.
+
+This confirms a generic test manifest can provision multiple named host-side roots and preserve them across the two tested boots. The template's inner Linux account remains `veyrauser`, the test login still bypasses password authentication through serial autologin, and Eve is not started by the current Alice/Bob-only test manager. This does not implement the installed provisioner, user-selected inner account/password setup, authenticated login, simultaneous sessions or production security validation.
