@@ -5,7 +5,11 @@ exec /bin/busybox su -l -s /bin/sh -c '
     proof="$HOME/.veyra-stage1-autologin"
     previous=0
     if [ -r "$proof" ]; then
-        previous=$(/bin/busybox cat "$proof")
+        saved=$(/bin/busybox cat "$proof")
+        case "$saved" in
+            "uid=1000 count="*) previous=${saved##*count=} ;;
+            *) exit 1 ;;
+        esac
     fi
     case "$previous" in
         ""|*[!0-9]*) exit 1 ;;
