@@ -93,6 +93,14 @@ case "$phase" in
         "$BB" printf '%s\n' 'removed-usr' > /root/veyra-mutation-marker
         echo 'VEYRA_SNAPCORE_BOOTED_ROOT_MUTATION_PASS root=/dev/vda removed=/usr'
         ;;
+    delete-root)
+        [ "$("$BB" cat /usr/lib/veyra-snapcore-root-marker)" = "baseline-ext4-root" ] || {
+            echo 'VEYRA_SNAPCORE_FAILURE: full-root test did not start from its checkpoint'
+            "$BB" poweroff -f
+            exit 1
+        }
+        exec /sbin/veyra-wipe-root
+        ;;
     verify-root)
         [ "$("$BB" cat /usr/lib/veyra-snapcore-root-marker)" = "baseline-ext4-root" ] || {
             echo 'VEYRA_SNAPCORE_FAILURE: rollback did not restore the booted ext4 root'
