@@ -159,3 +159,147 @@ jobs:
           path: /tmp/veyra-stage1-qemu/serial.log
           retention-days: 7
           if-no-files-found: ignore
+
+  dual-root-boot:
+    name: Alpine system ext4 root, system OpenRC, persistent user ext4 root and autologin
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install QEMU and serial assertion tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-system-x86 python3-pexpect
+      - name: Build two Alpine roots, ext4 disks, kernel and initramfs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/veyra-stage1-dualroot
+          docker run --rm -v "$PWD:/work:ro" \
+            -v /tmp/veyra-stage1-dualroot:/out alpine:3.22 sh -ec '
+              apk add --no-cache alpine-base openrc linux-lts mkinitfs \
+                build-base linux-headers e2fsprogs cpio gzip
+              kernel=$(basename "$(find /lib/modules -mindepth 1 -maxdepth 1 -type d -print -quit)")
+              test -n "$kernel"
+              cc -static -Os -Wall -Wextra -Werror \
+                -o /out/host-supervisor /work/tests/stage1-user-supervisor.c
+              mkdir -p /out/systemroot /out/userroot
+              apk --root /out/systemroot --initdb \
+                --keys-dir /etc/apk/keys \
+                --repositories-file /etc/apk/repositories \
+                add alpine-base openrc
+              test -x /out/systemroot/sbin/init
+              test -x /out/systemroot/sbin/openrc
+              rm -rf /out/systemroot/etc/runlevels
+              mkdir -p /out/systemroot/etc/init.d \
+                /out/systemroot/etc/runlevels/sysinit \
+                /out/systemroot/etc/runlevels/boot \
+                /out/systemroot/etc/runlevels/default \
+                /out/systemroot/mnt/veyra-user \
+                /out/systemroot/usr/local/sbin
+              cp /work/tests/fixtures/stage1-system-manager.initd \
+                /out/systemroot/etc/init.d/veyra-stage1-system-manager
+              cp /work/tests/fixtures/stage1-system-qa.initd \
+                /out/systemroot/etc/init.d/veyra-stage1-system-qa
+              chmod 0755 /out/systemroot/etc/init.d/veyra-stage1-system-manager \
+                /out/systemroot/etc/init.d/veyra-stage1-system-qa
+              ln -s /etc/init.d/veyra-stage1-system-manager \
+                /out/systemroot/etc/runlevels/default/veyra-stage1-system-manager
+              ln -s /etc/init.d/veyra-stage1-system-qa \
+                /out/systemroot/etc/runlevels/default/veyra-stage1-system-qa
+              cp /out/host-supervisor /out/systemroot/host-supervisor
+              cp /work/scripts/veyra-stage1-qemu-init.sh \
+                /out/systemroot/usr/local/sbin/veyra-stage1-qemu-qa
+              chmod 0755 /out/systemroot/usr/local/sbin/veyra-stage1-qemu-qa
+              truncate -s 512M /out/veyra-system-root.raw
+              mkfs.ext4 -F -q -L VEYRA_SYSTEM_ROOT \
+                -d /out/systemroot /out/veyra-system-root.raw
+
+              apk --root /out/userroot --initdb \
+                --keys-dir /etc/apk/keys \
+                --repositories-file /etc/apk/repositories \
+                add alpine-base openrc sudo
+              test -x /out/userroot/sbin/init
+              test -x /out/userroot/sbin/openrc
+              cp /work/tests/fixtures/stage1-user-inittab \
+                /out/userroot/etc/inittab
+              mkdir -p /out/userroot/etc/init.d \
+                /out/userroot/etc/runlevels/default
+              find /out/userroot/etc/runlevels -type l -delete
+              cp /work/tests/fixtures/stage1-user-openrc.initd \
+                /out/userroot/etc/init.d/veyra-stage1-user
+              chmod 0755 /out/userroot/etc/init.d/veyra-stage1-user
+              ln -s /etc/init.d/veyra-stage1-user \
+                /out/userroot/etc/runlevels/default/veyra-stage1-user
+              mkdir -p /out/userroot/home/veyrauser \
+                /out/userroot/var/lib/veyra-user
+              printf "format=stage1\\n" > /out/userroot/.veyra-stage1-rootfs
+              printf "veyrauser:x:1000:1000:Veyra User:/home/veyrauser:/bin/sh\\n" \
+                >> /out/userroot/etc/passwd
+              printf "veyrauser:x:1000:\\n" >> /out/userroot/etc/group
+              mkdir -p /out/userroot/etc/sudoers.d
+              printf "veyrauser ALL=(ALL) NOPASSWD: ALL\\n" \
+                > /out/userroot/etc/sudoers.d/veyrauser
+              chmod 0440 /out/userroot/etc/sudoers.d/veyrauser
+              mkdir -p /out/userroot/usr/local/sbin
+              cp /work/tests/fixtures/stage1-user-autologin \
+                /out/userroot/usr/local/sbin/veyra-stage1-autologin
+              chmod 0755 /out/userroot/usr/local/sbin/veyra-stage1-autologin
+              test -x /out/userroot/usr/bin/sudo
+              for dev in console null zero tty random urandom; do
+                rm -f "/out/userroot/dev/$dev"
+              done
+              mknod -m 0600 /out/userroot/dev/console c 5 1
+              mknod -m 0666 /out/userroot/dev/null c 1 3
+              mknod -m 0666 /out/userroot/dev/zero c 1 5
+              mknod -m 0666 /out/userroot/dev/tty c 5 0
+              mknod -m 0666 /out/userroot/dev/random c 1 8
+              mknod -m 0666 /out/userroot/dev/urandom c 1 9
+              mkdir -p /out/userroot/dev/pts
+              rm -f /out/userroot/dev/ptmx
+              ln -s pts/ptmx /out/userroot/dev/ptmx
+              mkdir -p /out/userroot/lost+found
+              chown -hR 100000:100000 /out/userroot
+              chmod 4755 /out/userroot/usr/bin/sudo
+              chown 101000:101000 /out/userroot/home/veyrauser
+              truncate -s 180M /out/veyra-user-root.raw
+              mkfs.ext4 -F -q -L VEYRA_USER_ROOT \
+                -E root_owner=100000:100000 \
+                -d /out/userroot /out/veyra-user-root.raw
+              chmod 0666 /out/veyra-user-root.raw
+              mkinitfs -F "base ext4 virtio" \
+                -i /work/scripts/veyra-stage1-system-root-init.sh \
+                -o /out/veyra-stage1-system-root-initramfs "$kernel"
+              cp /boot/vmlinuz-lts /out/veyra-stage1-system-root-kernel
+              chmod 0644 /out/veyra-system-root.raw \
+                /out/veyra-user-root.raw /out/veyra-stage1-system-root-initramfs \
+                /out/veyra-stage1-system-root-kernel
+              test -s /out/veyra-system-root.raw
+              test -s /out/veyra-user-root.raw
+              test -s /out/veyra-stage1-system-root-kernel
+              test -s /out/veyra-stage1-system-root-initramfs
+            '
+      - name: Boot two persistent Alpine roots and assert system OpenRC plus user autologin
+        run: |
+          python3 -m py_compile tests/test-stage1-user-openrc-qemu.py
+          python3 tests/test-stage1-user-openrc-qemu.py \
+            /tmp/veyra-stage1-dualroot/veyra-stage1-system-root-kernel \
+            /tmp/veyra-stage1-dualroot/veyra-stage1-system-root-initramfs \
+            /tmp/veyra-stage1-dualroot/veyra-user-root.raw \
+            --system-root-disk /tmp/veyra-stage1-dualroot/veyra-system-root.raw \
+            --log /tmp/veyra-stage1-dualroot/serial.log
+      - name: Print guest serial errors
+        if: failure()
+        run: |
+          test ! -s /tmp/veyra-stage1-dualroot/serial.log || \
+            tail -n 240 /tmp/veyra-stage1-dualroot/serial.log
+      - name: Save QEMU serial proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: veyra-stage1-dualroot-system-openrc-serial
+          path: /tmp/veyra-stage1-dualroot/serial.log
+          retention-days: 7
+          if-no-files-found: ignore
