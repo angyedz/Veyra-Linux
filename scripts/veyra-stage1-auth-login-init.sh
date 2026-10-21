@@ -76,7 +76,7 @@ for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27
             fail "login proof has an unexpected identity: $proof_text"
         [ "$owner" = "101000:101000:600" ] ||
             fail "login proof has an unexpected mapped owner or mode: $owner"
-        echo "VEYRA_STAGE1_AUTH_LOGIN_QEMU_SUCCESS account=eve uid=1000 outer-uid=101000 wrong-password-rejected-by-host-test=1"
+        echo "VEYRA_STAGE1_AUTH_LOGIN_QEMU_SUCCESS account=eve uid=1000 outer-uid=101000"
         "$bb" sync
         cleanup
         "$bb" poweroff -f || :
