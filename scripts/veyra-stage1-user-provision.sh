@@ -62,8 +62,9 @@ seen_bases=" "
 account_count=0
 while IFS=: read -r account base extra || [ -n "$account$base$extra" ]; do
     [ -n "$account$base$extra" ] || continue
-    [ -n "$account" ] && [ -n "$base" ] && [ -z "$extra" ] ||
+    if [ -z "$account" ] || [ -z "$base" ] || [ -n "$extra" ]; then
         fail "each account record must contain exactly name:uid-base"
+    fi
     case "$account" in
         [a-z_]* ) ;;
         *) fail "invalid account name in system manifest" ;;
@@ -84,9 +85,10 @@ while IFS=: read -r account base extra || [ -n "$account$base$extra" ]; do
     base_length=$(/bin/busybox printf '%s' "$base" | /bin/busybox wc -c)
     [ "$base_length" -le 10 ] ||
         fail "mapped UID/GID base is out of range"
-    [ "$base" -ge 100000 ] && [ "$base" -le 2147400000 ] &&
-        [ "$((base % 100000))" -eq 0 ] ||
+    if [ "$base" -lt 100000 ] || [ "$base" -gt 2147400000 ] ||
+       [ "$((base % 100000))" -ne 0 ]; then
         fail "mapped UID/GID base must be a unique 100000-ID slot"
+    fi
     case "$seen_accounts" in
         *" $account "*) fail "duplicate account name in system manifest" ;;
     esac
