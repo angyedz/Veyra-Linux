@@ -19,6 +19,11 @@ ublksrv_src=/tmp/ublksrv
 rm -rf "$ublksrv_src"
 git clone https://github.com/ublk-org/ublksrv.git "$ublksrv_src"
 git -C "$ublksrv_src" checkout --detach "$ublksrv_ref"
+
+# Alpine musl already declares prctl_mm_map and PR_SET_IO_FLUSHER in
+# sys/prctl.h. Upstream's extra Linux UAPI include redeclares the struct.
+grep -qx '#include <linux/prctl.h>' "$ublksrv_src/lib/ublksrv.c"
+sed -i '/^#include <linux\\/prctl.h>$/d' "$ublksrv_src/lib/ublksrv.c"
 (
     cd "$ublksrv_src"
     autoreconf -i
