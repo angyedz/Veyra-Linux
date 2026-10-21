@@ -34,6 +34,12 @@ for fs in ext4 xfs; do
     printf 'nix unchanged\n' > "$top/persistent/nix/profile.txt"
     sh "$root/scripts/veyra-deployment.sh" verify "$top" A
     sh "$root/scripts/veyra-deployment.sh" stage "$top" A B
+    for runtime_dir in dev proc sys run tmp media mnt; do
+        test -d "$top/deployments/B/$runtime_dir" || {
+            echo "Missing staged runtime directory: $runtime_dir" >&2; exit 1;
+        }
+    done
+    test "$(stat -c %a "$top/deployments/B/tmp")" = 1777
     sh "$root/scripts/veyra-deployment.sh" verify "$top" B
     uuid=$(blkid -s UUID -o value "$image")
     python3 "$root/scripts/veyra-bootctl.py" --store "$top" init \

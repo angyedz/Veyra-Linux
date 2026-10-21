@@ -1,0 +1,85 @@
+name: Veyra rootless user namespaces in QEMU
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/veyra-user-env-prototype.sh'
+      - 'tests/userns-qemu-check.c'
+      - 'scripts/veyra-userns-qemu-init.sh'
+      - 'tests/test-userns-qemu.py'
+      - 'tests/probe-dual-environment.sh'
+      - '.github/workflows/userns-qemu.yml'
+  pull_request:
+    paths:
+      - 'scripts/veyra-user-env-prototype.sh'
+      - 'tests/userns-qemu-check.c'
+      - 'scripts/veyra-userns-qemu-init.sh'
+      - 'tests/test-userns-qemu.py'
+      - 'tests/probe-dual-environment.sh'
+      - '.github/workflows/userns-qemu.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rootless-primitives:
+    name: Real rootless UID namespaces and PID1 in disposable QEMU
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install QEMU and serial test
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-system-x86 python3-pexpect
+      - name: Compile musl-static check and bootable test-only initramfs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/veyra-userns-qemu
+          docker run --rm \
+            -v "$PWD:/work:ro" \
+            -v /tmp/veyra-userns-qemu:/out \
+            alpine:3.22 sh -ec '
+              apk add --no-cache linux-lts mkinitfs build-base cpio gzip
+              kernel=$(basename "$(find /lib/modules -mindepth 1 -maxdepth 1 -type d -print -quit)")
+              test -n "$kernel"
+              cc -static -Os -Wall -Wextra -Werror \
+                -o /out/ns-check /work/tests/userns-qemu-check.c
+              test -s /out/ns-check
+              mkinitfs -i /work/scripts/veyra-userns-qemu-init.sh \
+                -o /out/veyra-userns-initramfs "$kernel"
+              mkdir -p /out/overlay
+              cp /out/ns-check /out/overlay/ns-check
+              (cd /out/overlay && find . -print | cpio --quiet -o -H newc | gzip -9) \
+                >> /out/veyra-userns-initramfs
+              cp /boot/vmlinuz-lts /out/veyra-userns-kernel
+              test -s /out/veyra-userns-kernel
+              test -s /out/veyra-userns-initramfs
+              # mkinitfs creates root-only initramfs permissions; the
+              # unprivileged QEMU runner must be able to read these artifacts.
+              chmod 0644 /out/veyra-userns-kernel /out/veyra-userns-initramfs
+            '
+      - name: Verify rootless namespaces inside guest
+        run: |
+          python3 tests/test-userns-qemu.py \
+            /tmp/veyra-userns-qemu/veyra-userns-kernel \
+            /tmp/veyra-userns-qemu/veyra-userns-initramfs \
+            --log /tmp/veyra-userns-qemu/serial.log
+      - name: Show guest serial errors
+        if: failure()
+        run: |
+          test ! -s /tmp/veyra-userns-qemu/serial.log || \
+            tail -n 200 /tmp/veyra-userns-qemu/serial.log
+      - name: Retain guest serial log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: veyra-rootless-qemu-serial
+          path: /tmp/veyra-userns-qemu/serial.log
+          if-no-files-found: ignore
+          retention-days: 7

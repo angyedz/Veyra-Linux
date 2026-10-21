@@ -2,13 +2,15 @@
 
 **Status: approved direction; incremental implementation. Not a claim that the current ISO or installed system is atomic.**
 
-## Two different environments
+The installed target also has **two concurrent, isolated Linux environments** on one kernel: a privileged system environment and a persistent independently managed user environment. See [Dual Environment](DUAL-ENVIRONMENT.md) and [Development Roadmap](ROADMAP.md). The Live-vs-installed distinction below is separate from that runtime design.
+
+## Live versus installed Veyra (distinct from the two runtime environments)
 
 1. **Veyra Live ISO** is a conventional, Alpine 3.22/musl/OpenRC, RAM-backed live environment with KDE Plasma, networking, Calamares, diagnostic tools and the Alpine APK bootstrap. It is **not an A/B system**. This makes the installer and rescue environment simple and keeps the existing QEMU ISO boot and installation path working.
 2. **Installed Veyra Plasma edition** is the target for an **atomic, versioned OS**, where the kernel, initramfs, OpenRC services, Qt/KDE Frameworks, KWin, Plasma, portals, host PipeWire and native Mesa belong to one coherent **system deployment**. Plasma is installed from packages, but its *versions* are managed as part of the host deployment, not freely replaced in the running root.
 3. **User data and applications** are outside the rollback boundary. `/home`, user Nix profiles and durable application state must survive switching between system deployments. Each deployment needs its own APK database and package world. A shared `/var/lib/apk` database would be incorrect.
 4. **glenv** stays distinct from the host musl/KDE desktop: a shared, signed Debian glibc runtime is paired to each Veyra host deployment and mounted read-only for host and user environments. No glibc libraries replace the native musl system or KWin.
-5. **Other desktops** can be future **separate images/editions**, not ad-hoc upgrades that remove the core Plasma packages from an atomic Plasma deployment. The existing non-atomic installer options remain functional during migration.
+5. **KDE-only target:** installed Veyra has one system-owned, coherent KDE Plasma platform. Its `plasmashell` and KRunner processes run in the isolated user environment from a version-paired read-only system KDE runtime. Other desktop packages installed in the user environment do not replace Veyra's system desktop. The legacy experimental installer still offers alternate DE choices until a proven KDE-only replacement is ready; this does not define the final architecture.
 
 ## Package manager
 
@@ -50,7 +52,8 @@ The installer must permit users to keep choosing ext4, Btrfs, XFS or F2FS. It mu
 - [x] Filesystem-neutral **offline staging** implementation with independent APK world databases and persistent data directories.
 - [x] Verify ext4 and XFS staging and A/B GRUB config activation in GitHub Actions on fresh disposable loop disks.
 - [ ] Production-quality vpkg replacing apk inside installed system, while Live bootstrap remains conventional.
-- [x] Experimental filesystem-neutral GRUB selection and actual early-root bind mounts; validated on ext4 in isolated Linux namespace.\n- [ ] Full production boot metadata authentication and verified kernel/initramfs provenance.
+- [x] Experimental filesystem-neutral GRUB selection and actual early-root bind mounts; validated on ext4 in isolated Linux namespace.
+- [ ] Full production boot metadata authentication and verified kernel/initramfs provenance.
 - [ ] Complete QEMU installed ext4 root A → stage B → boot B → rollback A → boot A.
 - [ ] Equivalent compatibility coverage of XFS, F2FS and Btrfs without making any mandatory.
 - [ ] Authenticated full-system metadata, unattended recovery and physical hardware tests.

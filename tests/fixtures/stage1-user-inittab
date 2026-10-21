@@ -1,0 +1,7 @@
+# Minimal BusyBox init layout for isolated Alpine user rootfs.
+# BusyBox is namespace PID 1; OpenRC manages user-side service runlevels.
+::sysinit:/sbin/openrc sysinit
+::sysinit:/sbin/openrc boot
+::wait:/sbin/openrc default
+::respawn:/bin/busybox sleep 100000
+::shutdown:/sbin/openrc shutdown
