@@ -43,6 +43,7 @@ echo "VEYRA_STAGE1_OUTER_INIT: starting system OpenRC, QEMU boot $expected"
 
 manager_pid=0
 cleanup() {
+    /sbin/rc-service veyra-stage1-system-manager-b stop >/dev/null 2>&1 || :
     /sbin/rc-service veyra-stage1-system-manager stop >/dev/null 2>&1 || :
 }
 fail() {
@@ -53,11 +54,16 @@ fail() {
 }
 verify_autologin() {
     expected_count=$1
+    account=$(/bin/busybox cat /mnt/veyra-user/.veyra-stage1-account 2>/dev/null || printf default)
     actual=""
     for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
         actual=$(/bin/busybox cat /mnt/veyra-user/home/veyrauser/.veyra-stage1-autologin 2>/dev/null || :)
         if [ "$actual" = "uid=1000 count=$expected_count" ]; then
             actual_boundary=$(/bin/busybox cat /mnt/veyra-user/home/veyrauser/.veyra-stage1-isolation 2>/dev/null || :)
+            account_state=$(/bin/busybox cat /mnt/veyra-user/home/veyrauser/.veyra-stage1-user-state 2>/dev/null || :)
+            if [ "$account_state" != "account=$account count=$expected_count" ]; then
+                fail "user root recorded the wrong account-local state: $account_state"
+            fi
             if [ "$actual_boundary" != "uid=1000 count=$expected_count host-run-isolated=1 manager-socket-isolated=1" ]; then
                 fail "inner user root could not prove isolated /run at count $expected_count"
             fi
@@ -272,6 +278,49 @@ case "$manager_status" in
 esac
 verify_autologin "$recovery_count"
 echo "VEYRA_STAGE1_MANAGER_RECOVERY_PASS state=RUNNING autologin-count=$recovery_count host-run-isolated=1 manager-socket-isolated=1 stale-socket=cleared"
+
+# Each account receives a separately provisioned persistent root and host UID
+# range. The manager serves them one at a time in this serial-only test.
+if [ -f /mnt/veyra-user-b/.veyra-stage1-account ]; then
+    alice_root=/var/lib/veyra-user-store/users/alice
+    bob_root=/var/lib/veyra-user-store/users/bob
+    [ "$(/bin/busybox cat /mnt/veyra-user/.veyra-stage1-account)" = alice ] ||
+        fail "primary manager did not resolve the alice rootfs"
+    [ "$(/bin/busybox cat /mnt/veyra-user-b/.veyra-stage1-account)" = bob ] ||
+        fail "secondary manager did not resolve the bob rootfs"
+    alice_owner=$(/bin/busybox stat -c '%u:%g:%a' "$alice_root")
+    bob_owner=$(/bin/busybox stat -c '%u:%g:%a' "$bob_root")
+    [ "$alice_owner" = "100000:101000:710" ] ||
+        fail "alice rootfs lacks its private mapped-ID range: $alice_owner"
+    [ "$bob_owner" = "200000:201000:710" ] ||
+        fail "bob rootfs lacks its private mapped-ID range: $bob_owner"
+    alice_state_before=$(/bin/busybox cat /mnt/veyra-user/home/veyrauser/.veyra-stage1-user-state)
+    [ "$alice_state_before" = "account=alice count=$recovery_count" ] ||
+        fail "alice state was not persisted in her own rootfs"
+    if [ "$expected" -eq 1 ] &&
+       [ -e /mnt/veyra-user-b/home/veyrauser/.veyra-stage1-user-state ]; then
+        fail "new bob rootfs unexpectedly contains pre-provisioned login state"
+    fi
+    /sbin/rc-service veyra-stage1-system-manager stop ||
+        fail "could not stop the alice manager before switching accounts"
+    /sbin/rc-service veyra-stage1-system-manager-b start ||
+        fail "system OpenRC could not start bob's provisioned rootfs"
+    bob_status=$(/host-supervisor status 2>/dev/null || :)
+    case "$bob_status" in
+        RUNNING\ pid=*\ count=$expected) ;;
+        *) fail "bob manager did not start with his own persistent count: $bob_status" ;;
+    esac
+    bob_state=$(/bin/busybox cat /mnt/veyra-user-b/home/veyrauser/.veyra-stage1-user-state 2>/dev/null || :)
+    [ "$bob_state" = "account=bob count=$expected" ] ||
+        fail "bob login state was missing, shared or not persistent: $bob_state"
+    alice_state_after=$(/bin/busybox cat /mnt/veyra-user/home/veyrauser/.veyra-stage1-user-state 2>/dev/null || :)
+    [ "$alice_state_after" = "$alice_state_before" ] ||
+        fail "bob login changed alice's persistent rootfs state"
+    echo "VEYRA_STAGE1_PER_USER_ROOTS_PASS alice=$recovery_count bob=$expected uid-ranges=100000,200000 persistence=1"
+    /sbin/rc-service veyra-stage1-system-manager-b stop ||
+        fail "could not stop bob's test environment"
+fi
+
 echo "VEYRA_STAGE1_QEMU_SUCCESS: user environment lifecycle and persistence boot $expected"
 /bin/busybox sync
 /bin/busybox poweroff -f
