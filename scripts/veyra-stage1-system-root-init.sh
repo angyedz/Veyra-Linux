@@ -1,5 +1,5 @@
 #!/bin/sh
-# Test-only initramfs for a disk-backed Alpine system root plus user rootfs.
+# Test-only initramfs for a disk-backed system root plus persistent user store.
 set -eu
 bb=/bin/busybox
 fail() {
