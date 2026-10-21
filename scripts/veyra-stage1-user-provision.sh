@@ -3,6 +3,7 @@
 set -eu
 store=/var/lib/veyra-user-store
 users=$store/users
+users_file=/etc/veyra/stage1-user-accounts
 template=/usr/share/veyra/stage1-user-template
 root_a=/mnt/veyra-user
 root_b=/mnt/veyra-user-b
@@ -21,9 +22,15 @@ fi
 if [ ! -d "$store" ] || [ -L "$store" ]; then
     fail "persistent user store is missing or a symlink"
 fi
+if [ -L "$users_file" ] || [ ! -f "$users_file" ] ||
+   [ "$(/bin/busybox stat -c '%u:%g:%a' "$users_file")" != "0:0:644" ]; then
+    fail "account manifest must be a system-root-owned regular 0644 file"
+fi
 if [ ! -d "$template" ] || [ -L "$template" ] ||
    [ ! -x "$template/sbin/init" ] ||
-   [ ! -f "$template/.veyra-stage1-rootfs" ]; then
+   [ ! -f "$template/.veyra-stage1-rootfs" ] ||
+   [ ! -d "$template/home/veyrauser" ] ||
+   [ ! -x "$template/usr/bin/sudo" ]; then
     fail "trusted system user-root template is incomplete"
 fi
 
@@ -46,6 +53,64 @@ cleanup() {
 }
 trap cleanup EXIT
 trap 'exit 1' INT TERM
+
+# The system-owned manifest has one login/store name and one reserved outer
+# UID/GID base per environment. Each 100000-step slot contains one 65536-ID
+# user namespace range, leaving a gap so ranges cannot overlap.
+seen_accounts=" "
+seen_bases=" "
+account_count=0
+while IFS=: read -r account base extra || [ -n "$account$base$extra" ]; do
+    [ -n "$account$base$extra" ] || continue
+    [ -n "$account" ] && [ -n "$base" ] && [ -z "$extra" ] ||
+        fail "each account record must contain exactly name:uid-base"
+    case "$account" in
+        [a-z_]* ) ;;
+        *) fail "invalid account name in system manifest" ;;
+    esac
+    case "$account" in
+        *[!a-z0-9_-]*) fail "invalid account name in system manifest" ;;
+    esac
+    account_length=$(/bin/busybox printf '%s' "$account" | /bin/busybox wc -c)
+    [ "$account_length" -le 32 ] ||
+        fail "account name exceeds 32 bytes"
+    case "$base" in
+        [1-9]*) ;;
+        *) fail "invalid mapped UID/GID base in system manifest" ;;
+    esac
+    case "$base" in
+        *[!0-9]*) fail "invalid mapped UID/GID base in system manifest" ;;
+    esac
+    base_length=$(/bin/busybox printf '%s' "$base" | /bin/busybox wc -c)
+    [ "$base_length" -le 10 ] ||
+        fail "mapped UID/GID base is out of range"
+    [ "$base" -ge 100000 ] && [ "$base" -le 2147400000 ] &&
+        [ "$((base % 100000))" -eq 0 ] ||
+        fail "mapped UID/GID base must be a unique 100000-ID slot"
+    case "$seen_accounts" in
+        *" $account "*) fail "duplicate account name in system manifest" ;;
+    esac
+    case "$seen_bases" in
+        *" $base "*) fail "duplicate UID/GID range in system manifest" ;;
+    esac
+    seen_accounts="$seen_accounts$account "
+    seen_bases="$seen_bases$base "
+    account_count=$((account_count + 1))
+    [ "$account_count" -le 64 ] ||
+        fail "system manifest exceeds the 64-account test limit"
+done < "$users_file"
+[ "$account_count" -gt 0 ] || fail "system account manifest is empty"
+case "$seen_accounts" in *" alice "*) ;; *) fail "manager fixture requires alice" ;; esac
+case "$seen_accounts" in *" bob "*) ;; *) fail "manager fixture requires bob" ;; esac
+
+for entry in "$users"/*; do
+    [ -e "$entry" ] || [ -L "$entry" ] || continue
+    entry_name=$(/bin/busybox basename "$entry")
+    case "$seen_accounts" in
+        *" $entry_name "*) ;;
+        *) fail "unexpected entry in managed users directory" ;;
+    esac
+done
 
 provision_one() {
     account=$1
@@ -91,16 +156,10 @@ provision_one() {
     fi
 }
 
-for entry in "$users"/*; do
-    [ -e "$entry" ] || [ -L "$entry" ] || continue
-    case "$entry" in
-        "$users/alice"|"$users/bob") ;;
-        *) fail "unexpected entry in managed users directory" ;;
-    esac
-done
-
-provision_one alice 100000
-provision_one bob 200000
+while IFS=: read -r account base extra || [ -n "$account$base$extra" ]; do
+    [ -n "$account$base$extra" ] || continue
+    provision_one "$account" "$base"
+done < "$users_file"
 
 bind_root() {
     source=$1
