@@ -79,8 +79,9 @@ case "$phase" in
         [ "$("$BB" cat /mnt/snapcore/home/veyrauser/Documents/recovery-note.txt)" = \
             'personal-file-before-checkpoint' ] ||
             fail 'baseline personal file was not present before mutation'
+        "$BB" rm -f /mnt/snapcore/user-root/state.txt
         "$BB" printf '%s\n' 'mutated-user-root' \
-            > /mnt/snapcore/user-root/state.txt
+            > /mnt/snapcore/user-root/state-mutated.txt
         "$BB" printf '%s\n' 'must-disappear-after-root-rollback' \
             > /mnt/snapcore/user-root/mutation-only.txt
         # This deliberately crosses into the separately mounted /home. A root
@@ -104,6 +105,8 @@ case "$phase" in
             fail 'root-only rollback did not restore the baseline user-root data'
         [ ! -e /mnt/snapcore/user-root/mutation-only.txt ] ||
             fail 'root-only rollback retained its post-checkpoint file'
+        [ ! -e /mnt/snapcore/user-root/state-mutated.txt ] ||
+            fail 'root-only rollback retained its mutated replacement file'
         [ ! -e /mnt/snapcore/home/veyrauser/Documents/recovery-note.txt ] ||
             fail 'root-only rollback unexpectedly rewound the separately mounted /home'
         [ "$("$BB" cat /mnt/snapcore/home/veyrauser/Documents/post-checkpoint.txt)" = \
@@ -126,6 +129,8 @@ case "$phase" in
             fail 'separate /home rollback changed the restored user-root volume'
         [ ! -e /mnt/snapcore/user-root/mutation-only.txt ] ||
             fail 'separate /home rollback changed user-root post-checkpoint state'
+        [ ! -e /mnt/snapcore/user-root/state-mutated.txt ] ||
+            fail 'separate /home rollback changed restored user-root state'
         [ "$("$BB" cat /mnt/snapcore/home/veyrauser/Documents/recovery-note.txt)" = \
             'personal-file-before-checkpoint' ] ||
             fail 'explicit /home rollback did not restore the earlier personal file'
