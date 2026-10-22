@@ -86,8 +86,12 @@ for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27
 done
 proof1=/mnt/veyra-user/home/veyrauser/.veyra-stage1-authenticated-shared-root
 proof2=/mnt/veyra-user/home/veyrauser2/.veyra-stage1-authenticated-shared-root
-[ -f "$proof1" ] && [ ! -L "$proof1" ] || fail "account 1000 login proof is missing"
-[ -f "$proof2" ] && [ ! -L "$proof2" ] || fail "account 1001 login proof is missing"
+if [ ! -f "$proof1" ] || [ -L "$proof1" ]; then
+    fail "account 1000 login proof is missing"
+fi
+if [ ! -f "$proof2" ] || [ -L "$proof2" ]; then
+    fail "account 1001 login proof is missing"
+fi
 shared1=$("$bb" cat "$proof1" | awk '{ print $4, $5, $6, $7 }')
 shared2=$("$bb" cat "$proof2" | awk '{ print $4, $5, $6, $7 }')
 [ "$shared1" = "$shared2" ] ||
