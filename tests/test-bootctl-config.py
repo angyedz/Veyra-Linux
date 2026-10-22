@@ -30,14 +30,21 @@ def main():
         assert "# VEYRA_DEFAULT=A" in initial
         assert "veyra_deployment=A" in initial
         assert "veyra_deployment=B" not in initial
+        assert "insmod loadenv" in initial
+        assert "load_env" in initial
+        assert "set next_entry=" in initial
+        assert "save_env next_entry" in initial
         assert "Veyra conventional recovery" in initial
 
         # Staging B alone cannot change the *existing* GRUB selection.
         fake_slot(store, "B")
         assert bootctl.slots(store) == ["A", "B"]
         assert "veyra_deployment=B" not in initial
-        activated = bootctl.grub_text(config, "B", bootctl.slots(store), True)
-        assert "# VEYRA_DEFAULT=B" in activated
+        activated = bootctl.grub_text(config, "A", bootctl.slots(store), True)
+        assert "# VEYRA_DEFAULT=A" in activated
+        assert "set default='veyra-A'" in activated
+        assert 'set default="${saved_entry}"' in activated
+        assert 'set default="${next_entry}"' in activated
         assert "veyra_deployment=B" in activated
         assert "veyra_deployment=A" in activated
 
@@ -50,7 +57,7 @@ def main():
                 raise AssertionError(f"unsafe deployment ID accepted: {invalid!r}")
         (store / "boot/grub").mkdir(parents=True)
         (store / "boot/grub/grub.cfg").write_text(activated)
-        assert bootctl.selected(store) == "B"
+        assert bootctl.selected(store) == "A"
     print("Veyra GRUB generation policy checks passed")
 
 

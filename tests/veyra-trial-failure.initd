@@ -1,0 +1,19 @@
+#!/sbin/openrc-run
+# QEMU-only fault injection: restart during trial boot before confirmation.
+description="Injected unconfirmed Veyra trial boot failure"
+
+depend() {
+    need localmount
+    after sddm
+    before veyra-boot-confirm
+}
+
+start() {
+    [ "$(cat /etc/veyra/deployment-id)" = C ] || return 1
+    echo VEYRA_INJECTED_TRIAL_FAILURE
+    printf '%s\n' C > /var/lib/veyra/store/boot-state/trial-failed
+    printf '%s\n' 'data written by failed C' > /home/e2euser/atomic-data.txt
+    printf '%s\n' only-C > /etc/veyra/slot-specific.txt
+    sync
+    exec reboot -f
+}

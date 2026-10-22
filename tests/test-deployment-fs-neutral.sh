@@ -41,6 +41,8 @@ for fs in ext4 xfs; do
     done
     test "$(stat -c %a "$top/deployments/B/tmp")" = 1777
     sh "$root/scripts/veyra-deployment.sh" verify "$top" B
+    grub-editenv "$top/boot/grub/grubenv" create
+    grub-editenv "$top/boot/grub/grubenv" set saved_entry=veyra-A
     uuid=$(blkid -s UUID -o value "$image")
     python3 "$root/scripts/veyra-bootctl.py" --store "$top" init \
         --uuid "$uuid" --fstype "$fs" --default A
@@ -48,11 +50,18 @@ for fs in ext4 xfs; do
     grep -q "veyra_deployment=A" "$top/boot/grub/grub.cfg"
     grep -q "veyra_deployment=B" "$top/boot/grub/grub.cfg"
     grep -q "rootfstype=$fs" "$top/boot/grub/grub.cfg"
+    grub-editenv "$top/boot/grub/grubenv" list | grep -Fqx 'saved_entry=veyra-A'
     grub-script-check "$top/boot/grub/grub.cfg"
     python3 "$root/scripts/veyra-bootctl.py" --store "$top" activate B
-    grep -qx '# VEYRA_DEFAULT=B' "$top/boot/grub/grub.cfg"
-    grep -q "^set default='veyra-B'$" "$top/boot/grub/grub.cfg"
+    grub-editenv "$top/boot/grub/grubenv" list | grep -Fqx 'saved_entry=veyra-A'
+    grub-editenv "$top/boot/grub/grubenv" list | grep -Fqx 'next_entry=veyra-B'
+    grep -qx '# VEYRA_DEFAULT=A' "$top/boot/grub/grub.cfg"
+    grep -q "^set default='veyra-A'$" "$top/boot/grub/grub.cfg"
     python3 "$root/scripts/veyra-bootctl.py" --store "$top" rollback A
+    if grub-editenv "$top/boot/grub/grubenv" list | grep -q '^next_entry='; then
+        echo 'Rollback did not clear the one-time trial' >&2; exit 1
+    fi
+    grub-editenv "$top/boot/grub/grubenv" list | grep -Fqx 'saved_entry=veyra-A'
     grep -q "^set default='veyra-A'$" "$top/boot/grub/grub.cfg"
     if python3 "$root/scripts/veyra-bootctl.py" --store "$top" activate '../evil'; then
         echo 'bootctl accepted traversal ID' >&2; exit 1

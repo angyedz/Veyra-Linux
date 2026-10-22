@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Real Veyra ext4 BIOS A -> B -> A boot test on ONE disposable qcow2 disk.
+"""Real Veyra ext4 BIOS trial-confirmation/fallback test on ONE disposable disk.
 
 Uses the same live ISO, disk installer shell process, Alpine mkinitfs, GRUB
 and installed OpenRC as the conventional E2E test. No host partition touched.
 This is NOT a graphical Calamares click test or an OTA security signoff.
+It proves A -> confirmed B -> unconfirmed C -> automatic fallback B -> rollback A.
 """
 import argparse
 import base64
@@ -13,6 +14,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import pexpect
 
 HERE = pathlib.Path(__file__).resolve().parent
 PROJECT = HERE.parent
@@ -51,6 +53,20 @@ def guest_cycle(qemu, disk, logdir, expected, commands):
             child.close(force=True)
 
 
+def expect_injected_trial_failure(qemu, disk, logdir):
+    log_path = logdir / "veyra-atomic-failed-trial-C.log"
+    with log_path.open("w") as stream:
+        child = installed.boot(qemu, str(disk), None, stream, 400, installed=True)
+        try:
+            # The QEMU helper uses -no-reboot, so the deliberate guest reboot
+            # terminates this process. The following guest_cycle boots fallback B.
+            child.expect(pexpect.EOF, timeout=360)
+        except pexpect.TIMEOUT as error:
+            raise RuntimeError("injected trial failure did not reboot the QEMU guest") from error
+        finally:
+            child.close(force=True)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("iso", type=pathlib.Path)
@@ -74,11 +90,14 @@ def main():
                     "setup-pkgrepo.sh",
                     "veyra-deployment.sh", "veyra-initramfs-select.sh",
                     "build-veyra-init.sh", "veyra-atomic-convert.sh",
-                    "veyra-bootctl.py",
+                    "veyra-bootctl.py", "veyra-boot-confirm.initd",
                 ):
                     installed.upload_script(
                         child, (PROJECT / "scripts" / name).read_bytes(),
                         "/usr/local/lib/veyra/" + name)
+                installed.upload_script(
+                    child, (HERE / "veyra-trial-failure.initd").read_bytes(),
+                    "/usr/local/lib/veyra/veyra-trial-failure.initd")
                 installed.upload_script(child, installed.install_script("plasma").encode(),
                                         "/tmp/e2e-install.sh")
                 installed.run_command(child, "sh /tmp/e2e-install.sh", timeout=1500)
@@ -117,6 +136,8 @@ def main():
         print("Atomically prepared A/B on disposable installed ext4 disk; booting A",
               flush=True)
         guest_cycle(qemu, disk, args.log_dir, "A", [
+            "grub-editenv /var/lib/veyra/store/boot/grub/grubenv list | "
+            "grep -Fqx saved_entry=veyra-A",
             "echo 'data created in A' > /home/e2euser/atomic-data.txt",
             "/usr/local/sbin/veyra-bootctl "
             "--store /var/lib/veyra/store activate B",
@@ -124,19 +145,39 @@ def main():
         print("Booting B from its own Alpine+Plasma system tree", flush=True)
         guest_cycle(qemu, disk, args.log_dir, "B", [
             """test "$(cat /home/e2euser/atomic-data.txt)" = 'data created in A'""",
+            "grub-editenv /var/lib/veyra/store/boot/grub/grubenv list | "
+            "grep -Fqx saved_entry=veyra-B",
             "echo 'data updated in B' > /home/e2euser/atomic-data.txt",
             "printf 'only-B\\n' > /etc/veyra/slot-specific.txt",
             "test ! -e /var/lib/veyra/store/deployments/A/etc/veyra/slot-specific.txt",
-            "/usr/local/sbin/veyra-bootctl "
-            "--store /var/lib/veyra/store rollback A",
+            "/usr/local/lib/veyra/veyra-deployment.sh stage "
+            "/var/lib/veyra/store B C",
+            "install -m755 /usr/local/lib/veyra/veyra-trial-failure.initd "
+            "/var/lib/veyra/store/deployments/C/etc/init.d/veyra-trial-failure",
+            "ln -s /etc/init.d/veyra-trial-failure "
+            "/var/lib/veyra/store/deployments/C/etc/runlevels/default/veyra-trial-failure",
+            "/usr/local/sbin/veyra-bootctl --store /var/lib/veyra/store activate C",
         ])
-        print("Booting rolled-back A and checking durable user data", flush=True)
+        print("Injecting failure during trial C; expecting automatic fallback to B",
+              flush=True)
+        expect_injected_trial_failure(qemu, disk, args.log_dir)
+        guest_cycle(qemu, disk, args.log_dir, "B", [
+            "grub-editenv /var/lib/veyra/store/boot/grub/grubenv list | "
+            "grep -Fqx saved_entry=veyra-B",
+            "if grub-editenv /var/lib/veyra/store/boot/grub/grubenv list | grep -q '^next_entry='; then exit 1; fi",
+            "test \"$(cat /var/lib/veyra/store/boot-state/trial-failed)\" = C",
+            "test \"$(cat /etc/veyra/slot-specific.txt)\" = only-B",
+            "test \"$(cat /home/e2euser/atomic-data.txt)\" = 'data written by failed C'",
+            "/usr/local/sbin/veyra-bootctl --store /var/lib/veyra/store rollback A",
+        ])
+        print("Booting explicitly rolled-back A and checking durable user data", flush=True)
         guest_cycle(qemu, disk, args.log_dir, "A", [
-            """test "$(cat /home/e2euser/atomic-data.txt)" = 'data updated in B'""",
+            """test "$(cat /home/e2euser/atomic-data.txt)" = 'data written by failed C'""",
             "test ! -e /etc/veyra/slot-specific.txt",
-            "/usr/local/sbin/veyra-bootctl --store /var/lib/veyra/store status",
+            "grub-editenv /var/lib/veyra/store/boot/grub/grubenv list | "
+            "grep -Fqx saved_entry=veyra-A",
         ])
-        print("VEYRA_ATOMIC_QEMU_SUCCESS: A -> B -> A, persistent data survived",
+        print("VEYRA_ATOMIC_QEMU_SUCCESS: A -> confirmed B -> failed trial C -> fallback B -> rollback A",
               flush=True)
 
 

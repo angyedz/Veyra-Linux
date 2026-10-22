@@ -11,6 +11,19 @@ on:
       - 'scripts/veyra-deployment.sh'
       - 'tests/test-atomic-qemu.py'
       - 'tests/test-installed-qemu.py'
+      - 'tests/veyra-trial-failure.initd'
+      - '.github/workflows/atomic-e2e.yml'
+  pull_request:
+    paths:
+      - 'scripts/veyra-atomic-convert.sh'
+      - 'scripts/veyra-boot-confirm.initd'
+      - 'scripts/veyra-bootctl.py'
+      - 'scripts/veyra-deployment.sh'
+      - 'tests/test-atomic-qemu.py'
+      - 'tests/test-bootctl-config.py'
+      - 'tests/test-deployment-fs-neutral.sh'
+      - 'tests/test-installed-qemu.py'
+      - 'tests/veyra-trial-failure.initd'
       - '.github/workflows/atomic-e2e.yml'
   workflow_dispatch:
 
@@ -24,7 +37,7 @@ permissions:
 
 jobs:
   atomic-ext4:
-    name: Real ext4 A to B to rollback A in QEMU
+    name: Real ext4 trial confirmation and automatic fallback in QEMU
     runs-on: ubuntu-24.04
     timeout-minutes: 80
     steps:
