@@ -4,7 +4,7 @@ Veyra's ISO is produced by Alpine's `aports/scripts/mkimage.sh`, with a custom p
 
 ## CI
 
-Pushes to main trigger the **Veyra ISO** workflow whenever the image or installer changes. Successful builds publish the ISO and its checksums as GitHub Actions artifacts, then boot the image under QEMU for a basic serial-console check.
+Pushes to main trigger the **Veyra ISO** workflow whenever the image or installer changes. It builds and checksums the ISO, boots the Live system in QEMU, then installs to a blank virtual disk and boots the installed system. Graphical Calamares clicks and first Plasma login still need separate qualification.
 
 ## Local build
 
@@ -21,6 +21,8 @@ sh scripts/build-iso.sh
 
 Output is written to `dist/`.
 
+The live ISO identifies itself as an alpha build. CI appends the full source commit to `0.1.0-alpha.1`; local builds default to `0.1.0-alpha.1+local`. The overlay takes its version from `VEYRA_VERSION`, so a release build must set it to the tag version and then pass the complete build/boot/install gate.
+
 The ISO is a graphical KDE Plasma/Wayland live system. Its root is loaded into RAM on boot, while the read-only installation medium supplies the APK cache and kernel modules. See [Live environment](LIVE.md).
 
 ## Validation
@@ -30,7 +32,7 @@ sh tests/static.sh
 sh scripts/test-iso.sh dist/veyra-linux-*.iso
 ```
 
-The ISO is still a **development build**. The glenv upstream installer is available through `veyra-setup` but is not baked into this live ISO. The ISO build requires Calamares and Veyra AppCenter APKs in `dist/calamares/`; both are bundled from a local signed APK repository. AppCenter source is pinned to the commit shown above; publishing it as a stable package remains pending review. A full QEMU install/reboot test **passed** on October 19, 2026 ([workflow run 39202330852](https://github.com/angyedz/Veyra-Linux/actions/runs/39202330852)). This test invokes Veyra's actual installer shell scripts inside a disposable virtual machine and boots the installed disk; it is not a GUI automation test of clicking through Calamares. Real hardware and all supported desktops still need validation.
+The ISO is still a **development build**. The glenv upstream installer is available through `veyra-setup` but is not baked into this live ISO. The ISO build requires Calamares and Veyra AppCenter APKs in `dist/calamares/`; both are bundled from a local signed APK repository, and AppCenter source is pinned to the commit shown above. A blank-disk QEMU install/reboot passed on the installer PR head ([workflow run 39574207601](https://github.com/angyedz/Veyra-Linux/actions/runs/39574207601)); the current hardware/AppCenter candidate must pass its own build and install run. This test invokes Veyra's installer shell scripts inside a disposable VM; it is not a GUI test of Calamares. Real hardware and graphics acceleration still need validation.
 
 ## GitHub Actions image verification
 

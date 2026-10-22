@@ -136,6 +136,7 @@ jobs:
       - name: Build ISO with Alpine mkimage
         env:
           VEYRA_REQUIRE_GLENV_MANAGER: '1'
+          VEYRA_VERSION: 0.1.0-alpha.1+${{ github.sha }}
         run: sh scripts/build-iso.sh
       - name: Check image structure and checksum
         run: |

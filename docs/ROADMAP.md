@@ -51,7 +51,7 @@ This milestone publishes the current conventional Alpine/KDE installation path s
 - [ ] Pass the full ISO workflow on that commit: artifact integrity/checksums, Live QEMU boot, blank-disk installation, and reboot into the installed system.
 - [ ] Complete a disposable-VM Calamares graphical install and first Plasma login. The shell-driven `install-e2e` job does **not** satisfy this item by itself.
 - [ ] Publish a release note with supported target (x86_64 PC/VM), tested boot/install paths, network requirement, Nouveau-only NVIDIA support, and explicit non-goals/known gaps.
-- [ ] Attach the exact tested ISO, its SHA-256/SHA-512 files, and a source/package manifest to a prerelease tag. Keep private package/repository signing keys and credentials out of the ISO and public artifacts.
+- [ ] Attach the exact tested ISO, its SHA-256/SHA-512 files, and a source/package manifest to prerelease tag `v0.1.0-alpha.1`. Keep private package/repository signing keys and credentials out of the ISO and public artifacts.
 - [ ] Confirm AppCenter's installed repository configuration and signing-key/update path; an AppCenter build signed only inside a temporary ISO repository is not evidence of a supported stable update channel.
 
 **Gate:** the published ISO is byte-for-byte the ISO that passed the clean VM install and boot checks, and the release notes accurately describe this conventional single-root preview. If Calamares graphical install or first Plasma login is not verified, do not publish the ISO as an installable preview.

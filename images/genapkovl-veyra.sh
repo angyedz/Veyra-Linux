@@ -3,6 +3,7 @@
 set -eu
 host="${1:-veyra}"
 root=$(CDPATH='' cd "$(dirname "$0")/.." && pwd)
+veyra_release_version="${VEYRA_VERSION:-0.1.0-alpha.1+local}"
 
 mkdir -p etc/apk etc/veyra etc/sddm.conf.d etc/skel/Desktop etc/sudoers.d etc/polkit-1/rules.d \
     etc/init.d etc/runlevels/sysinit etc/runlevels/boot etc/runlevels/default \
@@ -13,8 +14,8 @@ mkdir -p etc/apk etc/veyra etc/sddm.conf.d etc/skel/Desktop etc/sudoers.d etc/po
 printf '%s\n' veyra > etc/hostname
 printf '%s\n' 'Veyra Linux — Lightweight by design. Compatible by nature.' > etc/motd
 printf '%s\n' 'Veyra Linux' > etc/issue
-printf '%s\n' 'Veyra Linux development live image' > etc/veyra-release
-cp "$root/branding/os-release" etc/os-release
+printf 'Veyra Linux %s (Glacier) development live image\n' "$veyra_release_version" > etc/veyra-release
+sed "s/@VEYRA_VERSION@/$veyra_release_version/g" "$root/branding/os-release" > etc/os-release
 cp "$root/images/flathub.flatpakrepo" usr/share/flatpak/remotes.d/flathub.flatpakrepo
 if [ -n "${VEYRA_TEMP_APK_KEYS_MANIFEST:-}" ]; then
     [ -f "$VEYRA_TEMP_APK_KEYS_MANIFEST" ] || {
@@ -24,7 +25,7 @@ if [ -n "${VEYRA_TEMP_APK_KEYS_MANIFEST:-}" ]; then
     install -m 0644 "$VEYRA_TEMP_APK_KEYS_MANIFEST" etc/veyra/temporary-apk-keys
 fi
 # Compatibility metadata for fetch utilities that still read LSB fields.
-printf '%s\n' 'DISTRIB_ID=Veyra' 'DISTRIB_RELEASE=1.0' 'DISTRIB_CODENAME=glacier' 'DISTRIB_DESCRIPTION="Veyra Linux 1.0 (Glacier)"' > etc/lsb-release
+printf '%s\n' 'DISTRIB_ID=Veyra' "DISTRIB_RELEASE=$veyra_release_version" 'DISTRIB_CODENAME=glacier' "DISTRIB_DESCRIPTION=\"Veyra Linux $veyra_release_version (Glacier)\"" > etc/lsb-release
 cp "$root/branding/fastfetch/config.jsonc" etc/fastfetch/config.jsonc
 cp "$root/branding/fastfetch/config.jsonc" etc/skel/.config/fastfetch/config.jsonc
 cp "$root/branding/fastfetch/logo.txt" usr/share/veyra/fastfetch/logo.txt

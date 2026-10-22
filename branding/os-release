@@ -1,9 +1,9 @@
 NAME="Veyra Linux"
-PRETTY_NAME="Veyra Linux 1.0 (Glacier)"
+PRETTY_NAME="Veyra Linux @VEYRA_VERSION@ (Glacier)"
 ID=veyra
 ID_LIKE=alpine
-VERSION="1.0 (Glacier)"
-VERSION_ID=1.0
+VERSION="@VEYRA_VERSION@ (Glacier)"
+VERSION_ID=@VEYRA_VERSION@
 VERSION_CODENAME=glacier
 HOME_URL="https://github.com/angyedz/Veyra-Linux"
 DOCUMENTATION_URL="https://github.com/angyedz/Veyra-Linux/tree/main/docs"

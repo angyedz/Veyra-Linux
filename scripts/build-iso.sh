@@ -22,6 +22,15 @@ case "$version" in
     * ) echo 'Invalid VEYRA_ALPINE_VERSION' >&2; exit 1 ;;
 esac
 
+veyra_release_version="${VEYRA_VERSION:-0.1.0-alpha.1+local}"
+case "$veyra_release_version" in
+    ''|*[!A-Za-z0-9.+-]*)
+        echo 'Invalid VEYRA_VERSION; use only letters, digits, dots, plus and hyphens.' >&2
+        exit 1
+        ;;
+esac
+export VEYRA_VERSION="$veyra_release_version"
+
 outdir="${VEYRA_OUTDIR:-$root/dist}"
 buildroot="${VEYRA_BUILDROOT:-$root/.build}"
 mkdir -p "$outdir" "$buildroot"
