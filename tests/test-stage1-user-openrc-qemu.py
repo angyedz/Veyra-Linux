@@ -45,8 +45,8 @@ def guest_boot(qemu, kernel, initramfs, user_disk, qemu_boot, logfile, system_ro
     try:
         patterns = [
             b"VEYRA_STAGE1_SYSTEM_OPENRC_MANAGER_READY",
-            f"VEYRA_STAGE1_AUTOLOGIN_PASS uid=1000 count={auto_count} host-run-isolated=1 manager-socket-isolated=1".encode(),
             f"VEYRA_STAGE1_SHARED_MULTIUSER_PASS accounts=1000,1001 shared-root=1 shared-apkdb=1 shared-mountns=1 separate-homes=1 cross-home-denied=1 concurrent=1 count={auto_count}".encode(),
+            f"VEYRA_STAGE1_AUTOLOGIN_PASS uid=1000 count={auto_count} host-run-isolated=1 manager-socket-isolated=1".encode(),
             b"VEYRA_STAGE1_ROOTFS_INODE_GUARD_PASS",
             b"VEYRA_STAGE1_ROOTFS_FD_BIND_SWAP_PASS",
             b"VEYRA_STAGE1_FD_SANITIZATION_PASS",
@@ -70,7 +70,7 @@ def guest_boot(qemu, kernel, initramfs, user_disk, qemu_boot, logfile, system_ro
             b"Kernel panic",
         ]
         if system_root_disk is not None:
-            patterns.insert(1, b"VEYRA_STAGE1_SYSTEM_ROOT_EXT4_OPENRC_PASS")
+            patterns.insert(2, b"VEYRA_STAGE1_SYSTEM_ROOT_EXT4_OPENRC_PASS")
         for expected_index in range(len(patterns) - 2):
             active_patterns = patterns if expected_index == 0 else patterns[1:]
             outcome = guest.expect(active_patterns, timeout=180)
