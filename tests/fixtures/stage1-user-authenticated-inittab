@@ -1,0 +1,6 @@
+# Disposable test fixture: ordinary BusyBox getty/login for two shared-root accounts.
+::sysinit:/sbin/openrc sysinit
+::sysinit:/sbin/openrc boot
+::wait:/sbin/openrc default
+::respawn:/bin/busybox getty -L 115200 console vt100
+::shutdown:/sbin/openrc shutdown
