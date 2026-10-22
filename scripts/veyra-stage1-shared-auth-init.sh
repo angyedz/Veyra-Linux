@@ -80,15 +80,21 @@ echo "VEYRA_STAGE1_SHARED_AUTH_MANAGER_READY boot=$expected_boot accounts=1000,1
 
 uid1000=$((expected_boot))
 uid1001=$((expected_boot))
+proof1=/mnt/veyra-user/home/veyrauser/.veyra-stage1-authenticated-shared-root
+proof2=/mnt/veyra-user/home/veyrauser2/.veyra-stage1-authenticated-shared-root
+# Existing proofs from the previous QEMU boot must not satisfy this boot's
+# readiness check. Wait until each account has logged in and updated its count.
+# shellcheck disable=SC2016
+login_count_awk='{ print $3 }'
 for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60; do
-    if [ -f /mnt/veyra-user/home/veyrauser/.veyra-stage1-authenticated-shared-root ] &&
-       [ -f /mnt/veyra-user/home/veyrauser2/.veyra-stage1-authenticated-shared-root ]; then
+    if [ -f "$proof1" ] && [ ! -L "$proof1" ] &&
+       [ -f "$proof2" ] && [ ! -L "$proof2" ] &&
+       [ "$("$bb" awk "$login_count_awk" "$proof1")" = "count=$uid1000" ] &&
+       [ "$("$bb" awk "$login_count_awk" "$proof2")" = "count=$uid1001" ]; then
         break
     fi
     "$bb" sleep 1
 done
-proof1=/mnt/veyra-user/home/veyrauser/.veyra-stage1-authenticated-shared-root
-proof2=/mnt/veyra-user/home/veyrauser2/.veyra-stage1-authenticated-shared-root
 if [ ! -f "$proof1" ] || [ -L "$proof1" ]; then
     fail "account 1000 login proof is missing"
 fi
@@ -97,8 +103,6 @@ if [ ! -f "$proof2" ] || [ -L "$proof2" ]; then
 fi
 # shellcheck disable=SC2016
 shared_fields_awk='{ print $4, $5, $6, $7 }'
-# shellcheck disable=SC2016
-login_count_awk='{ print $3 }'
 shared1=$("$bb" awk "$shared_fields_awk" "$proof1")
 shared2=$("$bb" awk "$shared_fields_awk" "$proof2")
 [ "$shared1" = "$shared2" ] ||
