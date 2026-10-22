@@ -4,7 +4,7 @@ set -eu
 host="${1:-veyra}"
 root=$(CDPATH='' cd "$(dirname "$0")/.." && pwd)
 
-mkdir -p etc/apk etc/sddm.conf.d etc/skel/Desktop etc/sudoers.d \
+mkdir -p etc/apk etc/sddm.conf.d etc/skel/Desktop etc/sudoers.d etc/polkit-1/rules.d \
     etc/init.d etc/runlevels/sysinit etc/runlevels/boot etc/runlevels/default \
     etc/calamares/modules etc/calamares/branding/veyra \
     usr/local/bin usr/local/lib/veyra usr/share/applications \
@@ -93,13 +93,22 @@ Session=plasma.desktop
 Relogin=true
 SDDM
 
-# Only specific installer and recovery commands receive passwordless privileges.
-# Live environment account has no permanent password.
+# This ISO is a disposable live session: let its autologin user administer it
+# without password prompts. installer-prepare.sh removes both grants before
+# producing the installed system.
 cat > etc/sudoers.d/veyra-live <<'SUDO'
-Defaults:veyra env_keep += "DISPLAY WAYLAND_DISPLAY XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS QT_QPA_PLATFORM"
-veyra ALL=(root) NOPASSWD: /usr/bin/calamares, /bin/sh /usr/local/lib/veyra/tui-install.sh, /usr/bin/testdisk, /usr/bin/photorec
+Defaults:veyra env_keep += "DISPLAY WAYLAND_DISPLAY XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS QT_QPA_PLATFORM XAUTHORITY"
+veyra ALL=(root) NOPASSWD: ALL
 SUDO
 chmod 0440 etc/sudoers.d/veyra-live
+cat > etc/polkit-1/rules.d/49-veyra-live.rules <<'POLKIT'
+polkit.addRule(function(action, subject) {
+    if (subject.user === "veyra" && subject.local && subject.active) {
+        return polkit.Result.YES;
+    }
+});
+POLKIT
+chmod 0644 etc/polkit-1/rules.d/49-veyra-live.rules
 
 cat > usr/share/applications/veyra-install.desktop <<'DESKTOP'
 [Desktop Entry]

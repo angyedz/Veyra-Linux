@@ -17,22 +17,13 @@ with (root / "calamares/settings.conf").open(encoding="utf-8") as stream:
     settings = yaml.safe_load(stream)
 assert settings["branding"] == "veyra"
 instances = {instance["id"]: instance for instance in settings["instances"]}
-assert instances["desktop"]["module"] == "packagechooser"
-assert instances["desktop"]["config"] == "packagechooser-desktop.conf"
-with (root / "calamares/modules/packagechooser-desktop.conf").open(encoding="utf-8") as stream:
-    chooser = yaml.safe_load(stream)
-assert chooser["mode"] == "required"
-assert chooser["method"] == "legacy"
-assert chooser["default"] == "plasma"
-assert [item["id"] for item in chooser["items"]] == ["plasma", "gnome", "xfce", "lxqt"]
-for item in chooser["items"]:
-    assert Path(item["screenshot"].removeprefix("/etc/")).name
-    assert (root / f"calamares/branding/veyra/desktop-{item['id']}.svg").exists()
+assert "desktop" not in instances
+assert instances["desktop-install"]["module"] == "shellprocess"
 
 seq = settings["sequence"]
 assert any("show" in step for step in seq)
 show_modules = next(step["show"] for step in seq if "show" in step)
-assert show_modules.index("packagechooser@desktop") < show_modules.index("partition")
+assert "packagechooser@desktop" not in show_modules
 exec_modules = next(step["exec"] for step in seq if "exec" in step)
 for name in ("partition", "mount", "shellprocess@copy", "shellprocess@prepare",
              "shellprocess@desktop-install", "shellprocess@hardware",
@@ -55,7 +46,7 @@ for name in ("copy", "prepare", "desktop", "hardware"):
         conf = yaml.safe_load(stream)
     assert conf["dontChroot"] is True
     assert conf["script"]
-assert "gs[packagechooser_desktop]" in str(
+assert "gs[packagechooser_desktop]" not in str(
     yaml.safe_load((root / "calamares/modules/shellprocess-desktop.conf").read_text())
 )
 

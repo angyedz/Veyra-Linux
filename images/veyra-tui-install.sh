@@ -55,8 +55,7 @@ install_veyra() {
         [ "$efi" != "$rootdev" ] || { say 'Root and EFI must differ.'; return; }
         [ "$(blkid -s TYPE -o value "$efi" 2>/dev/null)" = vfat ] || { say 'EFI partition must be FAT32.'; return; }
     fi
-    ask 'Desktop [plasma/xfce/lxqt/gnome] (default plasma): '; desktop=${answer:-plasma}
-    case "$desktop" in plasma|xfce|lxqt|gnome) ;; *) say 'Invalid desktop.'; return ;; esac
+    desktop=plasma
     ask 'Computer hostname [veyra]: '; hostname=${answer:-veyra}
     case "$hostname" in *[!a-zA-Z0-9-]*|''|-*|*-) say 'Invalid hostname.'; return ;; esac
     ask 'New user name: '; username=$answer

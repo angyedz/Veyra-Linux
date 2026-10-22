@@ -25,27 +25,21 @@ chmod 755 "$tmp/bin/"*
 export PATH="$tmp/bin:$PATH"
 export VEYRA_TEST_LOG="$tmp/operations"
 
-for desktop in plasma gnome xfce lxqt; do
-    : > "$VEYRA_TEST_LOG"
-    sh "$root/scripts/installer-desktop.sh" "$target" "$desktop"
-    grep -qx "$desktop" "$target/etc/veyra/desktop"
-    case "$desktop" in
-        plasma|lxqt) manager=sddm ;;
-        gnome) manager=gdm ;;
-        xfce) manager=lightdm ;;
-    esac
-    grep -q "rc-update add $manager default" "$VEYRA_TEST_LOG"
-    case "$desktop" in
-        gnome) grep -q 'apk add --no-cache gnome gdm gdm-openrc' "$VEYRA_TEST_LOG" ;;
-        xfce) grep -q 'lightdm-gtk-greeter' "$VEYRA_TEST_LOG" ;;
-        lxqt) grep -q 'lxqt-desktop' "$VEYRA_TEST_LOG" ;;
-    esac
-done
-
-if sh "$root/scripts/installer-desktop.sh" "$target" 'anything-else' > /dev/null 2>&1; then
-    echo 'Unknown desktop choice must be rejected' >&2
+: > "$VEYRA_TEST_LOG"
+sh "$root/scripts/installer-desktop.sh" "$target" plasma
+grep -qx plasma "$target/etc/veyra/desktop"
+grep -q 'rc-update add sddm default' "$VEYRA_TEST_LOG"
+if grep -Eq 'apk (add|del).* (gnome|xfce|lxqt)' "$VEYRA_TEST_LOG"; then
+    echo 'KDE-only install must not mutate other desktop packages' >&2
     exit 1
 fi
+
+for desktop in gnome xfce lxqt anything-else ''; do
+    if sh "$root/scripts/installer-desktop.sh" "$target" "$desktop" > /dev/null 2>&1; then
+        echo "Unsupported desktop choice must be rejected: $desktop" >&2
+        exit 1
+    fi
+done
 
 printf '%s\n' 'vendor_id : GenuineIntel' > "$tmp/cpuinfo"
 printf '%s\n' 0x030000 > "$tmp/pci/0000:01:00.0/class"
