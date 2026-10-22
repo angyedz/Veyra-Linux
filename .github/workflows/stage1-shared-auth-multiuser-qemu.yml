@@ -54,7 +54,7 @@ jobs:
               apk --root /out/userroot --initdb \
                 --keys-dir /etc/apk/keys \
                 --repositories-file /etc/apk/repositories \
-                add alpine-base openrc
+                add alpine-base openrc sudo
               test -x /out/userroot/sbin/init
               test -x /out/userroot/bin/login
               rm -rf /out/userroot/etc/runlevels
@@ -75,6 +75,7 @@ jobs:
               ln -s /etc/init.d/veyra-stage1-user \
                 /out/userroot/etc/runlevels/default/veyra-stage1-user
               printf "format=stage1\n" > /out/userroot/.veyra-stage1-rootfs
+              mkdir -p /out/userroot/etc/sudoers.d
 
               chroot /out/userroot addgroup -g 1000 veyrauser
               chroot /out/userroot adduser -D -H -u 1000 \
@@ -84,6 +85,10 @@ jobs:
                 -G veyrauser2 -s /bin/sh veyrauser2
               printf "veyrauser:Veyra-account-one-test-only!\nveyrauser2:Veyra-account-two-test-only!\n" \
                 | chroot /out/userroot chpasswd
+              printf "veyrauser ALL=(ALL) NOPASSWD: ALL\n" \
+                > /out/userroot/etc/sudoers.d/veyrauser
+              chmod 0440 /out/userroot/etc/sudoers.d/veyrauser
+              test -x /out/userroot/usr/bin/sudo
               test -s /out/userroot/lib/apk/db/installed
 
               for account in veyrauser veyrauser2; do
@@ -108,6 +113,8 @@ jobs:
               # Keep every inode, including the test-created device nodes,
               # inside the mapped outer UID/GID range.
               chown -hR 100000:100000 /out/userroot
+              # chown clears setuid; restore only the test root's sudo bit.
+              chmod 4755 /out/userroot/usr/bin/sudo
               chown -R 101000:101000 /out/userroot/home/veyrauser
               chown -R 101001:101001 /out/userroot/home/veyrauser2
               chmod 0700 /out/userroot/home/veyrauser /out/userroot/home/veyrauser2
