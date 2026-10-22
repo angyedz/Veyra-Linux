@@ -24,9 +24,10 @@ esac
 
 outdir="${VEYRA_OUTDIR:-$root/dist}"
 buildroot="${VEYRA_BUILDROOT:-$root/.build}"
+mkdir -p "$outdir" "$buildroot"
+buildroot=$(CDPATH='' cd "$buildroot" && pwd)
 aports="$buildroot/aports"
 workdir="$buildroot/mkimage"
-mkdir -p "$outdir" "$buildroot"
 
 apk add --no-cache abuild alpine-conf git fakeroot syslinux xorriso \
     squashfs-tools grub grub-efi mtools coreutils findutils
@@ -45,6 +46,7 @@ cp "${PACKAGER_PRIVKEY}.pub" /etc/apk/keys/
 extra_dir="${VEYRA_EXTRA_APK_DIR:-$root/dist/calamares}"
 repo_base="$buildroot/veyra-repository"
 repo_arch="$repo_base/x86_64"
+temporary_apk_keys="$buildroot/temporary-apk-keys.txt"
 mkdir -p "$repo_arch"
 if [ ! -d "$extra_dir" ] || \
     [ -z "$(find "$extra_dir" -maxdepth 1 -name 'veyra-calamares-*.apk' -print -quit)" ] || \
@@ -53,10 +55,19 @@ if [ ! -d "$extra_dir" ] || \
     exit 1
 fi
 cp "$extra_dir"/*.apk "$repo_arch/"
+: > "$temporary_apk_keys"
 for key in "$extra_dir"/*.pub; do
     [ -f "$key" ] || continue
     cp "$key" /etc/apk/keys/
+    basename "$key" >> "$temporary_apk_keys"
 done
+[ -s "$temporary_apk_keys" ] || {
+    echo 'Missing public key for the temporary desktop APK repository.' >&2
+    exit 1
+}
+basename "${PACKAGER_PRIVKEY}.pub" >> "$temporary_apk_keys"
+LC_ALL=C sort -u "$temporary_apk_keys" > "$temporary_apk_keys.sorted"
+mv "$temporary_apk_keys.sorted" "$temporary_apk_keys"
 apk index -o "$repo_arch/APKINDEX.tar.gz" "$repo_arch"/*.apk
 abuild-sign "$repo_arch/APKINDEX.tar.gz"
 
@@ -69,6 +80,7 @@ cp "$root/images/mkimg.veyra.sh" "$aports/scripts/mkimg.veyra.sh"
 # mkimage locates the apkovl generator relative to the current working dir.
 chmod +x "$root/images/genapkovl-veyra.sh"
 cd "$root"
+export VEYRA_TEMP_APK_KEYS_MANIFEST="$temporary_apk_keys"
 sh "$aports/scripts/mkimage.sh" \
     --tag "$version-dev" \
     --profile veyra \

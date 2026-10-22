@@ -77,6 +77,23 @@ done
 echo 'Installing GRUB for the disk-backed system...'
 chroot "$target" apk add --no-cache grub grub-bios grub-efi
 
+# The Live ISO uses short-lived signing keys for its pinned local APKs and
+# temporary package index. Those keys must not become trust anchors on disk.
+temporary_keys=/etc/veyra/temporary-apk-keys
+if [ -r "$temporary_keys" ]; then
+    while IFS= read -r key || [ -n "$key" ]; do
+        [ -n "$key" ] || continue
+        case "$key" in
+            *[!A-Za-z0-9_.@+-]*|.*|*/*)
+                echo "Invalid temporary APK key filename: $key" >&2
+                exit 1
+                ;;
+        esac
+        rm -f "$target/etc/apk/keys/$key"
+    done < "$temporary_keys"
+    rm -f "$target/etc/veyra/temporary-apk-keys"
+fi
+
 # Alpine live media mounts the kernel modules in a separate squashfs
 # modloop, which rsync deliberately does not copy to disk. Restore the
 # complete kernel and its modules from the official Alpine repository.

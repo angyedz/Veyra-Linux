@@ -86,8 +86,12 @@ fi
 # The image overlay is reproducible and contains our setup script.
 tmpdir=$(mktemp -d)
 trap 'rm -rf "$tmpdir"' EXIT HUP INT TERM
-(cd "$tmpdir" && sh "$root/images/genapkovl-veyra.sh" veyra)
+printf '%s\n' 'veyra-builder-test.rsa.pub' > "$tmpdir/temporary-apk-keys.txt"
+(cd "$tmpdir" && VEYRA_TEMP_APK_KEYS_MANIFEST="$tmpdir/temporary-apk-keys.txt" \
+    sh "$root/images/genapkovl-veyra.sh" veyra)
 tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/hostname'
+tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/veyra/temporary-apk-keys'
+tar -xOf "$tmpdir/veyra.apkovl.tar.gz" etc/veyra/temporary-apk-keys | grep -qx 'veyra-builder-test.rsa.pub'
 tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/os-release'
 tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/fastfetch/config.jsonc'
 tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/skel/.config/neofetch/config.conf'

@@ -4,7 +4,7 @@ set -eu
 host="${1:-veyra}"
 root=$(CDPATH='' cd "$(dirname "$0")/.." && pwd)
 
-mkdir -p etc/apk etc/sddm.conf.d etc/skel/Desktop etc/sudoers.d etc/polkit-1/rules.d \
+mkdir -p etc/apk etc/veyra etc/sddm.conf.d etc/skel/Desktop etc/sudoers.d etc/polkit-1/rules.d \
     etc/init.d etc/runlevels/sysinit etc/runlevels/boot etc/runlevels/default \
     etc/calamares/modules etc/calamares/branding/veyra \
     usr/local/bin usr/local/lib/veyra usr/share/applications \
@@ -16,6 +16,13 @@ printf '%s\n' 'Veyra Linux' > etc/issue
 printf '%s\n' 'Veyra Linux development live image' > etc/veyra-release
 cp "$root/branding/os-release" etc/os-release
 cp "$root/images/flathub.flatpakrepo" usr/share/flatpak/remotes.d/flathub.flatpakrepo
+if [ -n "${VEYRA_TEMP_APK_KEYS_MANIFEST:-}" ]; then
+    [ -f "$VEYRA_TEMP_APK_KEYS_MANIFEST" ] || {
+        echo 'Temporary APK key manifest is missing.' >&2
+        exit 1
+    }
+    install -m 0644 "$VEYRA_TEMP_APK_KEYS_MANIFEST" etc/veyra/temporary-apk-keys
+fi
 # Compatibility metadata for fetch utilities that still read LSB fields.
 printf '%s\n' 'DISTRIB_ID=Veyra' 'DISTRIB_RELEASE=1.0' 'DISTRIB_CODENAME=glacier' 'DISTRIB_DESCRIPTION="Veyra Linux 1.0 (Glacier)"' > etc/lsb-release
 cp "$root/branding/fastfetch/config.jsonc" etc/fastfetch/config.jsonc

@@ -14,6 +14,8 @@ The graphical and text installers install **KDE Plasma with SDDM only**. Calamar
 
 The development ISO includes Telegram Desktop from Alpine and Veyra AppCenter with signed APK and per-user Flatpak/Flathub catalogs. Discord is offered for on-demand installation into the signed-in account; it is not copied into every user's home. The AppCenter build is pinned to a passing package-source revision and signed inside the temporary ISO repository. Stable AppCenter publication and update signing remain a separate review/release step.
 
+The installer removes the temporary ISO package and repository-index signing keys after it has installed the desktop packages. The installed system keeps Alpine's keys and Veyra's stable repository key.
+
 After copying the Alpine live root, Veyra reads the live system's PCI hardware and CPU vendor. It installs the matching Mesa components, firmware and microcode from signed Alpine repositories, then Calamares completes user setup and bootloader configuration. NVIDIA currently uses Nouveau, not the unavailable proprietary Linux driver on musl.
 
 ## Live-session privileges

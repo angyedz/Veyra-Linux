@@ -49,6 +49,13 @@ mount --rbind /sys "$target/sys"
 mount --make-rslave "$target/sys"
 mount -t tmpfs tmpfs "$target/run"
 /usr/local/lib/veyra/installer-prepare.sh "$target"
+# Temporary ISO package/index keys are removed after desktop packages install.
+if [ -r /etc/veyra/temporary-apk-keys ]; then
+    while IFS= read -r key || [ -n "$key" ]; do
+        [ -z "$key" ] || test ! -e "$target/etc/apk/keys/$key"
+    done < /etc/veyra/temporary-apk-keys
+fi
+test ! -e "$target/etc/veyra/temporary-apk-keys"
 /usr/local/lib/veyra/installer-desktop.sh "$target" DESKTOP
 /usr/local/lib/veyra/installer-hardware.sh "$target"
 echo 'root:veyra-test' | chroot "$target" chpasswd
