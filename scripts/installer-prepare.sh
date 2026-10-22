@@ -58,11 +58,18 @@ if chroot "$target" apk info -e veyra-calamares >/dev/null 2>&1; then
     chroot "$target" apk del veyra-calamares
 fi
 
-# Install the signed Veyra desktop essentials from our separate APK repository.
-# This runs only on the installed system, not on the RAM-backed live image.
+# Install the signed Veyra desktop essentials from the stable repository.
+# AppCenter was installed from the ISO's pinned local APK repo; omit it here
+# so stable cannot replace this pinned development build with its older published one.
 echo 'Installing Veyra desktop applications from the signed repository...'
 chroot "$target" apk update
-chroot "$target" apk add --no-cache veyra-meta veyra-appcenter
+chroot "$target" apk add --no-cache veyra-meta
+for package in veyra-meta veyra-appcenter flatpak telegram-desktop; do
+    chroot "$target" apk info -e "$package" >/dev/null || {
+        echo "Required Veyra desktop package missing after install: $package" >&2
+        exit 1
+    }
+done
 
 # GRUB cannot generate a proper configuration on the RAM-backed live root.
 # Install and configure its BIOS/UEFI packages only AFTER the disk filesystem

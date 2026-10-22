@@ -49,10 +49,13 @@ konsole
 fastfetch
 dolphin
 firefox
-# Flatpak runtime support; Veyra AppCenter is installed on disk by veyra-meta.
+# Flatpak runtime and the pinned Veyra AppCenter build from the local APK repo.
 flatpak
 flatpak-polkit
 xdg-document-portal
+py3-qt6
+qt6-qtdeclarative
+veyra-appcenter
 # Native Telegram Desktop package from Alpine community.
 telegram-desktop
 nix

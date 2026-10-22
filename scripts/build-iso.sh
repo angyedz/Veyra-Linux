@@ -46,8 +46,10 @@ extra_dir="${VEYRA_EXTRA_APK_DIR:-$root/dist/calamares}"
 repo_base="$buildroot/veyra-repository"
 repo_arch="$repo_base/x86_64"
 mkdir -p "$repo_arch"
-if [ ! -d "$extra_dir" ] || [ -z "$(find "$extra_dir" -maxdepth 1 -name '*.apk' -print -quit)" ]; then
-    echo 'Missing Calamares APK. Run scripts/build-calamares.sh first.' >&2
+if [ ! -d "$extra_dir" ] || \
+    [ -z "$(find "$extra_dir" -maxdepth 1 -name 'veyra-calamares-*.apk' -print -quit)" ] || \
+    [ -z "$(find "$extra_dir" -maxdepth 1 -name 'veyra-appcenter-*.apk' -print -quit)" ]; then
+    echo 'Missing Calamares or Veyra AppCenter APK. Run scripts/build-calamares.sh first.' >&2
     exit 1
 fi
 cp "$extra_dir"/*.apk "$repo_arch/"
