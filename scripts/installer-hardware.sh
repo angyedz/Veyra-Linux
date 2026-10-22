@@ -72,4 +72,16 @@ done
 mkdir -p "$target/var/log/veyra"
 sh "$detector" --report > "$target/var/log/veyra/hardware-detected.txt"
 printf '%s\n' "$packages" > "$target/var/log/veyra/hardware-packages.txt"
+# Record the actual PCI/USB devices and kernel driver bindings from the Live
+# kernel so unsupported hardware can be diagnosed after installation.
+if command -v lspci >/dev/null 2>&1; then
+    lspci -nnk > "$target/var/log/veyra/pci-drivers.txt" ||
+        echo 'Could not collect PCI driver details.' >&2
+fi
+if command -v lsusb >/dev/null 2>&1; then
+    lsusb > "$target/var/log/veyra/usb-devices.txt" ||
+        echo 'Could not collect USB device details.' >&2
+    lsusb -t > "$target/var/log/veyra/usb-driver-tree.txt" ||
+        echo 'Could not collect USB driver bindings.' >&2
+fi
 echo 'Hardware support installed.'

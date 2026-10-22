@@ -63,8 +63,8 @@ fi
 # so stable cannot replace this pinned development build with its older published one.
 echo 'Installing Veyra desktop applications from the signed repository...'
 chroot "$target" apk update
-chroot "$target" apk add --no-cache veyra-meta
-for package in veyra-meta veyra-appcenter flatpak telegram-desktop; do
+chroot "$target" apk add --no-cache veyra-meta linux-firmware
+for package in veyra-meta veyra-appcenter flatpak telegram-desktop linux-firmware; do
     chroot "$target" apk info -e "$package" >/dev/null || {
         echo "Required Veyra desktop package missing after install: $package" >&2
         exit 1

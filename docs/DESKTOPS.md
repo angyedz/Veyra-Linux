@@ -4,7 +4,9 @@ Veyra currently installs **KDE Plasma only**, using SDDM. Calamares and the text
 
 ## Hardware preparation
 
-The installer inspects CPU vendor and PCI display-class devices, including multi-GPU machines. On Intel it selects Intel microcode and Mesa/Intel firmware; AMD uses AMD microcode and Radeon/Mesa; NVIDIA uses Mesa Nouveau and NVIDIA firmware. NVIDIA proprietary modules are **not** offered, since Alpine's musl stable repositories do not provide a matching supported proprietary package.
+The installed system uses Alpine's `linux-lts` kernel and the full `linux-firmware` meta package, which supplies the firmware subpackages for common storage, network, audio and graphics devices. The kernel loads matching modules through normal device discovery. Veyra additionally inspects CPU vendor and every PCI display adapter, including mixed-GPU machines: Intel selects Intel microcode and Mesa/Intel components, AMD selects AMD microcode and Radeon/Mesa, and NVIDIA selects Nouveau/Mesa. NVIDIA proprietary modules are **not** offered, since Alpine's musl stable repositories do not provide a matching supported proprietary package.
+
+The installer saves `lspci -nnk`, `lsusb` and the USB driver tree under `/var/log/veyra/` for hardware troubleshooting. This broad firmware and kernel-module set cannot guarantee support for every device model; physical hardware checks are still needed, especially for newer Wi-Fi adapters and proprietary devices.
 
 The target is prepared from signed official Alpine v3.22 main/community repositories. The installer does not add Alpine edge or run vendor scripts. Network access is required for target-system packages and firmware.
 
@@ -14,4 +16,4 @@ The disposable Live ISO grants the autologged `veyra` account passwordless `sudo
 
 ## Verification
 
-CI validates the Plasma-only routing and hardware selection against mocked PCI/CPU fixtures. The ISO workflow separately installs to and boots a blank QEMU disk. These checks do not establish physical hardware driver loading or release readiness; only test disk installation on a disposable virtual machine.
+CI validates the Plasma-only routing and vendor-specific GPU selection against mocked PCI/CPU fixtures. The ISO workflow separately installs to and boots a blank QEMU disk. These checks do not establish physical hardware driver loading or release readiness; only test disk installation on a disposable virtual machine.
