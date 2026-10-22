@@ -220,8 +220,10 @@ system and user packages, but `vpkg` cannot target or modify the system
 root. System packages are installed with ordinary `apk` only after the
 user enters the password-gated system shell; system updates are a
 separate host-authorized transaction against an inactive A/B generation.
-The current prototype still needs user-root integration and automatic
-source fallback.
+The current CLI fails closed unless `/run/veyra/user-environment`
+contains `user-v1`. This is only a misuse guard; the mount and namespace
+boundary is what keeps system files unreachable. The production launcher,
+user-root integration and automatic source fallback remain incomplete.
 
 ## Current prototype limits and CI evidence
 

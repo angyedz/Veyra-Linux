@@ -24,7 +24,7 @@ Veyra Linux Pre-Alpha is the first public, deliberately early x86_64 release. It
 ## Verification status
 
 - The current conventional single-root ISO remains an internal installer and SDDM validation image; it does not yet contain the complete Pre-Alpha dual-environment system.
-- Current `vpkg` uses the configured APK repositories or imperative Nix profile commands when explicitly selected. Automatic Alpine → Veyra APK → Nix fallback and integration into the user environment remain to be implemented; `vpkg` will not expose system-root routing.
+- Current `vpkg` refuses backend calls unless it is inside the marked user environment. The development installer does not yet launch that environment, so the packaged command currently fails closed. Automatic Alpine → Veyra APK → Nix fallback and user-root integration remain to be implemented; `vpkg` has no system-root routing.
 - The current updater performs in-place APK upgrades, and the A/B prototype requires manual activation. Those paths do not satisfy the Pre-Alpha update gate.
 - Before publication, integrate signed paired updates, pass a clean graphical install and SDDM login, then prove successful update confirmation and forced-failure rollback in QEMU.
 - Publish the exact tested ISO with checksums, source and package manifests, update instructions and its matching source tag. Never include private signing keys or credentials.
