@@ -63,6 +63,7 @@ jobs:
       - name: Build signed Alpine Calamares APK
         env:
           VEYRA_APPCENTER_SOURCE: ${{ github.workspace }}/veyra-pkgrepo
+          VEYRA_APPCENTER_REVISION: 97dbd8b8df28e0e4fad66397473bfa2ff62d5532
         run: sh scripts/build-calamares.sh
       - uses: actions/upload-artifact@v4
         with:

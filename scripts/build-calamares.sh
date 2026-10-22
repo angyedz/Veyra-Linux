@@ -37,13 +37,17 @@ su veyra-builder -s /bin/sh -c '
 # It is signed into this temporary development APK repository, not published
 # as a stable Veyra package by the ISO workflow.
 appcenter_source="${VEYRA_APPCENTER_SOURCE:-}"
-appcenter_revision=97dbd8b8df28e0e4fad66397473bfa2ff62d5532
+appcenter_expected_revision=97dbd8b8df28e0e4fad66397473bfa2ff62d5532
 if [ -z "$appcenter_source" ] || [ ! -f "$appcenter_source/src/veyra-appcenter/APKBUILD" ]; then
     echo 'Missing checked-out Veyra AppCenter package source.' >&2
     exit 1
 fi
-actual_revision=$(git -C "$appcenter_source" rev-parse HEAD)
-[ "$actual_revision" = "$appcenter_revision" ] || {
+if [ -n "${VEYRA_APPCENTER_REVISION:-}" ]; then
+    actual_revision=$VEYRA_APPCENTER_REVISION
+else
+    actual_revision=$(git -C "$appcenter_source" rev-parse HEAD)
+fi
+[ "$actual_revision" = "$appcenter_expected_revision" ] || {
     echo "Unexpected Veyra AppCenter source revision: $actual_revision" >&2
     exit 1
 }
