@@ -1,6 +1,6 @@
 # Veyra SnapCore — protected block-level snapshots of the user environment
 
-**Status (2026-10-20): DESIGN PROPOSAL ONLY. No SnapCore engine, snapshot storage format, QEMU rollback or installed integration exists.** Related: [Veyra Resilience](VEYRA-RESILIENCE.md), [VRE](VEYRA-RECOVERY.md), [Roadmap](ROADMAP.md).
+**Status (2026-10-21): experimental file-backed engine prototype v0.2 in review.** The Python prototype and rootless replay tests live in `snapcore/` and `tests/test_snapcore.py`. Commit `b21fc70` added four fixed-seed reference-model histories with pruning, GC and reopen; those 26 tests passed locally as an unprivileged user and in [dedicated SnapCore CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39509850855), while [full integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39509850737) passed separately. Follow-up commit `6f1ae9c` expands the model to 16 reproducible seeds and adds same-handle threaded read/write/checkpoint coverage; all 27 tests pass locally and in [SnapCore CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39514199712), while [full integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39514199819) passed separately. A follow-up now injects `ENOSPC` during a multi-block write: all 28 tests pass locally, while CI for this addition is pending. The simulated failure preserves the prior head and checkpoint and leaves only garbage that the collector removes. It remains disconnected from boot, user storage, VRE and Guardian and is not production-ready. Related: [Veyra Resilience](VEYRA-RESILIENCE.md), [VRE](VEYRA-RECOVERY.md), [Roadmap](ROADMAP.md).
 
 ## Decision and objectives
 
@@ -9,6 +9,25 @@ Veyra should have a **Veyra-owned copy-on-write (CoW) block-volume snapshot engi
 The engine sits **below an ordinary filesystem**. Test ext4 first, then XFS, F2FS and optionally Btrfs used as an ordinary filesystem. Do not claim compatibility without independent filesystem-specific tests. **System A/B** remains the pre-existing filesystem-neutral, directory-generation mechanism and must work without SnapCore, block CoW or snapshots.
 
 The storage service and controller belong to the **system environment**, not the user's own root (inner `sudo`). Its metadata and backing device must not be accessible via guest device nodes, writable mounts, inherited FDs, control sockets, host D-Bus or raw storage operations.
+
+## Experimental file-backed prototype v0.2
+
+The implementation in `snapcore/engine.py` uses a private test directory instead of a real block device:
+
+- Each logical block is an immutable, SHA-256-named extent file. Partial writes read the previous block and publish a replacement extent; sparse zero blocks have no extent.
+- Each logical map is an immutable, content-addressed root. Generations refer to roots, so writes do not mutate extents or roots reachable from earlier generations.
+- Checkpoints append a journal event that pins the current generation. Rollback appends a new generation referencing the checkpoint root; it does not rewrite or remove later generations.
+- Normal journal events use a checksum chain, monotonically increasing sequence, data/root-before-journal ordering and `fsync` boundaries. A trailing incomplete record is discarded on open; a complete record with a bad checksum fails closed. Pruning replaces the journal with a compacted base as described below.
+- If an error occurs after opening the journal for an append, the current handle is marked unusable because the commit may or may not be durable. It refuses further reads of state and writes until closed and reopened; replay then selects the valid prior or fully appended generation. Injected I/O errors cover partial append, complete append before `fsync`, and after `fsync`; these are storage-fault simulations, not physical power-loss tests.
+- `prune --keep-last N` verifies the full current history, retains the active head, the latest N generations and every named checkpoint, then atomically replaces the journal with one bounded compacted-base record. A generation whose parent was pruned becomes a new retained-history boundary. The format-v2 parser validates every retained map and checkpoint reference; startup removes only recognized leftover compaction temporary files.
+- Pruning is refused unless at least one named checkpoint exists. Deleting a checkpoint is refused when it would remove the last named recovery point; any remaining checkpoint must pass full extent verification. The count budget and one-megabyte compacted-record limit can still prevent pruning an unusually large retained set.
+- `verify()` checks every retained map and referenced extent. Snapshot inventory can request the same verification before a point is offered.
+- Checkpoint creation and rollback publication verify all extents in the selected map first. A corrupt current head cannot be blessed as a checkpoint, and a corrupt snapshot cannot become the active head.
+- Deleting a checkpoint is a journaled operation. `gc` verifies every retained generation before removing only unreferenced content objects or abandoned temporary files. After pruning compacts the journal, maps and extents reachable only from pruned generations become reclaimable.
+- The developer CLI is `scripts/veyra-snapcore.py` (`format`, `write`, `read`, `snapshot`, `delete-snapshot`, `rollback`, `prune`, `verify`, `status`, and `gc`). Format v2 has no migration path from the earlier prototype format. This prototype still has no block-device interface, filesystem freeze/thaw, filesystem-consistency guarantee, encryption, authenticated metadata, dual-superblock recovery or VRE reader. Checksums detect accidental corruption; they do not authenticate the store against a privileged attacker.
+- Operations through one open handle are serialized with a reentrant in-process lock; independent handles/processes are serialized with the volume lock. This makes the simulator's public API safe for concurrent callers, but does not add parallel block I/O.
+
+The crash tests terminate a writer process at deterministic persistence boundaries and reopen the store. They test journal replay and incomplete-tail recovery, **not** physical power loss, device-cache behavior, kernel `ublk` semantics or filesystem recovery. No real ext4/XFS/F2FS volume is mounted on this prototype.
 
 ## Logical architecture
 
@@ -80,19 +99,25 @@ The common [Recovery Engine](VEYRA-RESILIENCE.md) accepts only authorized reques
 - A system environment failure is repaired by the separate **system A/B rollback path**; SnapCore must not grant inner `sudo` access to host recovery, boot or A/B metadata.
 - A healthy local snapshot cannot protect against dead disks or destroyed local keys. Offer/encourage **independent external backup** for these scenarios.
 
-## QEMU implementation and verification tasks — ALL OPEN
+## Prototype and QEMU implementation tasks
 
-- [ ] Define the explicit volume/catalog on-disk format, CoW mapping invariants, atomic journal, error policy, encryption/compatibility strategy and independent reader.
-- [ ] Write an isolated file-backed **simulated block-volume engine** with real immutable CoW snapshot maps, read/overwrite/rollback and correct reference-aware pruning; **no directory-copy implementation**.
-- [ ] Property/fuzz tests: overlapping writes, sparse ranges, concurrent I/O, partial writes, snapshot fork histories, deletion, old/new-map content and reference counts.
-- [ ] Fault-inject power loss/`SIGKILL` at every commit stage; reopen and validate all acknowledged generations after restart.
+- [x] Initial v0.1 milestone: file-backed immutable block extents and mapping roots; sparse and partial reads/writes; checkpoint preservation; rollback into a new head; and full retained-generation/extent verification. The initial 10-test check was followed by 18 tests on commit `913a3dd`, including CLI, deletion and GC crash cases; [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39491453665) and [dedicated SnapCore CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39491453650) passed. This closes only the simulated-engine milestone.
+- [x] Inject child-process termination before immutable extent/root publication, after extent/root sync, in the middle of a multi-block write, during partial journal append, after full append before sync, and after journal sync; retry writes, replay a valid prior or committed generation, and preserve the last-known-good point.
+- [ ] Define the production volume/catalog format, complete CoW invariants, bounded parser, atomic journal, error policy, encryption/compatibility strategy and independent recovery reader.
+- [x] Add a journaled snapshot-name deletion and reference-aware garbage collection for unreferenced objects; tests retain every generation and snapshot-reachable extent, refuse collection when a live generation is corrupt, recover deletion after process interruption, and restart collection after a crash. All 19 tests pass in dedicated and full integration CI on commit `17a8834` (links above). Generation history remains fully retained.
+- [x] Fail closed after uncertain journal I/O: poison the in-memory handle after append/fsync errors, require close and replay before any further state access, and test partial append, complete append and post-fsync failures. All 20 tests pass locally and in [dedicated SnapCore CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39505268065) plus [full integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39505267978) on `45bb114`.
+- [x] Define prototype retention policy and safe generation pruning; prove it retains the active head, every named checkpoint and at least one verified recovery point. This does not yet define a production quota or age-based policy.
+- [x] Add 16 fixed-seed reference-model histories that interleave partial/sparse writes, checkpoint creation/deletion, rollback, pruning, GC and reopen; compare the active volume and all retained checkpoint contents after each operation. Add same-handle threaded partial-write/read/checkpoint tests; all 27 tests pass locally and in [SnapCore CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39514199712), while [full integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39514199819) passes separately.
+- [ ] Extend storage-boundary coverage: an injected `ENOSPC` on the second extent of a multi-block write passes locally in the 28-test suite and proves the previous head/checkpoint survive and orphan data is collected; CI is pending. Actual device exhaustion and reference-accounting audits remain open.
+- [ ] Broader property/fuzz and storage-boundary testing: extent reference accounting, real device exhaustion and last-known-good retention.
+- [ ] Test actual power loss or storage fault behavior on supported filesystems and devices; process termination tests do not prove hardware flush semantics.
 - [ ] Evaluate Linux `ublk` (or alternative reviewed virtual block interface), its flush/discard and kernel requirements; keep backend and raw device unexposed to user root.
 - [ ] Boot disposable QEMU with ext4 formatted on SnapCore; create snapshot; destructively mutate **only the disposable user rootfs**; restore the snapshot without filesystem-tree copy.
 - [ ] Test filesystem-consistent checkpoints, freeze/thaw failure recovery, mounted-device safeguards and flush semantics on ext4, XFS, F2FS and optionally Btrfs.
 - [ ] Test separate user-root and `/home` volumes: destroy user-root files, restore user OS, and prove a newer personal document remains.
 - [ ] Test ENOSPC, metadata corruption, malicious snapshot catalog, invalid keys, damaged current head, backend crash, repeated rollback and interrupted restore.
 - [ ] Verify SnapCore can be activated **inside independently booted VRE** with a corrupted installed user/system root, including format compatibility across A/B.
-- [ ] Test quota/retention/pruning and prohibit automatic deletion of the only verified last-known-good snapshot.
+- [ ] Test production space reservation and quota/age-based retention policy; prohibit automatic deletion of the only verified last-known-good snapshot. Prototype pruning/replay tests are complete as listed above.
 - [ ] Require adversarial review and repeatable QEMU recovery evidence **before production default enablement**.
 
 **Do not tick these boxes until actual code and reproducible test results exist.**
