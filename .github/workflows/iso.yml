@@ -187,9 +187,9 @@ jobs:
           path: dist
       - name: Install QEMU
         run: |
-          if ! command -v qemu-system-x86_64 >/dev/null; then
+          if ! command -v qemu-system-x86_64 >/dev/null || ! command -v xorriso >/dev/null; then
             sudo apt-get update -qq
-            sudo apt-get install -y -qq qemu-system-x86
+            sudo apt-get install -y -qq qemu-system-x86 xorriso
           fi
       - name: Verify downloaded ISO artifact
         run: |
@@ -223,7 +223,7 @@ jobs:
       - name: Install QEMU and guest console test dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq qemu-system-x86 qemu-utils python3-pexpect
+          sudo apt-get install -y -qq qemu-system-x86 qemu-utils python3-pexpect xorriso
       - name: Verify ISO artifact before installing
         run: |
           iso=$(find dist -maxdepth 1 -name 'veyra-linux-*.iso' -print -quit)
@@ -259,7 +259,7 @@ jobs:
       - name: Install QEMU and isolated GUI automation dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq qemu-system-x86 qemu-utils xvfb xdotool imagemagick tesseract-ocr
+          sudo apt-get install -y -qq qemu-system-x86 qemu-utils xvfb xdotool imagemagick tesseract-ocr xorriso
       - name: Verify downloaded ISO and embedded package manifest
         run: |
           iso=$(find dist -maxdepth 1 -name 'veyra-linux-*.iso' -print -quit)
