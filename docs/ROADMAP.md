@@ -40,10 +40,10 @@ Parallel tracks are intentional; avoid turning prototypes on in the normal boot 
 
 ### Stage progress at a glance
 
-| Stage | State as of 2026-10-20 | Evidence / next boundary |
+| Stage | State as of 2026-10-22 | Evidence / next boundary |
 | --- | --- | --- |
 | **0 — Experimental audit/CI** | **Merged QEMU/static baseline** | PR #8; threat model still incomplete |
-| **1 — Persistent user environment** | **One-account QEMU lifecycle prototype passed; multi-account shared-root model not tested**, not deployed | PRs #9–13; next prove two concurrent Linux accounts in one rootfs/package database with separate homes. Draft branches that create a full root per account do not meet the target. Production service, default login and A/B-independent storage remain pending |
+| **1 — Persistent user environment** | **Shared-root multi-account session proof passed in draft PR #18**, not deployed | [QEMU run 39778762369](https://github.com/angyedz/Veyra-Linux/actions/runs/39778762369) passed both jobs across two boots; [integration CI 39778762246](https://github.com/angyedz/Veyra-Linux/actions/runs/39778762246) passed. Two `su -l` probes share rootfs, APK DB and mount namespace, with separate private homes and cross-home denial. PAM-authenticated multi-account login, production service, default login and A/B-independent storage remain pending |
 | **1S — SnapCore snapshots (parallel research)** | **Architecture only; no prototype** | CoW block-map engine, immutable generations, FS-specific tests and safe user rollback pending |
 | **2 — System/user isolation** | **Partial defensive proofs only** | Rootfs validation, FD filtering and pidfd tests; full adversarial host boundary unproven |
 | **3 — User network/VPN** | Not integrated | Virtual link, independent routing/DNS/TUN and VPN tests pending |
@@ -121,11 +121,17 @@ logout leaves the shared environment and other session running; and verify
 account/home persistence across reboot. `sudo` must be shown to affect the
 shared environment only, never the system environment.
 
-**Gate:** the earlier disposable QEMU lifecycle prototype passed its stated
-one-account assertions. The shared multi-account product model and installed
-Stage 1 remain **OPEN**: shared-root concurrent login proof, production
-supervision, graphical/session integration, A/B-independent storage, security
-review and boot integration are unproven.
+**Shared-root QEMU evidence (draft PR #18):** [run 39778762369](https://github.com/angyedz/Veyra-Linux/actions/runs/39778762369)
+passed both QEMU jobs across two boots. Two ordinary accounts share one
+rootfs, APK database and mount namespace; their homes are separate and private,
+cross-home reads fail, sessions overlap, and account-home proof files persist.
+The probes use `su -l` from a test fixture and do not establish independent
+PAM-authenticated logins.
+
+**Gate:** the shared-root multi-account session model now has a disposable
+QEMU proof, but installed Stage 1 remains **OPEN**. PAM-authenticated
+multi-account login, production supervision, graphical/session integration,
+A/B-independent storage, security review and boot integration are unproven.
 
 ## Stage 1S — SnapCore protected user-environment snapshots (parallel R&D)
 
