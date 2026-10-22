@@ -53,7 +53,7 @@ jobs:
           set -euo pipefail
           iso_branch="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
           run_id=$(gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts?name=veyra-linux-iso&per_page=100" \
-            --jq --arg branch "$iso_branch" '[.artifacts[] | select(.expired == false and .workflow_run.head_branch == $branch)] | sort_by(.created_at) | reverse | .[0].workflow_run.id // empty')
+            | jq --arg branch "$iso_branch" '[.artifacts[] | select(.expired == false and .workflow_run.head_branch == $branch)] | sort_by(.created_at) | reverse | .[0].workflow_run.id // empty')
           if [ -z "$run_id" ]; then
             echo "No unexpired ISO artifact for branch '$iso_branch'; run the Veyra ISO workflow." >&2
             exit 1
