@@ -92,6 +92,21 @@ jobs:
                 printf "%s-private\n" "$account" \
                   > "/out/userroot/home/$account/.veyra-stage1-auth-private"
               done
+              for dev in console null zero tty random urandom; do
+                rm -f "/out/userroot/dev/$dev"
+              done
+              mknod -m 0600 /out/userroot/dev/console c 5 1
+              mknod -m 0666 /out/userroot/dev/null c 1 3
+              mknod -m 0666 /out/userroot/dev/zero c 1 5
+              mknod -m 0666 /out/userroot/dev/tty c 5 0
+              mknod -m 0666 /out/userroot/dev/random c 1 8
+              mknod -m 0666 /out/userroot/dev/urandom c 1 9
+              mkdir -p /out/userroot/dev/pts
+              rm -f /out/userroot/dev/ptmx
+              ln -s pts/ptmx /out/userroot/dev/ptmx
+
+              # Keep every inode, including the test-created device nodes,
+              # inside the mapped outer UID/GID range.
               chown -hR 100000:100000 /out/userroot
               chown -R 101000:101000 /out/userroot/home/veyrauser
               chown -R 101001:101001 /out/userroot/home/veyrauser2
@@ -105,19 +120,6 @@ jobs:
                 100000:100000:600|100000:100000:640) ;;
                 *) echo "unexpected /etc/shadow owner or mode: $shadow_owner" >&2; exit 1 ;;
               esac
-
-              for dev in console null zero tty random urandom; do
-                rm -f "/out/userroot/dev/$dev"
-              done
-              mknod -m 0600 /out/userroot/dev/console c 5 1
-              mknod -m 0666 /out/userroot/dev/null c 1 3
-              mknod -m 0666 /out/userroot/dev/zero c 1 5
-              mknod -m 0666 /out/userroot/dev/tty c 5 0
-              mknod -m 0666 /out/userroot/dev/random c 1 8
-              mknod -m 0666 /out/userroot/dev/urandom c 1 9
-              mkdir -p /out/userroot/dev/pts
-              rm -f /out/userroot/dev/ptmx
-              ln -s pts/ptmx /out/userroot/dev/ptmx
 
               cp /out/host-supervisor /out/overlay/host-supervisor
               truncate -s 180M /out/veyra-user-root.raw
