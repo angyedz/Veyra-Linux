@@ -72,7 +72,10 @@ status=$(/host-supervisor status 2>&1) || fail "could not query test manager: $s
 [ "$status" = STOPPED ] || fail "manager did not start in STOPPED state: $status"
 start_result=$(/host-supervisor start 2>&1) ||
     fail "shared user environment failed to start: $start_result"
-case "$start_result" in RUNNING\ pid=*\ count=1) ;; *) fail "unexpected start result: $start_result" ;; esac
+case "$start_result" in
+    RUNNING\ pid=*\ count="$expected_boot") ;;
+    *) fail "unexpected start result: $start_result" ;;
+esac
 echo "VEYRA_STAGE1_SHARED_AUTH_MANAGER_READY boot=$expected_boot accounts=1000,1001"
 
 uid1000=$((expected_boot))
