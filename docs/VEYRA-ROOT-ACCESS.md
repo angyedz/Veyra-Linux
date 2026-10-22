@@ -9,6 +9,11 @@ detached-descendant cleanup, or QEMU security gates. Keep the console disabled
 until the full implementation passes the acceptance gates below and receives
 independent security review.
 
+The package source checks and Alpine APK snapshot build pass in CI. The QEMU
+job in that workflow covers the separate user-session manager, not this
+root-bridge prototype; bridge-specific QEMU and installed-image proof remain
+open.
+
 ## Purpose and authority
 
 The bridge gives a person already at the machine a deliberate route from a
