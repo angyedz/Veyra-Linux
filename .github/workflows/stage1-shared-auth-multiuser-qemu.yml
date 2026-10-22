@@ -114,7 +114,7 @@ jobs:
               # inside the mapped outer UID/GID range.
               chown -R 100000:100000 /out/userroot
               # chown clears setuid; restore it on the sudo executable installed in this root.
-              sudo_bin=$(chroot /out/userroot /bin/sh -c 'command -v sudo') || {
+              sudo_bin=$(chroot /out/userroot /bin/sh -c "command -v sudo") || {
                 chroot /out/userroot apk info -L sudo || true
                 find /out/userroot -name sudo -print
                 exit 1
