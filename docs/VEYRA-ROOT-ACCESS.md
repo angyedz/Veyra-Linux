@@ -21,22 +21,41 @@ This does not exercise successful VT9 activation or PAM password entry on that
 VT. Installed-image behavior and the remaining adversarial bridge proof are
 still open.
 
+**Account-model correction (2026-10-22):** Veyra's target has one shared
+user-environment root with multiple ordinary Linux accounts and separate
+`/home/LOGIN` directories. The current package PR #6/#7 manager authenticates
+outer system accounts and provisions a separate complete user root per
+account; that session-manager architecture does not match the target and must
+be redesigned before merging. The root bridge remains a separate system-root
+authority: a request from a user-environment session must lead to a fresh
+system-side PAM check on a trusted system console, while its request channel
+cannot carry a command, password or privileged session I/O back into the shared
+user environment. This prototype is not yet the accepted implementation of
+that flow.
+
 ## Purpose and authority
 
 The bridge gives a person already at the machine a deliberate route from a
 Veyra user session to a root shell in the initial system environment. Normal
-user-session processes and inner `sudo` remain confined to that user's
-namespaces. The bridge is an explicit, separately authenticated system
-administration session; it is not a namespace transition requested by a user
-process.
+user-session processes and inner `sudo` remain confined to the one shared user
+environment; inner root affects that environment and its accounts. The bridge
+is a separate, freshly authenticated system-administration session, not a
+namespace transition requested by a user process.
 
-The prototype accepts one fixed request from a managed local TTY session over
-a private per-session descriptor. The system manager checks the session's
-outer account against the administrator policy and confirms that its virtual
-TTY is active before switching to reserved VT9. It starts the console itself
-and returns to the original VT when it exits. There is no Plasma/Wayland
-request surface, seat/session binding, or graphical display handoff. The
-package does not change `/etc/inittab` or install a getty on VT9.
+The target accepts one fixed request from an authenticated session in the
+shared user environment. A system-owned manager binds it to the live session,
+switches to a system-controlled trusted TTY, performs fresh system-side PAM
+authentication against system-owned administrator policy, and starts the
+fixed root console itself. A user's identity or password in the user
+environment does not grant system-root access. There is no accepted
+Plasma/Wayland request surface, seat/session binding, or graphical display
+handoff yet; the package does not change `/etc/inittab` or install a getty on
+VT9.
+
+The current PR #7 implementation is only an experiment: its session manager
+authenticates an outer system account before it launches a separate rootfs for
+that account. This account/rootfs architecture does not match Veyra's shared
+user environment and must be replaced before the bridge can be integrated.
 
 The system administrator authenticates as an outer Linux account selected by
 root-owned system policy. That policy is separate from ordinary dual-environment
@@ -47,11 +66,11 @@ itself never grants host-root access.
 ## Trusted flow
 
 1. The system-owned session manager accepts a fixed request packet over a
-   private socketpair descriptor created for that managed session. The user
-   environment receives no broker path and cannot provide a username, command,
-   path, environment, TTY number, extra descriptor, or credential. The current
-   implementation checks the outer account policy and that the local virtual
-   TTY is active; authoritative seat/session binding remains unfinished.
+   private descriptor associated with a live user-environment session. The
+   user environment receives no broker path and cannot provide a username,
+   command, path, environment, TTY number, extra descriptor, or credential.
+   The manager must verify the active session and local TTY; authoritative
+   seat/session binding remains unfinished.
 2. The manager switches to its fixed, reserved initial-system VT9 and starts
    the console itself. The username/password prompt is rendered and read on
    this initial-system TTY, outside user namespaces and outside any
@@ -71,15 +90,13 @@ itself never grants host-root access.
    outcome, and returns the display to the user's session or a system-owned
    login screen.
 
-PR #7 prototypes the fixed-action path and portions of steps 1–5 for managed
-local TTY sessions: it passes only a private request descriptor, checks the
-outer account policy and active VT, switches to `/dev/tty9`, starts a fixed
-root shell with a clean environment, records local audit events, bounds login
-input, and expires an idle shell after 15 minutes. The manager restores the
-previous VT on exit. Seat/session binding, desktop UI and display integration,
-installed-image wiring, and cgroup cleanup for detached descendants remain
-unfinished. The prototype must not be described as the completed
-user-to-system bridge.
+PR #7 prototypes the fixed-action path and parts of steps 1–5 for a managed
+local TTY, but its outer-account/per-account-root session model conflicts with
+the shared-user-environment target. Its protocol and PAM console are
+experimental components only. The branch must be redesigned and retested
+before it can count as the Veyra bridge. Seat/session binding, desktop UI and
+display integration, installed-image wiring, and cgroup cleanup for detached
+descendants also remain unfinished.
 
 The bridge may be requested from a user session, but the request is only a
 fixed action relayed through a system-owned control surface. User-root
@@ -95,8 +112,9 @@ PTY.
   account database and enforce current account lock/expiry state.
 - Require membership in a root-owned system-administrator policy. PR #7 uses
   `/etc/veyra/root-admins`, a root-owned mode `0600` file listing eligible
-  outer account names. User-root files, groups, and environment are never
-  authoritative. The enrollment and account-management UX remains open.
+  system account names. User-environment account records and groups are never
+  authoritative for system-root access. The enrollment and account-management
+  UX remains open.
 - Reject `root` direct login unless a separately reviewed policy explicitly
   enables it. The default route authenticates a named administrator and then
   enters the fixed root shell.
@@ -139,8 +157,9 @@ PTY.
 
 ## Audit and failure behavior
 
-Write root-owned records for request, authenticated outer account, allocated
-TTY, start/end time, result, and termination reason. Never log passwords,
+Write root-owned records for request, authenticated system administrator,
+initiating user-environment session identity, allocated TTY, start/end time,
+result, and termination reason. Never log passwords,
 PAM response values, grants, or user-supplied command text. PR #7 records
 timestamped authentication and session outcomes in
 `/var/log/veyra/root-bridge.log` and syslog; success is denied if the local

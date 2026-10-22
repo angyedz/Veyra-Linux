@@ -10,7 +10,7 @@ Parallel tracks are intentional; avoid turning prototypes on in the normal boot 
 ## Immutable design rules
 
 1. **System environment:** Alpine/musl/OpenRC owns boot, the Linux kernel, physical devices/network, KDE Plasma **packages and matched versions**, system services, the A/B generations and hardware controls.
-2. **Persistent user environment:** its own rootfs, packaging state, OpenRC and PID 1 **inside a separate PID namespace**, mount/user/network/IPC namespaces, normal user account, isolated root via `sudo`, services and applications. Default login is directly in this environment, never a manual container entry or `--user` flag. Both environments share one kernel.
+2. **Persistent user environment:** one shared rootfs, package database, OpenRC and PID 1 **inside one separate PID namespace**, plus mount/user/network/IPC namespaces. It contains multiple ordinary Linux accounts with distinct UIDs/GIDs and `/home/LOGIN` directories. Concurrent login sessions run as their respective accounts in that same environment. User-side `sudo` grants root in the shared user environment, so package and service changes are visible to its other accounts. Do not create a full rootfs or namespace set per account. Default login is directly in this environment, never a manual container entry or `--user` flag. Both environments share one kernel.
 3. **KDE-only desktop:** KDE, KWin, Frameworks, Qt, `plasmashell`, KRunner and plugins are a **version-coherent system-owned deployment**. `plasmashell` and KRunner processes execute in the **user environment** from a read-only system-paired KDE runtime; Alt+F2 and all user app launch paths stay user-side.
 4. **No arbitrary package bans:** a user may install another kernel or DE package inside their environment without replacing the active system kernel or supported KDE session. Enforce this at privilege/mount/device/namespace boundaries, not by matching package names, `sudo` rules, or command exceptions.
 5. **VPN only for user traffic:** user VPN, routing, DNS and kill switches operate in the user network namespace. System updates and system services continue using the independent host network.
@@ -43,7 +43,7 @@ Parallel tracks are intentional; avoid turning prototypes on in the normal boot 
 | Stage | State as of 2026-10-20 | Evidence / next boundary |
 | --- | --- | --- |
 | **0 — Experimental audit/CI** | **Merged QEMU/static baseline** | PR #8; threat model still incomplete |
-| **1 — Persistent user environment** | **QEMU prototype milestones passed**, not deployed | PRs #9–13; production OpenRC service, default login and A/B-independent storage pending |
+| **1 — Persistent user environment** | **One-account QEMU lifecycle prototype passed; multi-account shared-root model not tested**, not deployed | PRs #9–13; next prove two concurrent Linux accounts in one rootfs/package database with separate homes. Draft branches that create a full root per account do not meet the target. Production service, default login and A/B-independent storage remain pending |
 | **1S — SnapCore snapshots (parallel research)** | **Architecture only; no prototype** | CoW block-map engine, immutable generations, FS-specific tests and safe user rollback pending |
 | **2 — System/user isolation** | **Partial defensive proofs only** | Rootfs validation, FD filtering and pidfd tests; full adversarial host boundary unproven |
 | **3 — User network/VPN** | Not integrated | Virtual link, independent routing/DNS/TUN and VPN tests pending |
@@ -74,6 +74,15 @@ Parallel tracks are intentional; avoid turning prototypes on in the normal boot 
 
 **Depends on:** Stage 0.
 
+**Account model correction (2026-10-22):** the product target is one persistent
+user rootfs shared by multiple ordinary Linux users, each with a distinct
+UID/GID, PAM login and `/home/LOGIN`. All accounts share the environment's
+`/usr`, services, PID/network/mount namespaces and package database; user-side
+root is root for this shared environment. Draft branches that provision
+accounts into separate complete rootfs trees are experiments for a different
+model. Do not merge them as the user/account architecture or count their
+per-account-root evidence toward this gate.
+
 **QEMU baseline milestone (PR #9):** a disposable Alpine 3.22 user rootfs booted through its own BusyBox PID 1 and OpenRC on the same guest kernel, with separate user/PID/mount/network/IPC/UTS namespaces, mapped inner root/normal UIDs, namespace-local sudo and persistent state over two VM boots. [QEMU evidence](https://github.com/angyedz/Veyra-Linux/actions/runs/39308988112).
 
 **QEMU lifecycle milestone (PR #10):** the system-side test manager passed start/status/stop, restart and nested PID 1 crash detection; rootfs checks rejected entries outside mapped ownership, an unapproved setuid file, a nested mount and a block device. Two guest boots reused one disk and finished with counts 2 then 4. [QEMU evidence](https://github.com/angyedz/Veyra-Linux/actions/runs/39312323358) · [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39312323395) · [Stage 1 prototype details](STAGE1-USER-ROOTFS.md). This remains a disposable prototype, not a production login path or security sign-off.
@@ -103,7 +112,20 @@ Parallel tracks are intentional; avoid turning prototypes on in the normal boot 
 - [ ] Provision real accounts, authentication and inner `sudo` policy **without** the disposable test fixture's `NOPASSWD` rule.
 - [ ] Auto-enter the user environment at normal login; prove service lifecycle, shutdown, reboot and persistent user state in a **clean installed VM** rather than a custom initramfs harness.
 
-**Gate:** the **disposable QEMU prototype portion passed** (two user OpenRC guest boots, mapped `sudo`, persistent state, manager lifecycle and focused safety tests). **Stage 1 as an installed feature is still OPEN**: normal interactive login, production supervision, system A/B-independent storage, security review and boot integration are unproven.
+**Next QEMU gate:** boot one persistent user rootfs and its one user-environment
+init; create at least two regular accounts in that root with distinct UIDs/GIDs
+and separate `/home/LOGIN` directories; authenticate both concurrently; prove
+both sessions share the same root, `/usr`, package database and namespace set
+while ordinary file permissions prevent cross-home access; prove one user's
+logout leaves the shared environment and other session running; and verify
+account/home persistence across reboot. `sudo` must be shown to affect the
+shared environment only, never the system environment.
+
+**Gate:** the earlier disposable QEMU lifecycle prototype passed its stated
+one-account assertions. The shared multi-account product model and installed
+Stage 1 remain **OPEN**: shared-root concurrent login proof, production
+supervision, graphical/session integration, A/B-independent storage, security
+review and boot integration are unproven.
 
 ## Stage 1S — SnapCore protected user-environment snapshots (parallel R&D)
 
@@ -134,7 +156,7 @@ Parallel tracks are intentional; avoid turning prototypes on in the normal boot 
 - [ ] Separate mounts, users/capabilities, IPC, process visibility, devices, system bus and network by **kernel** primitives and narrowly designed host services.
 - [ ] No writable mount of host root, A/B store, boot files, EFI, host network state or host-only service sockets inside the user environment.
 - [x] Define the **system-root access contract** in [system-root access contract](VEYRA-ROOT-ACCESS.md), including PAM reauthentication, a system-owned TTY, hostile user-root boundaries, auditing, cleanup and QEMU acceptance gates.
-- [x] Build the disabled-by-default experimental PAM/TTY console and a limited managed-local-TTY request path in [package PR #7](https://github.com/angyedz/veyra-pkgrepo/pull/7). The system manager receives only a fixed request over a private per-session descriptor, checks the outer account policy and active VT, switches to reserved `/dev/tty9`, and restores the previous VT. The console uses fresh PAM authentication, a fixed clean root shell, audit records, bounded login input and idle expiry. Local WSL component tests pass. Package head `a4099d7` passed source checks and all APK builds; QEMU confirms that an unlisted account and an allowlisted account on a serial TTY cannot trigger the console ([run](https://github.com/angyedz/veyra-pkgrepo/actions/runs/39770175564), [serial artifact](https://github.com/angyedz/veyra-pkgrepo/actions/runs/39770175564/artifacts/12422530539)). That QEMU job does not cover successful VT9 activation or password entry.
+- [x] Build a disabled-by-default PAM/TTY bridge prototype in package PR #7. Its fixed request protocol, system-side PAM profile, audit path and VT9 console are experimental. The current PR #6/#7 manager authenticates outer system accounts and provisions one complete user root per account; the project target is now one shared user root with ordinary inner Linux accounts. This package architecture must be redesigned before merge and its current QEMU evidence does not satisfy the product login or bridge gate. The last successful QEMU run covers serial-TTY denial only; the newly pushed VT9 success attempt has not yet produced CI evidence.
 - [ ] Extend the request path with authoritative seat/session binding and a Plasma/Wayland request surface. Define safe graphical handoff and preserve the fixed-action boundary: user-root processes must not choose a host command or path, supply host environment variables, carry capabilities or host descriptors into the system session, or receive a reusable token or system-root password.
 - [ ] Complete session timeout/revocation, cgroup cleanup for detached descendants, concurrent-request policy, audit coverage and failure cleanup in the integrated bridge. Ordinary inner `sudo` remains confined to the user environment, and no host-root access starts implicitly.
 - [ ] QEMU-check denied accounts, incorrect credentials, successful authorized reauthentication and password entry on the trusted VT, request replay, disconnect cleanup, VT restoration and concurrent requests. Prove that a host-root TTY appears only after successful system-side authorization. Installed-image and independent security review remain required.
@@ -142,7 +164,7 @@ Parallel tracks are intentional; avoid turning prototypes on in the normal boot 
 - [ ] Resource quotas/limits protect system services from user process floods, memory exhaustion and fork bombs.
 - [ ] Explicit threat model for kernel vulnerabilities and shared-kernel attacks.
 
-**Gate:** under inner `sudo`, attempts to modify host kernel state, mounts, packages, boot, devices, host processes and privileged IPC fail; normal inner administration still succeeds. A separate host-root TTY is available only to an authorized outer administrator after fresh PAM authentication, with no host authority exposed to the user namespace.
+**Gate:** under inner `sudo`, attempts to modify host kernel state, mounts, packages, boot, devices, host processes and privileged IPC fail; normal inner administration still succeeds for the shared user environment. A separate host-root TTY is available only after fresh system-side PAM authentication against system-owned administrator policy, with no host authority exposed to the user namespace. The initiating session may belong to any ordinary account in the shared user environment.
 
 ## Stage 3 — User networking and VPN
 

@@ -1,5 +1,21 @@
 # Stage 1: persistent user rootfs and independent init — QEMU prototype
 
+## Product account model
+
+Veyra targets one persistent user rootfs shared by multiple ordinary Linux
+accounts. Each account has a distinct UID/GID and `/home/LOGIN` directory;
+all accounts share the user environment's `/usr`, package database, init and
+namespace set. Sessions run concurrently under ordinary Linux permissions.
+Inner `sudo` is root for this shared user environment. It never grants root in
+the system environment.
+
+The historical Stage 1 QEMU work below proves the lifecycle and isolation
+properties it explicitly tests. Draft follow-up branches that create a full
+rootfs per account are experiments for a different model; their results do not
+meet the shared-root multi-account acceptance gate. The next required proof is
+two authenticated concurrent accounts in one rootfs, with separate homes,
+shared packages/services and environment-wide user-side root.
+
 **Status:** the trusted-stage rootfs binding and descriptor-hardening milestone **passed** in [two-boot QEMU CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39404374568) and [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39404374542). This remains test-only and is not enabled by the installed Veyra or Live ISO. Earlier, the QEMU lifecycle and rootfs-validation milestone passed in [PR #10 QEMU CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39312323358) and [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39312323395). The [PR #11 manager-exit cleanup follow-up](https://github.com/angyedz/Veyra-Linux/pull/11) passed [QEMU](https://github.com/angyedz/Veyra-Linux/actions/runs/39318056661) and [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39318056566). The [PR #12 rootfs launch validation follow-up](https://github.com/angyedz/Veyra-Linux/pull/12) passed [QEMU](https://github.com/angyedz/Veyra-Linux/actions/runs/39320831998) and [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39320831889), including both inode-comparator outcomes and rejection of an init symlink that points outside the user rootfs. **Not enabled** by installed Veyra or Live ISO; this remains a disposable prototype, not production security validation.
 This prototype is stacked on [Stage 0](DUAL-ENVIRONMENT.md) in PR #8.
 Track product requirements and future steps in [ROADMAP.md](ROADMAP.md).

@@ -21,6 +21,40 @@ Calamares/TUI installation or A/B boot process.
 The system and user environments share one Linux kernel. A/B changes the
 system deployment, not the persistent user environment.
 
+## Account and session model
+
+There is **one persistent user environment shared by multiple Linux accounts**.
+It has one root filesystem, one package database, one user-environment init,
+and one set of user-environment namespaces. Account creation uses the normal
+Linux account model inside that environment (`/etc/passwd`, `/etc/shadow`,
+`/etc/group`, PAM and distinct UIDs/GIDs). Each account's files live under
+`/home/LOGIN` and are protected by ordinary ownership, groups and file
+permissions. Multiple accounts may have independent login sessions at once;
+each session runs with that account's UID, GID, supplementary groups and home
+directory inside the same user environment.
+
+The system manager creates and supervises this shared environment once. It
+does not clone a root filesystem, package database, PID namespace, network
+namespace or mount namespace for every account. All accounts see the same
+user-side `/usr`, services and package state. `sudo` elevates to root **inside
+the shared user environment**, so an authorized user-side root change affects
+that environment and its other accounts. Per-application sandboxes can add
+narrower isolation without turning each account into a separate operating
+system.
+
+The user-namespace UID/GID mapping belongs to the shared environment and must
+cover the account IDs it supports. Inner UID 0 maps to an unprivileged
+system-side ID; ordinary account UIDs map consistently to distinct
+unprivileged system-side IDs. Do not create an independent inner UID-0 mapping
+and complete root filesystem for each login. System-environment administrator
+accounts and the password-gated system-root bridge remain a separate authority
+boundary.
+
+Draft prototypes that create one complete user root per account do not meet
+this account model. Their QEMU results may demonstrate their stated fixture
+behavior, but they are not acceptance evidence for Veyra's shared user
+environment.
+
 **Resilience design (2026-10-20, not implemented):** a system OpenRC-owned [Veyra Guardian](VEYRA-RESILIENCE.md) must detect user-init/Plasma failures without depending on the user rootfs. A system-owned TTY and independently bootable [VRE](VEYRA-RECOVERY.md) provide fallback. [SnapCore](VEYRA-SNAPCORE.md) is a proposed block-level CoW user snapshot layer below ext4/XFS/F2FS, **not** directory copies or a Btrfs/LVM requirement. User-root and `/home` must be separately restorable; system A/B rollback must not implicitly touch them.
 
 ## Privileges
