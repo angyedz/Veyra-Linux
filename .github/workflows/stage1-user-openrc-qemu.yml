@@ -95,10 +95,10 @@ jobs:
               mkdir -p /out/userroot/home/veyrauser \
                 /out/userroot/var/lib/veyra-user
               printf "format=stage1\n" > /out/userroot/.veyra-stage1-rootfs
-              printf "veyrauser:x:1000:1000:Veyra User:/home/veyrauser:/bin/sh\n" \
-                >> /out/userroot/etc/passwd
-              printf "veyrauser:x:1000:\n" >> /out/userroot/etc/group
               mkdir -p /out/userroot/etc/sudoers.d
+              chroot /out/userroot addgroup -g 1000 veyrauser
+              chroot /out/userroot adduser -D -H -u 1000 \
+                -G veyrauser -s /bin/sh veyrauser
               chroot /out/userroot addgroup -g 1001 veyrauser2
               chroot /out/userroot adduser -D -H -u 1001 \
                 -G veyrauser2 -s /bin/sh veyrauser2
@@ -251,10 +251,10 @@ jobs:
               mkdir -p /out/userroot/home/veyrauser \
                 /out/userroot/var/lib/veyra-user
               printf "format=stage1\\n" > /out/userroot/.veyra-stage1-rootfs
-              printf "veyrauser:x:1000:1000:Veyra User:/home/veyrauser:/bin/sh\\n" \
-                >> /out/userroot/etc/passwd
-              printf "veyrauser:x:1000:\\n" >> /out/userroot/etc/group
               mkdir -p /out/userroot/etc/sudoers.d
+              chroot /out/userroot addgroup -g 1000 veyrauser
+              chroot /out/userroot adduser -D -H -u 1000 \
+                -G veyrauser -s /bin/sh veyrauser
               chroot /out/userroot addgroup -g 1001 veyrauser2
               chroot /out/userroot adduser -D -H -u 1001 \
                 -G veyrauser2 -s /bin/sh veyrauser2
