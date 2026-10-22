@@ -121,6 +121,17 @@ static int has_qemu_fixture_argument(void) {
     return strstr(command_line, "veyra_snapcore_fixture=booted-root-test") != NULL;
 }
 
+static int has_ublk_fixture_argument(void) {
+    int fd = open("/proc/cmdline", O_RDONLY | O_CLOEXEC);
+    if (fd < 0) return 0;
+    char command_line[4096];
+    ssize_t length = read(fd, command_line, sizeof(command_line) - 1);
+    close(fd);
+    if (length <= 0) return 0;
+    command_line[length] = '\0';
+    return strstr(command_line, "veyra_snapcore_ublk_fixture=1") != NULL;
+}
+
 static int is_ext4_qemu_root(void) {
     FILE *mounts = fopen("/proc/mounts", "r");
     if (!mounts) return 0;
@@ -130,7 +141,10 @@ static int is_ext4_qemu_root(void) {
     while (fscanf(mounts, "%255s %255s %63s %1023s %lu %lu",
                   source, target, type, options, &dump, &pass) == 6) {
         if (!strcmp(target, "/")) {
-            valid = !strcmp(source, "/dev/vda") && !strcmp(type, "ext4");
+            int expected_source = has_ublk_fixture_argument()
+                ? !strcmp(source, "/dev/ublkb0")
+                : !strcmp(source, "/dev/vda");
+            valid = expected_source && !strcmp(type, "ext4");
             break;
         }
     }
@@ -164,11 +178,17 @@ int main(void) {
             fail("verify that root entries were removed");
     }
     if (syncfs(root_fd) < 0) fail("sync deleted ext4 root");
-    static const char message[] =
-        "VEYRA_SNAPCORE_BOOTED_ROOT_FULL_DELETE_PASS root=/dev/vda "
-        "remaining=/dev,/proc,/sys,/run,/tmp\n";
-    if (write(STDOUT_FILENO, message, sizeof(message) - 1) !=
-        (ssize_t)(sizeof(message) - 1))
+    const char *root_device = has_ublk_fixture_argument()
+        ? "/dev/ublkb0" : "/dev/vda";
+    char message[160];
+    int message_length = snprintf(
+        message, sizeof(message),
+        "VEYRA_SNAPCORE_BOOTED_ROOT_FULL_DELETE_PASS root=%s "
+        "remaining=/dev,/proc,/sys,/run,/tmp\\n",
+        root_device);
+    if (message_length < 0 || (size_t)message_length >= sizeof(message))
+        fail("format full-delete serial marker");
+    if (write(STDOUT_FILENO, message, (size_t)message_length) != message_length)
         fail("write full-delete serial marker");
     power_off();
 }

@@ -39,8 +39,21 @@ fail() {
     exit 1
 }
 
+root_device=/dev/vda
+case "$phase" in
+    alpine-*)
+        "$BB" modprobe ublk_drv || fail 'could not load the ublk kernel driver'
+        /usr/bin/unshare --mount --propagation private \
+            /sbin/veyra-snapcore-ublk-start-inner ||
+            fail 'could not start the isolated ublk loop server'
+        root_device=/dev/ublkb0
+        [ -b "$root_device" ] || fail 'ublk did not expose /dev/ublkb0'
+        echo 'VEYRA_SNAPCORE_UBLK_DEVICE_PASS device=/dev/ublkb0 backing=/dev/vda mountns=separate'
+        ;;
+esac
+
 if [ "$phase" = "prepare-root" ]; then
-    /sbin/mkfs.ext4 -F -q -L VEYRA_BOOTED_ROOT /dev/vda ||
+    /sbin/mkfs.ext4 -F -q -L VEYRA_BOOT_ROOT /dev/vda ||
         fail 'mkfs.ext4 failed for the booted-root fixture'
     "$BB" mount -t ext4 -o noatime /dev/vda /mnt/snapcore ||
         fail 'could not mount the booted-root ext4 volume'
@@ -141,7 +154,7 @@ case "$phase" in
         echo 'VEYRA_SNAPCORE_BOOTED_ROOT_E2FSCK_PASS'
         ;;
     alpine-verify)
-        /sbin/e2fsck -f -n /dev/vda ||
+        /sbin/e2fsck -f -n "$root_device" ||
             fail 'e2fsck rejected the checkpoint-restored Alpine/OpenRC ext4 root'
         echo 'VEYRA_SNAPCORE_ALPINE_E2FSCK_PASS'
         ;;
@@ -151,16 +164,36 @@ case "$phase" in
         ;;
 esac
 
-"$BB" mount -t ext4 -o noatime /dev/vda /mnt/snapcore ||
-    fail 'could not mount the SnapCore-backed ext4 root'
+"$BB" mount -t ext4 -o noatime "$root_device" /mnt/snapcore ||
+    fail "could not mount the SnapCore-backed ext4 root from $root_device"
 "$BB" mkdir -p /mnt/snapcore/proc /mnt/snapcore/sys /mnt/snapcore/dev \
     /mnt/snapcore/run /mnt/snapcore/tmp
 "$BB" mount -t proc proc /mnt/snapcore/proc ||
     fail 'could not mount proc in the restored root'
 "$BB" mount -t sysfs sysfs /mnt/snapcore/sys ||
     fail 'could not mount sysfs in the restored root'
-"$BB" mount -o move /dev /mnt/snapcore/dev ||
-    fail 'could not move devtmpfs into the restored root'
+if [ "$root_device" = /dev/ublkb0 ]; then
+    # The Alpine user root sees only console basics, never ublk control or its
+    # backing virtio disk. The system-owned ublk server stays in its own mount namespace.
+    "$BB" mount -t tmpfs -o mode=0755,nosuid tmpfs /mnt/snapcore/dev ||
+        fail 'could not create the restricted user-root /dev'
+    "$BB" mknod -m 0600 /mnt/snapcore/dev/console c 5 1 ||
+        fail 'could not create user-root console node'
+    "$BB" mknod -m 0666 /mnt/snapcore/dev/null c 1 3 ||
+        fail 'could not create user-root null node'
+    "$BB" mknod -m 0666 /mnt/snapcore/dev/zero c 1 5 ||
+        fail 'could not create user-root zero node'
+    "$BB" mknod -m 0666 /mnt/snapcore/dev/tty c 5 0 ||
+        fail 'could not create user-root tty node'
+    "$BB" mkdir -p /mnt/snapcore/dev/pts /mnt/snapcore/dev/shm
+    "$BB" mount -t devpts devpts /mnt/snapcore/dev/pts ||
+        fail 'could not mount restricted user-root devpts'
+    "$BB" mount -t tmpfs -o mode=1777,nosuid,nodev tmpfs /mnt/snapcore/dev/shm ||
+        fail 'could not mount restricted user-root /dev/shm'
+else
+    "$BB" mount -o move /dev /mnt/snapcore/dev ||
+        fail 'could not move devtmpfs into the restored root'
+fi
 "$BB" mount -t tmpfs -o mode=0755 tmpfs /mnt/snapcore/run ||
     fail 'could not mount run in the restored root'
 "$BB" mount -t tmpfs -o mode=1777 tmpfs /mnt/snapcore/tmp ||

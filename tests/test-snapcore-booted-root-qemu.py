@@ -148,6 +148,12 @@ def guest_boot(
     connect_kernel_nbd(qemu_nbd, socket, device, nbd_log, volume_size)
     guest = None
     try:
+        kernel_args = (
+            f"console=ttyS0,115200 panic=1 veyra_snapcore_phase={phase} "
+            "veyra_snapcore_fixture=booted-root-test"
+        )
+        if phase.startswith("alpine-"):
+            kernel_args += " veyra_snapcore_ublk_fixture=1"
         command = [
             "-machine", "q35,accel=tcg", "-m", "768", "-smp", "2",
             "-nodefaults", "-nographic", "-no-reboot",
@@ -156,9 +162,7 @@ def guest_boot(
             "-initrd", str(initramfs.resolve()),
             "-drive",
             f"file={device.resolve()},if=virtio,format=raw,cache=writeback",
-            "-append",
-            f"console=ttyS0,115200 panic=1 veyra_snapcore_phase={phase} "
-            "veyra_snapcore_fixture=booted-root-test",
+            "-append", kernel_args,
         ]
         guest = pexpect.spawn(
             "sudo", ["-n", qemu, *command], encoding=None, timeout=240
@@ -390,7 +394,11 @@ def main() -> None:
                 )
                 alpine_serial = args.log.read_bytes()
                 required_markers = (
-                    b"VEYRA_SNAPCORE_ALPINE_OPENRC_STARTED",
+                    b"VEYRA_SNAPCORE_UBLK_DEVICE_PASS device=/dev/ublkb0 backing=/dev/vda mountns=separate",
+                    b"VEYRA_SNAPCORE_ALPINE_OPENRC_STARTED phase=alpine-baseline root=/dev/ublkb0",
+                    b"VEYRA_SNAPCORE_ALPINE_OPENRC_STARTED phase=alpine-mutate root=/dev/ublkb0",
+                    b"VEYRA_SNAPCORE_ALPINE_OPENRC_STARTED phase=alpine-delete root=/dev/ublkb0",
+                    b"VEYRA_SNAPCORE_ALPINE_OPENRC_STARTED phase=alpine-verify root=/dev/ublkb0",
                     b"VEYRA_SNAPCORE_ALPINE_MUTATION_PASS",
                     b"VEYRA_SNAPCORE_ALPINE_E2FSCK_PASS",
                     b"VEYRA_SNAPCORE_ALPINE_RESTORE_PASS",
@@ -418,9 +426,9 @@ def main() -> None:
                         )
 
             print(
-                "NOTE: Alpine/OpenRC and the BusyBox fixture both boot through "
-                "the file-backed SnapCore test adapter; this is not the installed "
-                "Veyra user root or a production block-device proof."
+                "NOTE: the Alpine/OpenRC root uses ext4 on guest /dev/ublkb0; "
+                "ublk-loop is backed by /dev/vda, which is still the file-backed "
+                "SnapCore test adapter. This is not a production block backend."
             )
         finally:
             if server is not None:
