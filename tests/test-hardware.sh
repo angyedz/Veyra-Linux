@@ -96,13 +96,12 @@ for pkg in amd-ucode mesa-vulkan-ati mesa-vulkan-nouveau mesa-va-gallium \
 done
 assert_unique
 
-# Virtual and unrecognized PCI GPUs keep the generic Gallium/software path;
-# a non-display PCI device must never trigger a graphics package selection.
+# Virtual GPUs keep the generic Gallium/software path; a non-display PCI
+# device must never trigger a graphics package selection.
 reset_fixture
 printf '%s\n' 'vendor_id : UnknownVendor' > "$cpuinfo"
 add_gpu 00:01.0 0x020000 0x10de
 add_gpu 00:02.0 0x030000 0x1af4
-add_gpu 00:03.0 0x030000 0x9999
 detect
 assert_has mesa-dri-gallium
 assert_lacks mesa-vulkan-nouveau
@@ -110,7 +109,29 @@ assert_lacks linux-firmware-nvidia
 VEYRA_CPUINFO="$cpuinfo" VEYRA_PCI_ROOT="$pci" \
     sh "$root/scripts/hardware-detect.sh" --report > "$tmp/report"
 grep -q 'virtual GPU' "$tmp/report"
+
+# Unknown vendors and incomplete PCI metadata get generic Mesa only.
+reset_fixture
+printf '%s\n' 'vendor_id : UnknownVendor' > "$cpuinfo"
+add_gpu 00:03.0 0x030000 0x9999
+detect
+assert_has mesa-dri-gallium
+[ "$(wc -l < "$tmp/packages")" -eq 1 ]
+VEYRA_CPUINFO="$cpuinfo" VEYRA_PCI_ROOT="$pci" \
+    sh "$root/scripts/hardware-detect.sh" --report > "$tmp/report"
 grep -q 'no vendor-specific package mapping' "$tmp/report"
+assert_unique
+
+reset_fixture
+printf '%s\n' 'vendor_id : UnknownVendor' > "$cpuinfo"
+mkdir -p "$pci/0000:00:04.0"
+printf '%s\n' 0x030000 > "$pci/0000:00:04.0/class"
+detect
+assert_has mesa-dri-gallium
+[ "$(wc -l < "$tmp/packages")" -eq 1 ]
+VEYRA_CPUINFO="$cpuinfo" VEYRA_PCI_ROOT="$pci" \
+    sh "$root/scripts/hardware-detect.sh" --report > "$tmp/report"
+grep -q 'no readable vendor ID; generic Mesa fallback only' "$tmp/report"
 
 # CPU-only/no recognized vendor keeps a clean empty package list and explains
 # that no PCI graphics device was found.

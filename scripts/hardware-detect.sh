@@ -74,7 +74,12 @@ case "$mode" in
                 IFS= read -r device_class < "$class_file" || true
                 case "$device_class" in 0x03*) ;; *) continue ;; esac
                 vendor_file="$(dirname "$class_file")/vendor"
-                [ -r "$vendor_file" ] || continue
+                if [ ! -r "$vendor_file" ]; then
+                    # Keep a usable software-rendering path if PCI metadata is
+                    # incomplete; the kernel driver remains hardware-specific.
+                    echo mesa-dri-gallium
+                    continue
+                fi
                 IFS= read -r vendor < "$vendor_file" || true
                 case "$vendor" in
                     0x8086)
@@ -93,6 +98,11 @@ case "$mode" in
                             linux-firmware-nvidia
                         ;;
                     0x1af4|0x1234|0x15ad|0x1b36)
+                        echo mesa-dri-gallium
+                        ;;
+                    *)
+                        # Unknown vendors get generic Mesa only, never a
+                        # guessed firmware or vendor-specific driver package.
                         echo mesa-dri-gallium
                         ;;
                 esac
