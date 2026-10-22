@@ -416,7 +416,7 @@ jobs:
         with:
           go-version: '1.23'
           cache: false
-      - name: Test vpkg native engine selection and atomic write guard
+      - name: Test vpkg user-environment boundary and native engine selection
         working-directory: vpkg
         run: |
           go test -count=1 ./...
