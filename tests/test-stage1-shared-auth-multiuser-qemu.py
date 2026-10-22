@@ -32,7 +32,6 @@ def login(child, account, password, count):
     )
     child.expect(marker, timeout=45)
     fields = child.match.groups()
-    child.sendline(b"exit")
     return fields
 
 

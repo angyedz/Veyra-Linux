@@ -51,3 +51,6 @@ printf 'account=%s uid=%s count=%s root=%s apkdb=%s mountns=%s uidmap=%s\n' \
     "$mount_namespace" "$uid_map" > "$proof"
 chmod 0600 "$proof"
 echo "VEYRA_STAGE1_SHARED_AUTH_LOGIN_PASS account=$account uid=$uid count=$count root=$root_identity apkdb=$apk_identity mountns=$mount_namespace uidmap=$uid_map"
+# The disposable getty test only needs one authenticated profile execution.
+# End the shell here so BusyBox getty respawns without terminal-size negotiation.
+exit
