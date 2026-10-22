@@ -19,8 +19,8 @@ fail() {
 root_identity=$(stat -c '%d:%i' /)
 apk_identity=$(stat -c '%d:%i' /lib/apk/db/installed)
 mount_namespace=$(readlink /proc/self/ns/mnt)
-uid_map=$(tr '\n' ';' < /proc/self/uid_map)
-[ "$uid_map" = '0 100000 65536;' ] || fail "shared environment UID map is unexpected: $uid_map"
+uid_map=$(awk 'NF { print $1, $2, $3 }' /proc/self/uid_map)
+[ "$uid_map" = '0 100000 65536' ] || fail "shared environment UID map is unexpected: $uid_map"
 [ -x /usr/bin/busybox ] || fail "shared user software is missing"
 [ -s /lib/apk/db/installed ] || fail "shared APK database is missing"
 
@@ -93,7 +93,7 @@ umask 077
 [ "\$(stat -c '%d:%i' /)" = "$root_identity" ]
 [ "\$(stat -c '%d:%i' /lib/apk/db/installed)" = "$apk_identity" ]
 [ "\$(readlink /proc/self/ns/mnt)" = "$mount_namespace" ]
-[ "\$(tr '\\n' ';' < /proc/self/uid_map)" = '$uid_map' ]
+[ "\$(awk 'NF { print \$1, \$2, \$3 }' /proc/self/uid_map)" = '$uid_map' ]
 [ -x /usr/bin/busybox ]
 [ -s /lib/apk/db/installed ]
 test ! -r "/home/$other/.veyra-stage1-private"
