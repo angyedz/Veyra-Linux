@@ -58,6 +58,14 @@ fi
 test ! -e "$target/etc/veyra/temporary-apk-keys"
 /usr/local/lib/veyra/installer-desktop.sh "$target" DESKTOP
 /usr/local/lib/veyra/installer-hardware.sh "$target"
+# The installed system must retain the pinned stable repository and trust
+# anchor after removing the short-lived key used for packages on the ISO.
+repo='https://raw.githubusercontent.com/angyedz/veyra-pkgrepo/main/stable/v1'
+grep -Fqx "$repo" "$target/etc/apk/repositories"
+test -s "$target/etc/apk/keys/veyra.rsa.pub"
+# Refresh the signed index and resolve an upgrade using the installed root.
+chroot "$target" apk update
+chroot "$target" apk upgrade --simulate
 echo 'root:veyra-test' | chroot "$target" chpasswd
 chroot "$target" adduser -D -s /bin/ash e2euser
 echo 'e2euser:veyra-test' | chroot "$target" chpasswd
@@ -238,6 +246,9 @@ def main():
                 run_command(child, "test -r /etc/veyra/desktop && cat /etc/veyra/desktop", 30)
                 run_command(child, "test -s /boot/grub/grub.cfg", 30)
                 run_command(child, "test -s /etc/machine-id && rc-service dbus status", 60)
+                run_command(child,
+                    "grep -Fqx 'https://raw.githubusercontent.com/angyedz/veyra-pkgrepo/main/stable/v1' /etc/apk/repositories && "
+                    "test -s /etc/apk/keys/veyra.rsa.pub", 30)
                 print(f"VEYRA_E2E_SUCCESS: clean virtual disk boots installed {args.desktop}", flush=True)
             finally:
                 child.close(force=True)

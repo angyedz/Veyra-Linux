@@ -108,6 +108,15 @@ jobs:
           command -v veyra-appcenter
           test -s /usr/share/veyra/appcenter/main.qml
           test -s /usr/share/veyra/appcenter/backend.py
+      - name: Verify installed Veyra repository and signed update path
+        run: |
+          set -eu
+          repo='https://raw.githubusercontent.com/angyedz/veyra-pkgrepo/main/stable/v1'
+          grep -Fqx "$repo" /etc/apk/repositories
+          test -s /etc/apk/keys/veyra.rsa.pub
+          apk update
+          apk upgrade --simulate
+          apk policy veyra-appcenter
       - name: Launch signed AppCenter from APK installation
         run: |
           set +e
