@@ -207,17 +207,27 @@ def main():
                 # A console-only guest may not trigger NetworkManager's wired
                 # auto-connect path. Bring up QEMU's user-mode NIC explicitly
                 # before installation fetches signed APK indexes.
-                run_command(child, r"""
+                run_command(child, r"""(
 set -eu
 rc-service networkmanager start >/dev/null 2>&1 || true
-nmcli networking on >/dev/null 2>&1 || true
-for dev in $(nmcli -t -f DEVICE device status | sed '/^lo$/d; /^$/d'); do
-    timeout 15 nmcli device connect "$dev" >/dev/null 2>&1 || true
-done
+if command -v nmcli >/dev/null 2>&1; then
+    nmcli networking on >/dev/null 2>&1 || true
+    for dev in $(nmcli -t -f DEVICE device status | sed '/^lo$/d; /^$/d'); do
+        nmcli -w 10 device connect "$dev" >/dev/null 2>&1 || true
+    done
+fi
+if ! curl -fsS -m 5 -o /dev/null 'https://dl-cdn.alpinelinux.org/alpine/v3.22/main/x86_64/APKINDEX.tar.gz'; then
+    for path in /sys/class/net/*; do
+        dev=${path##*/}
+        [ "$dev" = lo ] && continue
+        ip link set "$dev" up || true
+        udhcpc -q -n -t 5 -T 3 -i "$dev" >/dev/null 2>&1 || true
+    done
+fi
 attempt=0
 while [ "$attempt" -lt 10 ]; do
     if curl -fsS -m 5 -o /dev/null 'https://dl-cdn.alpinelinux.org/alpine/v3.22/main/x86_64/APKINDEX.tar.gz' \
-        && curl -fsS -m 5 -o /dev/null 'https://raw.githubusercontent.com/angyedz/veyra-pkgrepo/main/stable/v1/APKINDEX.tar.gz'; then
+        && curl -fsS -m 5 -o /dev/null 'https://raw.githubusercontent.com/angyedz/veyra-pkgrepo/main/stable/v1/x86_64/APKINDEX.tar.gz'; then
         echo VEYRA_E2E_NETWORK_READY
         exit 0
     fi
@@ -228,7 +238,7 @@ nmcli general status || true
 nmcli device status || true
 cat /etc/resolv.conf || true
 exit 1
-""", timeout=150)
+ )""", timeout=150)
                 if args.require_glenv_manager:
                     run_command(child, "test -x /usr/local/lib/veyra/glenv-manager && "
                                 "/usr/local/lib/veyra/glenv-manager version && "

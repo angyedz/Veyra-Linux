@@ -20,6 +20,7 @@ class Gui:
         self.window = window
         self.output_dir = output_dir
         self.label = label
+        self.serial_log_path = output_dir / f"{label}-serial.log"
         self.last_text = ""
 
     def command(self, *args, check=True, timeout=30):
@@ -64,11 +65,22 @@ class Gui:
     def wait_text(self, terms, timeout, description):
         terms = [term.lower() for term in terms]
         deadline = time.monotonic() + timeout
+        started = time.monotonic()
         while time.monotonic() < deadline:
             text, _ = self.screenshot()
             if any(term in text.lower() for term in terms):
                 print(f"{self.label}: found {description}: {text[:300]}", flush=True)
                 return text
+            if (self.label == "live"
+                    and description == "live Plasma desktop and installer shortcut"
+                    and time.monotonic() - started >= 180
+                    and self.serial_log_path.is_file()):
+                serial = self.serial_log_path.read_text(encoding="utf-8", errors="replace")
+                if "ERROR: sddm failed to start" in serial:
+                    raise RuntimeError(
+                        "SDDM did not produce the live Plasma desktop; "
+                        f"serial tail: {serial[-2400:]}"
+                    )
             time.sleep(2)
         raise RuntimeError(
             f"Timed out waiting for {description}; last visible text: {self.last_text[:1200]}"
