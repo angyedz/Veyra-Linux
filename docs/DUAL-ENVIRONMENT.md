@@ -222,8 +222,10 @@ user enters the password-gated system shell; system updates are a
 separate host-authorized transaction against an inactive A/B generation.
 The current CLI fails closed unless `/run/veyra/user-environment`
 contains `user-v1`. This is only a misuse guard; the mount and namespace
-boundary is what keeps system files unreachable. The production launcher,
-user-root integration and automatic source fallback remain incomplete.
+boundary is what keeps system files unreachable. Its default install path
+checks Alpine APK repositories, then the signed `@veyra` APK repository,
+then Nix only when the package is absent from both APK sources. The production
+launcher, user-root integration and end-to-end validation remain incomplete.
 
 ## Current prototype limits and CI evidence
 

@@ -25,10 +25,9 @@ Usage:
   vpkg version
   vpkg help
 
-The intended install lookup order is Alpine APK repositories, signed
-veyra-pkgrepo, then Nix when no APK package exists. This prototype does not yet
-perform automatic source fallback: --from apk uses all configured APK repos,
-and --from nix selects the current user's Nix profile. Package operations are
+By default, install checks untagged Alpine APK repositories first, then the
+signed @veyra APK repository, then the current user's Nix profile. --from apk
+uses APK only and --from nix selects Nix directly. Package operations are
 refused unless /run/veyra/user-environment contains user-v1. The current
 installer does not start the user environment yet. System packages use ordinary
 apk inside the protected system shell.
@@ -36,7 +35,7 @@ apk inside the protected system shell.
 }
 
 func parse(args []string) (string, []string, error) {
-	source := "apk"
+	source := "auto"
 	var rest []string
 	for i := 0; i < len(args); i++ {
 		switch {
@@ -59,7 +58,7 @@ func parse(args []string) (string, []string, error) {
 	if source == "alpine" {
 		source = "apk"
 	}
-	if source != "apk" && source != "nix" {
+	if source != "auto" && source != "apk" && source != "nix" {
 		return "", nil, fmt.Errorf("unsupported source %q", source)
 	}
 	return source, rest, nil
@@ -102,11 +101,176 @@ func userEngine() string {
 	return "apk" // Used only after the user-environment guard succeeds.
 }
 
+// apkRepositoryFiles creates temporary repository lists for deterministic
+// source priority. The configured @veyra repository is excluded from the
+// Alpine pass, gets its own lookup list, and is tagged in the combined list
+// used for Veyra installs so Alpine remains preferred for dependencies.
+func apkRepositoryFiles() (alpineFile, veyraFile, combinedFile string, cleanup func(), err error) {
+	repositoriesPath := os.Getenv("VPKG_APK_REPOSITORIES_FILE")
+	if repositoriesPath == "" {
+		repositoriesPath = "/etc/apk/repositories"
+	}
+	data, err := os.ReadFile(repositoriesPath)
+	if err != nil {
+		return "", "", "", nil, fmt.Errorf("read APK repositories: %w", err)
+	}
+
+	var alpineLines, veyraLines, combinedLines []string
+	hasVeyra := false
+	for _, original := range strings.Split(string(data), "\n") {
+		line := strings.TrimSpace(original)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		veyra := strings.HasPrefix(line, "@veyra ") || strings.Contains(line, "veyra-pkgrepo")
+		if veyra {
+			hasVeyra = true
+			line = strings.TrimSpace(strings.TrimPrefix(line, "@veyra "))
+			veyraLines = append(veyraLines, line)
+			combinedLines = append(combinedLines, "@veyra "+line)
+			continue
+		}
+		alpineLines = append(alpineLines, line)
+		combinedLines = append(combinedLines, line)
+	}
+	if !hasVeyra {
+		return "", "", "", nil, fmt.Errorf("no signed Veyra APK repository is configured")
+	}
+
+	writeRepositories := func(lines []string) (string, error) {
+		file, createErr := os.CreateTemp("", "vpkg-repositories-*")
+		if createErr != nil {
+			return "", createErr
+		}
+		name := file.Name()
+		if _, createErr = file.WriteString(strings.Join(lines, "\n") + "\n"); createErr != nil {
+			file.Close()
+			os.Remove(name)
+			return "", createErr
+		}
+		if createErr = file.Close(); createErr != nil {
+			os.Remove(name)
+			return "", createErr
+		}
+		return name, nil
+	}
+
+	alpineFile, err = writeRepositories(alpineLines)
+	if err != nil {
+		return "", "", "", nil, fmt.Errorf("create Alpine APK repository list: %w", err)
+	}
+	veyraFile, err = writeRepositories(veyraLines)
+	if err != nil {
+		os.Remove(alpineFile)
+		return "", "", "", nil, fmt.Errorf("create Veyra APK repository list: %w", err)
+	}
+	combinedFile, err = writeRepositories(combinedLines)
+	if err != nil {
+		os.Remove(alpineFile)
+		os.Remove(veyraFile)
+		return "", "", "", nil, fmt.Errorf("create combined APK repository list: %w", err)
+	}
+	cleanup = func() {
+		os.Remove(alpineFile)
+		os.Remove(veyraFile)
+		os.Remove(combinedFile)
+	}
+	return alpineFile, veyraFile, combinedFile, cleanup, nil
+}
+
+func apkPackageAvailable(engine, repositoriesFile, packageName string) (bool, error) {
+	cmd := exec.Command(engine, "--repositories-file", repositoriesFile, "search", "--exact", "--quiet", packageName)
+	cmd.Stdin = os.Stdin
+	output, err := cmd.Output()
+	if err != nil {
+		return false, fmt.Errorf("search APK repositories for %s: %w", packageName, err)
+	}
+	return strings.TrimSpace(string(output)) != "", nil
+}
+
+func installAutomatically(packages []string) error {
+	engine := userEngine()
+	alpineRepos, veyraRepos, combinedRepos, cleanup, err := apkRepositoryFiles()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	// Update only Alpine first. A missing index or unreachable Alpine source is
+	// an error, not evidence that the package should be installed from Nix.
+	if err := run(engine, "--repositories-file", alpineRepos, "update"); err != nil {
+		return err
+	}
+
+	var alpinePackages, unresolved []string
+	for _, packageName := range packages {
+		available, err := apkPackageAvailable(engine, alpineRepos, packageName)
+		if err != nil {
+			return err
+		}
+		if available {
+			alpinePackages = append(alpinePackages, packageName)
+		} else {
+			unresolved = append(unresolved, packageName)
+		}
+	}
+
+	var veyraPackages, nixPackages []string
+	if len(unresolved) > 0 {
+		// Refresh the signed Veyra index only when Alpine has no candidate.
+		// The combined config keeps the Veyra source tagged for installation.
+		if err := run(engine, "--repositories-file", combinedRepos, "update"); err != nil {
+			return err
+		}
+		for _, packageName := range unresolved {
+			available, err := apkPackageAvailable(engine, veyraRepos, packageName)
+			if err != nil {
+				return err
+			}
+			if available {
+				veyraPackages = append(veyraPackages, packageName)
+			} else {
+				nixPackages = append(nixPackages, packageName)
+			}
+		}
+	}
+
+	// Resolve every requested package before starting any install transaction.
+	// One APK solve preserves Alpine as the default source and pins only the
+	// packages confirmed to exist solely in Veyra.
+	var apkPackages []string
+	apkPackages = append(apkPackages, alpinePackages...)
+	for _, packageName := range veyraPackages {
+		apkPackages = append(apkPackages, packageName+"@veyra")
+	}
+	if len(apkPackages) > 0 {
+		args := []string{"--repositories-file", combinedRepos, "add"}
+		if err := run(engine, append(args, apkPackages...)...); err != nil {
+			return err
+		}
+	}
+	for _, packageName := range nixPackages {
+		if err := run("nix", "profile", "install", "nixpkgs#"+packageName); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func dispatch(action, source string, packages []string) error {
 	if err := requireUserEnvironment(); err != nil {
 		return err
 	}
 	if source == "alpine" {
+		source = "apk"
+	}
+	if source == "auto" {
+		if action == "install" {
+			if len(packages) == 0 {
+				return fmt.Errorf("%s requires a package name", action)
+			}
+			return installAutomatically(packages)
+		}
 		source = "apk"
 	}
 	need := func() error {

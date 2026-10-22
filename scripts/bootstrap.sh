@@ -11,14 +11,14 @@ apk update
 apk add ca-certificates curl git bash xz tar shadow sudo openrc dbus dbus-openrc
 sh "$scriptdir/setup-pkgrepo.sh"
 apk update
-apk add vpkg
+apk add vpkg@veyra
 
 if [ "${ENABLE_COMPAT:-1}" = 1 ]; then
     sh "$scriptdir/compat.sh"
 fi
 
 if [ "${ENABLE_GLENV:-1}" = 1 ]; then
-    apk add veyra-glenv
+    apk add veyra-glenv@veyra
     veyra-glenv --yes
 fi
 

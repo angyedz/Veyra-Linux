@@ -10,12 +10,18 @@ case "$root" in
 esac
 [ -f "$root/etc/alpine-release" ] || { echo 'Alpine root not found' >&2; exit 1; }
 [ -d "$root/etc/apk" ] || { echo 'APK configuration not found' >&2; exit 1; }
-repo='https://raw.githubusercontent.com/angyedz/veyra-pkgrepo/main/stable/v1'
+repo_url='https://raw.githubusercontent.com/angyedz/veyra-pkgrepo/main/stable/v1'
+repo="@veyra $repo_url"
 mkdir -p "$root/etc/apk/keys"
 # Trust anchor is embedded in the distribution source; never trust a
 # remotely downloaded replacement key without explicit review.
 tmp=$(mktemp)
-trap 'rm -f "$tmp"' 0 HUP INT TERM
+repo_tmp=''
+cleanup() {
+  rm -f "$tmp"
+  [ -z "$repo_tmp" ] || rm -f "$repo_tmp"
+}
+trap cleanup 0 HUP INT TERM
 cat > "$tmp" <<'VEYRA_PUBLIC_KEY'
 -----BEGIN PUBLIC KEY-----
 MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEArdUDsMMIjUSA28/ymlgf
@@ -38,7 +44,23 @@ if [ -e "$root/etc/apk/keys/veyra.rsa.pub" ] && ! cmp -s "$tmp" "$root/etc/apk/k
 fi
 install -m 644 "$tmp" "$root/etc/apk/keys/veyra.rsa.pub"
 touch "$root/etc/apk/repositories"
-if ! grep -Fqx "$repo" "$root/etc/apk/repositories"; then
-  printf '%s\n' "$repo" >> "$root/etc/apk/repositories"
+repo_tmp=$(mktemp "$root/etc/apk/repositories.XXXXXX")
+repo_written=0
+while IFS= read -r line || [ -n "$line" ]; do
+  case "$line" in
+    "$repo_url"|"$repo")
+      if [ "$repo_written" -eq 0 ]; then
+        printf '%s\n' "$repo" >> "$repo_tmp"
+        repo_written=1
+      fi
+      ;;
+    *) printf '%s\n' "$line" >> "$repo_tmp" ;;
+  esac
+done < "$root/etc/apk/repositories"
+if [ "$repo_written" -eq 0 ]; then
+  printf '%s\n' "$repo" >> "$repo_tmp"
 fi
-echo "Configured signed Veyra APK repository: $repo"
+chmod 644 "$repo_tmp"
+mv -f "$repo_tmp" "$root/etc/apk/repositories"
+repo_tmp=''
+echo "Configured signed Veyra APK repository (@veyra): $repo_url"

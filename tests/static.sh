@@ -64,8 +64,8 @@ test -f calamares/modules/locale.conf
 grep -q '^useSystemTimezone: false' calamares/modules/locale.conf
 test -f scripts/hardware-detect.sh
 grep -q 'Session=plasma.desktop' images/genapkovl-veyra.sh
-grep -q 'apk add veyra-glenv' scripts/bootstrap.sh
-grep -q 'apk add vpkg' scripts/bootstrap.sh
+grep -q 'apk add veyra-glenv@veyra' scripts/bootstrap.sh
+grep -q 'apk add vpkg@veyra' scripts/bootstrap.sh
 grep -q 'setup-pkgrepo.sh' scripts/bootstrap.sh
 grep -q 'apk add nix nix-openrc' scripts/bootstrap.sh
 if grep -Eiq 'VPN|WireGuard|OpenVPN|OpenConnect' README.md; then

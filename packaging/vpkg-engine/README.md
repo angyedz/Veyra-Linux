@@ -21,7 +21,7 @@ The build uses apk-tools **2.x's Makefile**, compiles a standalone static APK-de
 
 ## Replacement gates
 
-Do not uninstall Alpine `apk-tools` from the system environment, Live ISO or working installations. `alpine-base`, `mkinitfs`, `abuild`, installers and system maintenance need the ordinary `apk` command. Package the native engine for the isolated user environment with appropriate ABI/provides/replaces, validate dependency and signature compatibility, implement Alpine APK → Veyra APK → Nix fallback, and keep system updates in the trusted inactive-root transaction manager.
+Do not uninstall Alpine `apk-tools` from the system environment, Live ISO or working installations. `alpine-base`, `mkinitfs`, `abuild`, installers and system maintenance need the ordinary `apk` command. Package the native engine for the isolated user environment with appropriate ABI/provides/replaces, validate dependency and signature compatibility, integrate and validate the CLI's Alpine APK → Veyra APK → Nix lookup in the production user root, and keep system updates in the trusted inactive-root transaction manager.
 
 The native engine is deliberately called `vpkg-engine` during this transition. A future final package may rename it when the legacy APK command dependencies are handled explicitly. This is a **downstream source-derived build**, not a standalone GitHub fork repository yet.
 

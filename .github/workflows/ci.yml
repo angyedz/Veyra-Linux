@@ -93,7 +93,7 @@ jobs:
       - name: Install vpkg and veyra-glenv using verified APK signatures
         run: |
           apk update
-          apk add --no-cache vpkg veyra-glenv
+          apk add --no-cache vpkg@veyra veyra-glenv@veyra
           command -v vpkg
           command -v veyra-glenv
           apk info -e vpkg
@@ -102,7 +102,7 @@ jobs:
       - name: Install the signed Veyra desktop and AppCenter
         run: |
           set -eu
-          apk add --no-cache veyra-meta veyra-appcenter
+          apk add --no-cache veyra-meta@veyra veyra-appcenter@veyra
           apk info -e veyra-meta
           apk info -e veyra-appcenter
           command -v veyra-appcenter
@@ -111,7 +111,7 @@ jobs:
       - name: Verify installed Veyra repository and signed update path
         run: |
           set -eu
-          repo='https://raw.githubusercontent.com/angyedz/veyra-pkgrepo/main/stable/v1'
+          repo='@veyra https://raw.githubusercontent.com/angyedz/veyra-pkgrepo/main/stable/v1'
           grep -Fqx "$repo" /etc/apk/repositories
           test -s /etc/apk/keys/veyra.rsa.pub
           apk update
