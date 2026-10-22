@@ -13,6 +13,7 @@ done
 [ -f scripts/test-iso.sh ]
 [ -f images/packages-desktop.txt ]
 sh tests/test-system-packages.sh
+sh tests/test-iso-manifest.sh
 [ -f calamares/settings.conf ]
 grep -qx linux-lts images/packages-desktop.txt
 sh -n images/veyra-install-tui.sh

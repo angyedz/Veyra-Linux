@@ -30,6 +30,12 @@ case "$veyra_release_version" in
         ;;
 esac
 export VEYRA_VERSION="$veyra_release_version"
+export VEYRA_ALPINE_VERSION="$version"
+if [ -z "${VEYRA_SOURCE_COMMIT:-}" ]; then
+    VEYRA_SOURCE_COMMIT=$(git -C "$root" rev-parse HEAD 2>/dev/null || printf 'unknown')
+fi
+export VEYRA_SOURCE_COMMIT
+export VEYRA_APPCENTER_REVISION="${VEYRA_APPCENTER_REVISION:-97dbd8b8df28e0e4fad66397473bfa2ff62d5532}"
 
 outdir="${VEYRA_OUTDIR:-$root/dist}"
 buildroot="${VEYRA_BUILDROOT:-$root/.build}"
@@ -84,6 +90,7 @@ if [ ! -f "$aports/scripts/mkimage.sh" ]; then
     git clone --depth 1 --branch "$version-stable" \
         https://github.com/alpinelinux/aports.git "$aports"
 fi
+export VEYRA_APORTS_REVISION="${VEYRA_APORTS_REVISION:-$(git -C "$aports" rev-parse HEAD)}"
 cp "$root/images/mkimg.veyra.sh" "$aports/scripts/mkimg.veyra.sh"
 
 # mkimage locates the apkovl generator relative to the current working dir.
@@ -102,4 +109,8 @@ sh "$aports/scripts/mkimage.sh" \
     --repository "https://dl-cdn.alpinelinux.org/alpine/v$version/main" \
     --repository "https://dl-cdn.alpinelinux.org/alpine/v$version/community"
 
-echo "Experimental ISO and checksums: $outdir"
+iso="$outdir/veyra-linux-$version-dev-x86_64.iso"
+manifest="$outdir/veyra-linux-$version-dev-x86_64.manifest.txt"
+[ -f "$iso" ] || { echo "Expected ISO output is missing: $iso" >&2; exit 1; }
+sh "$root/scripts/write-iso-manifest.sh" "$iso" "$manifest"
+echo "Experimental ISO, checksums and source/package manifest: $outdir"

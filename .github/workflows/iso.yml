@@ -15,6 +15,8 @@ on:
       - 'scripts/build-iso.sh'
       - 'scripts/test-iso.sh'
       - 'scripts/verify-iso-artifact.sh'
+      - 'scripts/write-iso-manifest.sh'
+      - 'scripts/verify-iso-manifest.sh'
       - 'scripts/bootstrap.sh'
       - 'scripts/compat.sh'
       - 'scripts/smoke.sh'
@@ -22,6 +24,7 @@ on:
       - 'tests/test-install-selection.sh'
       - 'tests/test-calamares-config.py'
       - 'tests/test-iso.sh'
+      - 'tests/test-iso-manifest.sh'
       - 'tests/static.sh'
       - '.github/workflows/iso.yml'
   pull_request:
@@ -35,6 +38,8 @@ on:
       - 'scripts/build-iso.sh'
       - 'scripts/test-iso.sh'
       - 'scripts/verify-iso-artifact.sh'
+      - 'scripts/write-iso-manifest.sh'
+      - 'scripts/verify-iso-manifest.sh'
       - 'scripts/bootstrap.sh'
       - 'scripts/compat.sh'
       - 'scripts/smoke.sh'
@@ -42,6 +47,7 @@ on:
       - 'tests/test-install-selection.sh'
       - 'tests/test-calamares-config.py'
       - 'tests/test-iso.sh'
+      - 'tests/test-iso-manifest.sh'
       - 'tests/static.sh'
       - '.github/workflows/iso.yml'
   workflow_dispatch:
@@ -137,7 +143,17 @@ jobs:
         env:
           VEYRA_REQUIRE_GLENV_MANAGER: '1'
           VEYRA_VERSION: 0.1.0-alpha.1+${{ github.sha }}
+          VEYRA_SOURCE_COMMIT: ${{ github.sha }}
+          VEYRA_APPCENTER_REVISION: 97dbd8b8df28e0e4fad66397473bfa2ff62d5532
+          VEYRA_GLENV_REVISION: bdcc0980553a2bc86fd6d62faee26002fea07999
         run: sh scripts/build-iso.sh
+      - name: Verify ISO source and package manifest
+        run: |
+          iso=$(find dist -maxdepth 1 -name 'veyra-linux-*.iso' -print -quit)
+          manifest=$(find dist -maxdepth 1 -name 'veyra-linux-*.manifest.txt' -print -quit)
+          test -n "$iso"
+          test -n "$manifest"
+          sh scripts/verify-iso-manifest.sh "$iso" "$manifest"
       - name: Check image structure and checksum
         run: |
           set -eu
@@ -153,6 +169,7 @@ jobs:
             dist/*.iso
             dist/*.sha256
             dist/*.sha512
+            dist/*.manifest.txt
           retention-days: 7
           if-no-files-found: error
   boot:
@@ -177,6 +194,7 @@ jobs:
           iso=$(find dist -maxdepth 1 -name 'veyra-linux-*.iso' -print -quit)
           test -n "$iso"
           sh scripts/verify-iso-artifact.sh "$iso"
+          sh scripts/verify-iso-manifest.sh "$iso" "${iso%.iso}.manifest.txt"
       - name: Boot live ISO and wait for login banner
         run: |
           iso=$(find dist -maxdepth 1 -name 'veyra-linux-*.iso' -print -quit)
@@ -209,6 +227,7 @@ jobs:
           iso=$(find dist -maxdepth 1 -name 'veyra-linux-*.iso' -print -quit)
           test -n "$iso"
           sh scripts/verify-iso-artifact.sh "$iso"
+          sh scripts/verify-iso-manifest.sh "$iso" "${iso%.iso}.manifest.txt"
       - name: Syntax-check console automation
         run: python3 -m py_compile tests/test-installed-qemu.py
       - name: Install Plasma on an isolated virtual disk and reboot

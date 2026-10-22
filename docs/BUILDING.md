@@ -19,7 +19,7 @@ VEYRA_APPCENTER_SOURCE="$PWD/../veyra-pkgrepo" sh scripts/build-calamares.sh
 sh scripts/build-iso.sh
 ```
 
-Output is written to `dist/`.
+Output is written to `dist/`. The build also writes `veyra-linux-*.manifest.txt` from the APK index embedded in the exact ISO. It records source revisions, Alpine release, every package name/version, and the ISO's SHA-256/SHA-512 hashes.
 
 The live ISO identifies itself as an alpha build. CI appends the full source commit to `0.1.0-alpha.1`; local builds default to `0.1.0-alpha.1+local`. The overlay takes its version from `VEYRA_VERSION`, so a release build must set it to the tag version and then pass the complete build/boot/install gate.
 
@@ -36,6 +36,6 @@ The ISO is still a **development build**. The glenv upstream installer is availa
 
 ## GitHub Actions image verification
 
-The ISO workflow now checks the SHA-256 checksum and ISO9660 primary volume descriptor before uploading the image, before boot testing, and again before the blank-disk install test. The check is implemented in `scripts/verify-iso-artifact.sh` and fails if the image does not match its checksum. Successful Actions builds upload the ISO and checksums as an artifact named `veyra-linux-iso` (current retention: 7 days). Boot and installation logs are uploaded separately for investigation of failures.
+The ISO workflow checks the SHA-256 checksum and ISO9660 primary volume descriptor before uploading the image, before boot testing, and again before the blank-disk install test. It also regenerates and verifies the package manifest from the ISO itself. Successful Actions builds upload the ISO, checksums and manifest as an artifact named `veyra-linux-iso` (current retention: 7 days). Boot and installation logs are uploaded separately for investigation of failures.
 
 To start a build manually, open [Veyra ISO workflow](https://github.com/angyedz/Veyra-Linux/actions/workflows/iso.yml) and choose **Run workflow** on the main branch. A pushed change to ISO-related scripts also triggers the build. The presence of a workflow or uploaded artifact alone does **not** prove an ISO boots successfully; check the `boot` and `install-e2e` job conclusions before promoting a build.
