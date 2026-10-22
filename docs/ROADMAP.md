@@ -117,7 +117,7 @@ Stable release additionally requires Stage 11 security/reliability and Stage 12 
 ### Verified Stage 1 QEMU milestones
 
 - [x] Prepare a separate persistent Alpine 3.22 ext4 test rootfs and boot a **distinct BusyBox PID 1** that invokes user-environment OpenRC runlevels; system init remains independent.
-- [x] Use system-authorized **multi-ID user/group mappings** (inner IDs 0–65535 → guest outer IDs 100000–165535); verify ordinary inner UID 1000 and real inner `sudo` mapping to **outer UID 100000**, not system UID 0.
+- [x] Use system-authorized **multi-ID user/group mappings** (inner IDs 0–65535 → guest outer IDs 300000–365535, matching the shared-root account provisioner); verify ordinary inner UID 1000 and real inner `sudo` mapping to **outer UID 300000**, not system UID 0.
 - [x] Demonstrate user rootfs persistence across two actual guest boots, with a test OpenRC service's counter reaching 3 then 6 after start/restart/manager-death scenarios.
 - [x] Test system-side `start`, `status`, `stop`, restart, forced PID 1 crash reporting, manager-death cleanup, and stale-socket recovery in QEMU.
 - [x] Reject hostile rootfs structure in QEMU (outside-mapped owners, nested mounts, block devices, unexpected setuid files, and escaping init symlinks).

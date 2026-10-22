@@ -89,13 +89,13 @@ jobs:
               # Include recovery metadata before formatting and map package
               # symlinks as well as regular files to the nested UID range.
               mkdir -p /out/userroot/lost+found
-              chown -hR 100000:100000 /out/userroot
+              chown -hR 300000:300000 /out/userroot
               # chown clears setuid; set it again on the test root-owned sudo.
               chmod 4755 /out/userroot/usr/bin/sudo
-              chown 101000:101000 /out/userroot/home/veyrauser
+              chown 301000:301000 /out/userroot/home/veyrauser
               truncate -s 180M /out/veyra-user-root.raw
               mkfs.ext4 -F -q -L VEYRA_USER_ROOT \
-                -E root_owner=100000:100000 \
+                -E root_owner=300000:300000 \
                 -d /out/userroot /out/veyra-user-root.raw
               chmod 0666 /out/veyra-user-root.raw
               mkinitfs -F "base ext4 virtio" \
