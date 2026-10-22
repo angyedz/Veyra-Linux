@@ -69,10 +69,12 @@ case "$mode" in
                 GenuineIntel) echo intel-ucode ;;
                 AuthenticAMD) echo amd-ucode ;;
             esac
+            display_found=0
             for class_file in "$pci_root"/*/class; do
                 [ -r "$class_file" ] || continue
                 IFS= read -r device_class < "$class_file" || true
                 case "$device_class" in 0x03*) ;; *) continue ;; esac
+                display_found=1
                 vendor_file="$(dirname "$class_file")/vendor"
                 if [ ! -r "$vendor_file" ]; then
                     # Keep a usable software-rendering path if PCI metadata is
@@ -107,6 +109,11 @@ case "$mode" in
                         ;;
                 esac
             done
+            if [ "$display_found" -eq 0 ]; then
+                # Keep the desktop's software-rendering fallback even when
+                # PCI does not expose a usable display adapter.
+                echo mesa-dri-gallium
+            fi
         } | sort -u
         ;;
     *)

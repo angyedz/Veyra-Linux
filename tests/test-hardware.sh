@@ -133,14 +133,15 @@ VEYRA_CPUINFO="$cpuinfo" VEYRA_PCI_ROOT="$pci" \
     sh "$root/scripts/hardware-detect.sh" --report > "$tmp/report"
 grep -q 'no readable vendor ID; generic Mesa fallback only' "$tmp/report"
 
-# CPU-only/no recognized vendor keeps a clean empty package list and explains
-# that no PCI graphics device was found.
+# A system with no PCI display device still receives software rendering.
 reset_fixture
 printf '%s\n' 'vendor_id : UnknownVendor' > "$cpuinfo"
 detect
-test ! -s "$tmp/packages"
+assert_has mesa-dri-gallium
+[ "$(wc -l < "$tmp/packages")" -eq 1 ]
 VEYRA_CPUINFO="$cpuinfo" VEYRA_PCI_ROOT="$pci" \
     sh "$root/scripts/hardware-detect.sh" --report > "$tmp/report"
 grep -q 'no PCI display-class device found' "$tmp/report"
+assert_unique
 
 echo 'Hardware detection fixtures passed'
