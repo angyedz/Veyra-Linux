@@ -74,7 +74,7 @@ jobs:
               chmod 0755 /out/userroot/etc/init.d/veyra-stage1-user
               ln -s /etc/init.d/veyra-stage1-user \
                 /out/userroot/etc/runlevels/default/veyra-stage1-user
-              printf "format=stage1-shared-auth\n" > /out/userroot/.veyra-stage1-rootfs
+              printf "format=stage1\n" > /out/userroot/.veyra-stage1-rootfs
 
               chroot /out/userroot addgroup -g 1000 veyrauser
               chroot /out/userroot adduser -D -H -u 1000 \
