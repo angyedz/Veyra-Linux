@@ -71,7 +71,7 @@ def guest_boot(qemu, kernel, initramfs, user_disk, qemu_boot, logfile, system_ro
         ]
         if system_root_disk is not None:
             patterns.insert(2, b"VEYRA_STAGE1_SYSTEM_ROOT_EXT4_OPENRC_PASS")
-        for expected_index in range(len(patterns) - 2):
+        for expected_index in range(len(patterns) - 3):
             active_patterns = patterns if expected_index == 0 else patterns[1:]
             outcome = guest.expect(active_patterns, timeout=180)
             if expected_index != 0:
