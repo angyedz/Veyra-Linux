@@ -101,9 +101,11 @@ def main():
                 installed.upload_script(child, installed.install_script("plasma").encode(),
                                         "/tmp/e2e-install.sh")
                 installed.run_command(child, "sh /tmp/e2e-install.sh", timeout=1500)
-                # The non-atomic live ISO intentionally has no Python
-                # requirement; the experimental boot coordinator is Python 3.
-                installed.run_command(child, "apk add --no-cache python3", timeout=240)
+                # The live AppCenter package already depends on python3. Verify
+                # the conversion helper can use it without opening an APK
+                # transaction against the live ISO's temporary package world.
+                installed.run_command(
+                    child, "command -v python3 >/dev/null || exit 1", timeout=30)
                 # The installer has finished writing and the root is mounted
                 # but is not executing as the active guest root.
                 installed.run_command(
