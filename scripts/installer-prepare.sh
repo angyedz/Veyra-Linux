@@ -59,15 +59,32 @@ fi
 echo 'Refreshing signed repositories for the installed system...'
 chroot "$target" apk update
 
+# The Live ISO installs Veyra AppCenter from its temporary local APK
+# repository, so its world entry has no repository tag. Bind that entry to
+# Veyra's signed repository before removing other live-only packages; otherwise
+# apk del sees the installed package as masked once the temporary repo is gone.
+world_file="$target/etc/apk/world"
+if grep -Fqx 'veyra-appcenter' "$world_file"; then
+    world_tmp=$(mktemp "$target/etc/apk/world.XXXXXX")
+    awk '
+        $0 == "veyra-appcenter" { print "veyra-appcenter@veyra"; next }
+        { print }
+    ' "$world_file" > "$world_tmp"
+    chmod 0644 "$world_tmp"
+    mv -f "$world_tmp" "$world_file"
+elif ! grep -Eq '^veyra-appcenter@veyra([<>=~].*)?$' "$world_file"; then
+    echo 'Installed APK world is missing the Veyra AppCenter constraint.' >&2
+    exit 1
+fi
+
 # Calamares runs only on live media; installed systems must not retain
 # the build-specific Calamares package or its temporary local repository.
 if chroot "$target" apk info -e veyra-calamares >/dev/null 2>&1; then
     chroot "$target" apk del veyra-calamares
 fi
 
-# Install the signed Veyra desktop essentials from the stable repository.
-# AppCenter was installed from the ISO's pinned local APK repo; omit it here
-# so stable cannot replace this pinned development build with its older published one.
+# Install the signed Veyra desktop essentials from the stable repository. The
+# AppCenter world entry now follows the same tagged source on future solves.
 echo 'Installing Veyra desktop applications from the signed repository...'
 chroot "$target" apk add --no-cache veyra-meta@veyra linux-firmware
 for package in veyra-meta veyra-appcenter flatpak telegram-desktop linux-firmware; do
