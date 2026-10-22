@@ -15,6 +15,7 @@ import argparse
 import fcntl
 import json
 import os
+import posixpath
 from pathlib import Path
 import re
 import shutil
@@ -33,6 +34,25 @@ class VeyraError(Exception):
     pass
 
 
+def mountinfo_has_mountpoint(path, mountinfo_path="/proc/self/mountinfo"):
+    """Check mountinfo directly so same-filesystem bind mounts are detected."""
+    escaped = re.compile(r"\\(040|011|012|134)")
+    replacements = {"040": " ", "011": "\t", "012": "\n", "134": "\\"}
+    target = posixpath.normpath(os.fspath(path))
+    try:
+        with open(mountinfo_path, encoding="utf-8") as mountinfo:
+            for line in mountinfo:
+                fields = line.split()
+                if len(fields) < 6:
+                    continue
+                mountpoint = escaped.sub(lambda match: replacements[match.group(1)], fields[4])
+                if mountpoint == target:
+                    return True
+    except OSError as error:
+        raise VeyraError("cannot verify deployment store mountpoint") from error
+    return False
+
+
 def require_safe_path(path):
     if not path.is_absolute() or path == Path("/"):
         raise VeyraError("store must be an absolute dedicated mountpoint, never /")
@@ -41,7 +61,7 @@ def require_safe_path(path):
             break
         if part.is_symlink():
             raise VeyraError(f"symlink in store path: {part}")
-    if not path.is_dir() or not os.path.ismount(path):
+    if not path.is_dir() or not mountinfo_has_mountpoint(path):
         raise VeyraError("store must be an independently mounted directory")
     if (path / ".veyra-deployment-store").is_symlink():
         raise VeyraError("symlinked deployment marker")

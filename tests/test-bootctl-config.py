@@ -21,6 +21,16 @@ def fake_slot(store, identifier):
 
 
 def main():
+    with tempfile.TemporaryDirectory(prefix="veyra-mountinfo-policy-") as tmp:
+        mountinfo = Path(tmp) / "mountinfo"
+        mountinfo.write_text(
+            "36 25 8:1 / /var/lib/veyra/store rw,relatime - ext4 /dev/vda1 rw\n"
+            "37 25 8:1 / /mnt/veyra\\040store rw,relatime - ext4 /dev/vda1 rw\n"
+        )
+        assert bootctl.mountinfo_has_mountpoint("/var/lib/veyra/store", mountinfo)
+        assert bootctl.mountinfo_has_mountpoint("/mnt/veyra store", mountinfo)
+        assert not bootctl.mountinfo_has_mountpoint("/var/lib/veyra", mountinfo)
+
     with tempfile.TemporaryDirectory(prefix="veyra-bootctl-policy-") as tmp:
         store = Path(tmp)
         fake_slot(store, "A")
