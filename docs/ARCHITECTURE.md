@@ -77,3 +77,18 @@ The bootloader now loads a kernel and initramfs from the selected directory, for
 The upstream `vpkg` source offers atomic-mode `deployments`, `activate`, and `rollback` commands routed to `veyra-bootctl`. In-place system installation/upgrade remains blocked on atomic roots, because the new isolated-root package transaction engine is **not production-complete**. The signed `vpkg` package in the repository must be rebuilt and validated before adopting atomic mode on real machines.
 
 **Filesystem commitment:** ext4, XFS, F2FS and Btrfs remain choices of the end user. The root design must not depend on any particular filesystem's snapshot, reflink or rename extensions. All existing conventional installations remain usable until explicit migration is tested and supported.
+
+## Pre-Alpha paired updates and user data
+
+Veyra Linux Pre-Alpha is first qualified on **x86_64 + ext4 in QEMU**. Its update contract is:
+
+1. Keep the system deployment and the shared user-environment root as independently versioned roots. The system root owns the kernel, host services and boot policy; the user root owns its own OpenRC/PID 1, package database and ordinary applications. Both roots share the running kernel.
+2. Deliver one signed release description that names the compatible system package set, user-environment package set and their compatibility IDs. The existing signed `veyra-pkgrepo` index and APK signatures authenticate the packages; release metadata must be authenticated before it can select a pair.
+3. Stage updates only into inactive roots. A system-only release can retain the current user root when its compatibility ID allows it. A release that changes both environments stages both and activates the pair together.
+4. Keep `/home/LOGIN`, user Nix/Flatpak state and declared persistent application data outside both roots. The update payload never includes these paths. The user package selection is retained as desired state and resolved against signed repository packages when creating the next user root.
+5. Treat root-owned configuration and database migrations as versioned update inputs. Apply only declared migrations to staged roots; require backward-compatible persistent state or a verified reversal path before activation. Decline an update when migration safety or space checks fail.
+6. After verifying package signatures, manifest compatibility, each root's package database, kernel and initramfs, arm a one-time trial boot of the new pair. Confirm it only after the system and user-environment supervisors report healthy startup. If confirmation does not happen, the next boot selects the last confirmed pair. `/home` remains unchanged in either direction.
+
+This is the **Pre-Alpha target**, not the current implementation. The present `veyra-update` package still runs `apk upgrade` in place; the boot coordinator supports explicit manual activation/rollback and has no complete signed updater or automatic failed-boot fallback. Replace those paths before publishing. A system/user A/B QEMU test must prove both successful confirmation and a deliberately failed trial boot returning to the prior pair while preserving account data and package selections.
+
+`vpkg` presents one package-manager interface over two backends. Its APK backend reads the configured APK source list: Alpine v3.22 main/community and the signed `veyra-pkgrepo` repository. `veyra-pkgrepo` is also APK format and contains both system and user packages; it is a repository, not a separate package format or backend. The Nix backend wraps imperative `nix profile` operations for the current user's profile. Repository membership alone does not determine the install root: the signed release description and package-set policy decide which root receives each package.

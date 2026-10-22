@@ -2,7 +2,7 @@
 
 **Last reviewed:** 2026-10-22
 
-**Status:** engineering plan, not a claim that any unfinished component ships. This document tracks both the first installable preview and the later dual-environment design; these are different release milestones.
+**Status:** engineering plan, not a claim that any unfinished component ships. The first public release target is **Veyra Linux Pre-Alpha**; choose its version and tag only after the release candidate passes its gates. The conventional single-root installer is an internal validation path, not a public release milestone.
 **Target:** an installed KDE-only, filesystem-neutral, atomic Veyra with **two independently administered Linux environments on one kernel**, plus separately bootable Recovery.
 
 This plan is ordered by **dependencies and acceptance gates**, not by calendar estimates.
@@ -41,24 +41,26 @@ Parallel tracks are intentional; avoid turning prototypes on in the normal boot 
 
 ## Release levels and publication gates
 
-The word “release” must identify which product is being published. The first public ISO can be a clearly labelled **Installer Preview**; it is not the Dual Environment Alpha or a stable release.
+The first public ISO is **Veyra Linux Pre-Alpha**. It may have unfinished features and known bugs, but SDDM login, the package workflow, basic user environments, and a working A/B update/rollback path on the first supported target must be demonstrated. Choose a version/tag after the candidate is verified; the current conventional single-root ISO is only an internal installer/driver validation image and must not be described as the Pre-Alpha release.
 
-### Installer Preview (first public ISO)
+### Internal installer validation (not a release)
 
-This milestone publishes the current conventional Alpine/KDE installation path so people can try Veyra while dual-root work continues. It must not claim that the target two-environment architecture, atomic updates, VPN isolation, automatic recovery, or hardware-wide compatibility is already shipped.
+Keep the current conventional Alpine/KDE image available for development and for isolating installer, SDDM and package-repository defects. Continue to require a clean graphical install and first Plasma login before using it as the base for the dual-environment installer. Do not publish it as the Veyra Linux Pre-Alpha or imply it contains the two-environment architecture.
 
-- [ ] Merge the exact ISO candidate to `main`; pin every Veyra source used to build it and record the source commit and package versions.
-- [ ] Pass the full ISO workflow on that commit: artifact integrity/checksums, Live QEMU boot, blank-disk installation, and reboot into the installed system.
-- [ ] Complete a disposable-VM Calamares graphical install and first Plasma login. The shell-driven `install-e2e` job does **not** satisfy this item by itself.
-- [ ] Publish a release note with tested target (x86_64 QEMU; physical PC compatibility still unverified), boot/install paths, network requirement, Nouveau-only NVIDIA support, and explicit non-goals/known gaps.
-- [ ] Attach the exact tested ISO, its SHA-256/SHA-512 files, and a source/package manifest to prerelease tag `v0.1.0-alpha.1`. Keep private package/repository signing keys and credentials out of the ISO and public artifacts.
-- [ ] Confirm AppCenter's installed repository configuration and signing-key/update path; an AppCenter build signed only inside a temporary ISO repository is not evidence of a supported stable update channel.
+### Veyra Linux Pre-Alpha
 
-**Gate:** the published ISO is byte-for-byte the ISO that passed the clean VM install and boot checks, and the release notes accurately describe this conventional single-root preview. If Calamares graphical install or first Plasma login is not verified, do not publish the ISO as an installable preview.
+The Pre-Alpha target is a working, updateable x86_64 system validated on ext4 in QEMU. It may have rough edges and defer VPN isolation, SnapCore, Guardian, graphical recovery, other filesystems and physical-hardware qualification. It must provide these core behaviors:
 
-### Dual Environment Alpha
+- [ ] Clean Calamares install boots through SDDM and reaches a usable KDE session.
+- [ ] Normal authenticated login starts in the persistent shared user Linux environment by default. Accounts keep separate Linux identities and private `/home/LOGIN`; the user environment has its own rootfs, package database and init. Inner `sudo` cannot administer the system environment.
+- [ ] `vpkg` is the unified package-manager interface: its APK backend uses the configured Alpine repositories and the signed `veyra-pkgrepo` repository (both APK format), while its Nix backend provides imperative profile operations in the user environment. The Veyra repository contains both system and user packages; the selected target root/policy decides where a package is installed.
+- [ ] A signed release manifest identifies the compatible system and user-environment APK package sets for the Pre-Alpha channel.
+- [ ] The updater stages system changes into an inactive A/B generation and stages a matching user-environment generation whenever the release changes that environment or its compatibility contract. It verifies repository/package signatures and release metadata before activation.
+- [ ] A trial boot confirms health of both environments. Missing confirmation or a forced boot failure returns to the previous confirmed system/user generation pair. The QEMU test proves A → updated B → forced failure → restored A.
+- [ ] `/home`, user Nix/Flatpak state and other declared personal data stay outside both update generations and survive successful updates and system/user generation rollback. Compatible package selections and configuration are migrated explicitly; an unsafe migration blocks activation.
+- [ ] The release includes the exact tested ISO, SHA-256/SHA-512, source and package manifest, update instructions and a clear list of unfinished features.
 
-This is a later architecture milestone, not a synonym for the Installer Preview. It is eligible only after the [integrated alpha acceptance gate](#first-integrated-alpha-acceptance-gate) passes on a clean installed VM and its evidence is attached to the release. System/user isolation, VPN confinement, package operations, and independent system rollback must all work in the installed default login path.
+**Gate:** all items above pass on a fresh x86_64/ext4 QEMU install, including SDDM, default user-environment login, package operations, a signed update delivered through the configured repository, and automatic rollback after an intentionally failed trial boot. Release notes must say that other filesystems and physical hardware remain unqualified. No public Pre-Alpha is published from the current single-root image.
 
 ### Stable Veyra
 
@@ -306,30 +308,21 @@ Stable release additionally requires Stage 11 security/reliability and Stage 12 
 - [ ] Publish user/admin troubleshooting, limitations, recovery and upgrade instructions.
 - [ ] Run full clean-install, normal boot, broken-boot and rollback release qualification.
 
-**Gate:** reviewed stable release candidate with evidenced boot, isolation, update, rollback and recovery behavior on supported setups. The separate Installer Preview gate above does not close this stage.
+**Gate:** reviewed stable release candidate with evidenced boot, isolation, update, rollback and recovery behavior on supported setups. Passing the Pre-Alpha gate does not close this stage.
 
 ## Immediate execution order
 
-1. Finish review of the current Installer Preview candidate: pass the pinned ISO build/boot/blank-disk install pipeline, close any failures, and verify the Calamares graphical install and first Plasma login in a disposable VM. Keep the preview unreleased until every item in its publication gate passes.
-2. Publish only the exact tested ISO with checksums, source/package manifest and honest limitations. This release is single-root experimental Alpine/KDE; it is not the dual-environment milestone.
-3. **Stage 0 prototype complete and merged**: PR #8 QEMU/static gates verified; continue its unfinished threat-model work under Stage 2.
-4. **Stage 1 QEMU lifecycle milestone complete and merged**: PRs #9–13; productionize the tested system manager as a real OpenRC service, finalize persistent rootfs outside A/B, add normal login/auth for multiple accounts in one shared root and trusted cleanup. PR #30 checks authentication in a disposable VM; it does not replace this installed work.
-5. **In parallel Stage 1S:** prototype SnapCore genuine block-level CoW with crash-consistent mapping roots, power-cut tests and independent root vs `/home` recovery; preserve system A/B's snapshot-free contract.
-6. Stage 2: adversarially prove the production inner `sudo` cannot escape or control host kernel/devices/boot/network/services; extend inherited-FD/cgroup/LSM audits.
-7. Stage 3: controlled user internet and VPN while host network stays independent.
-8. In parallel, Stage 7: complete the real A -> B -> A QEMU cycle.
-9. Stages 4–5: pair KDE runtime and route all application launch paths.
-10. Stages 6 and 8: stabilize user package management and paired system KDE upgrades.
-11. Stages 9–12: build system-side Guardian, trusted TTY/graphics fallback and a **shared Recovery Engine** for user SnapCore and system A/B in VRE; then installer, destruction/recovery tests and stable release qualification.
+1. Fix the current SDDM/desktop boot and clean graphical-install failures in the internal ISO workflow.
+2. Install the shared user-environment runtime as the default SDDM login, reusing the merged namespace/lifecycle prototypes and authenticating multiple system accounts into one package root with private homes.
+3. Complete system A/B boot and rollback, then implement a matching user-root generation transaction for the x86_64/ext4 alpha target.
+4. Replace the current in-place `apk upgrade` utility with a signed, paired-release updater that stages inactive generations, performs a health-confirmed trial boot and rolls back the pair on failure.
+5. Run a clean QEMU install → SDDM login → signed update → successful confirmation → injected failed update → automatic rollback cycle while checking user data and package selections.
+6. Choose the release version, then publish Veyra Linux Pre-Alpha only from the exact ISO and repository state that passed this cycle; document unfinished VPN, recovery, other-filesystem and physical-hardware support.
+7. Continue Stages 2–12: adversarial isolation review; VPN; coherent KDE launch/runtime; full package-manager lifecycle; SnapCore; Guardian/VRE; broader filesystem and hardware coverage.
 
-## First integrated alpha acceptance gate
+## First integrated Pre-Alpha acceptance gate
 
-A **Dual Environment Alpha** is eligible only when a clean QEMU install:
-boots system + user init, starts system-owned KDE with user-side
-`plasmashell` and KRunner, confines `sudo`, installs normal user packages,
-runs a user VPN without touching host networking, persists user rootfs across
-reboot and successfully rolls back system A/B independently. A broken user
-environment must not prevent the system's maintenance/recovery path. Before advertising snapshots or automatic recovery, a later end-to-end gate must also prove that destroying the disposable user environment triggers **independent Guardian/TTY or VRE**, restores a verified user-root snapshot without rolling back newer separate `/home` data, and that VRE independently repairs a failed system A/B generation. These are **future tasks**, not current alpha claims.
+**Veyra Linux Pre-Alpha** is eligible only when a clean x86_64/ext4 QEMU install reaches a working SDDM session inside the default user environment, keeps host root privileged to the system environment, supports the unified APK/Nix package workflow, updates signed system and user package sets into inactive generations, confirms a healthy paired boot, and automatically restores the previously confirmed pair after an injected boot failure. Separate account homes and declared persistent user state must survive both paths. VPN isolation, KDE runtime version-pairing, SnapCore, Guardian and offline VRE remain later release gates unless separately qualified; the Pre-Alpha notes must state those limits plainly.
 
 No checklist item may be marked complete solely because a script or a
 GitHub Actions workflow exists; attach actual test evidence.

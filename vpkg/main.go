@@ -15,27 +15,28 @@ func usage() {
  fmt.Print(`vpkg `+version+` - Veyra package manager
 
 Usage:
-  vpkg install <package>... [--from alpine|nix]
-  vpkg remove <package>...  [--from alpine|nix]
-  vpkg search <term>        [--from alpine|nix]
-  vpkg info <package>       [--from alpine|nix]
-  vpkg list                 [--from alpine|nix]
+  vpkg install <package>... [--from apk|nix]
+  vpkg remove <package>...  [--from apk|nix]
+  vpkg search <term>        [--from apk|nix]
+  vpkg info <package>       [--from apk|nix]
+  vpkg list                 [--from apk|nix]
   vpkg update
-  vpkg upgrade              [--from alpine|nix]
+  vpkg upgrade              [--from apk|nix]
   vpkg version
   vpkg help
 
-Default source: Alpine APK. Nix commands affect the current user's profile.
+Default source: APK, using every configured APK repository (including Alpine and
+veyra-pkgrepo). Nix commands affect the current user's profile.
 `)
 }
 
 func parse(args []string) (string, []string, error) {
- source:="alpine"
+ source:="apk"
  var rest []string
  for i:=0;i<len(args);i++ {
   switch {
   case args[i]=="--from":
-   if i+1>=len(args) {return "",nil,fmt.Errorf("--from requires alpine or nix")}
+   if i+1>=len(args) {return "",nil,fmt.Errorf("--from requires apk or nix")}
    source=args[i+1];i++
   case strings.HasPrefix(args[i],"--from="):
    source=strings.TrimPrefix(args[i],"--from=")
@@ -44,7 +45,10 @@ func parse(args []string) (string, []string, error) {
   default:rest=append(rest,args[i])
   }
  }
- if source!="alpine"&&source!="nix" {return "",nil,fmt.Errorf("unsupported source %q",source)}
+ // Keep the former name as an alias for scripts already using it. The APK
+ // backend searches all configured APK repositories, not just Alpine's.
+ if source=="alpine" {source="apk"}
+ if source!="apk"&&source!="nix" {return "",nil,fmt.Errorf("unsupported source %q",source)}
  return source,rest,nil
 }
 
@@ -78,8 +82,9 @@ func systemEngine()string{
 }
 
 func dispatch(action,source string,packages []string) error {
+ if source=="alpine" {source="apk"}
  need:=func()error{if len(packages)==0{return fmt.Errorf("%s requires a package name",action)};return nil}
- if source=="alpine" {
+ if source=="apk" {
   atomic,err:=atomicSystem()
   if err!=nil{return err}
   if action=="deployments"||action=="activate"||action=="rollback"{

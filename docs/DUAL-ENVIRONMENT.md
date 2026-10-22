@@ -21,8 +21,11 @@ Calamares/TUI installation or A/B boot process.
 3. **Recovery:** independently booted minimal OS; not a third simultaneously
    running PID 1 during ordinary operation.
 
-The system and user environments share one Linux kernel. A/B changes the
-system deployment, not the persistent user environment.
+The system and user environments share one Linux kernel. The system and user
+root filesystems have separate versions and package databases. A system-only
+update may keep the existing user root when their compatibility contract
+allows it; a release that changes both roots activates them as one tested pair.
+Per-account homes and declared user data stay outside both roots.
 
 **Resilience design (2026-10-20, not implemented):** a system OpenRC-owned [Veyra Guardian](VEYRA-RESILIENCE.md) must detect user-init/Plasma failures without depending on the user rootfs. A system-owned TTY and independently bootable [VRE](VEYRA-RECOVERY.md) provide fallback. [SnapCore](VEYRA-SNAPCORE.md) is a proposed block-level CoW user snapshot layer below ext4/XFS/F2FS, **not** directory copies or a Btrfs/LVM requirement. User-root and `/home` must be separately restorable; system A/B rollback must not implicitly touch them.
 
@@ -37,6 +40,32 @@ configuration, or privileged host control sockets.
 
 This must be an enforcement property of the kernel boundary, not a vpkg
 package classification, command blacklist, sudo wrapper or convention.
+
+## Update and persistence contract for Veyra Linux Pre-Alpha
+
+- System packages, kernel, initramfs and host services are installed into the
+  inactive system deployment. They never upgrade the active system root in
+  place.
+- User-environment base packages, OpenRC/PID 1 and its own package database
+  belong to a separately versioned user root. The shared package selection is
+  carried forward when a signed release stages a new user-root generation.
+- The signed release description identifies the system and user package sets
+  and the compatibility relationship between them. It can update one root or
+  both. If both change, both are prepared and verified before either is made
+  the active trial pair.
+- Each account's `/home/LOGIN`, Nix/Flatpak state and explicitly declared
+  application data are mounted from persistent storage. They are not copied
+  into a release image, replaced when a root is rebuilt, or reverted when an
+  OS generation rolls back.
+- Root-owned configuration and state migrations run against staged roots and
+  must preserve the previous confirmed pair. An unsafe or incompatible
+  migration blocks activation. Personal-data rollback is a separate future
+  recovery feature and must never be implied by system A/B.
+
+This is a release requirement, not an implementation claim. The current
+`veyra-update` utility still performs in-place APK upgrades, and the current
+boot coordinator lacks a complete update transaction and automatic failed-boot
+fallback.
 
 **Do not expose** the host mount namespace, privileged Docker/container
 sockets, host D-Bus system bus, host OpenRC controls, writable sysfs,
