@@ -2,7 +2,7 @@
 
 **Last reviewed:** 2026-10-22
 
-**Status:** engineering plan, not a claim that any unfinished component ships.  
+**Status:** engineering plan, not a claim that any unfinished component ships. This document tracks both the first installable preview and the later dual-environment design; these are different release milestones.
 **Target:** an installed KDE-only, filesystem-neutral, atomic Veyra with **two independently administered Linux environments on one kernel**, plus separately bootable Recovery.
 
 This plan is ordered by **dependencies and acceptance gates**, not by calendar estimates.
@@ -39,9 +39,34 @@ Parallel tracks are intentional; avoid turning prototypes on in the normal boot 
 
 **Last verified `main` baseline (2026-10-20):** commit [`1754933`](https://github.com/angyedz/Veyra-Linux/commit/1754933123564d621081788f7a6ca41a29dd5dd3), PRs [#8](https://github.com/angyedz/Veyra-Linux/pull/8), [#9](https://github.com/angyedz/Veyra-Linux/pull/9), [#10](https://github.com/angyedz/Veyra-Linux/pull/10), [#11](https://github.com/angyedz/Veyra-Linux/pull/11), [#12](https://github.com/angyedz/Veyra-Linux/pull/12), [#13](https://github.com/angyedz/Veyra-Linux/pull/13) merged. [Integration CI passed](https://github.com/angyedz/Veyra-Linux/actions/runs/39452117275); [Stage 1 QEMU lifecycle passed](https://github.com/angyedz/Veyra-Linux/actions/runs/39452117206). These prove the **test-only** implementation's stated assertions, not an installed dual-environment system or a general host-escape security review. Continue recording failures and guest serial logs for future gates.
 
+## Release levels and publication gates
+
+The word “release” must identify which product is being published. The first public ISO can be a clearly labelled **Installer Preview**; it is not the Dual Environment Alpha or a stable release.
+
+### Installer Preview (first public ISO)
+
+This milestone publishes the current conventional Alpine/KDE installation path so people can try Veyra while dual-root work continues. It must not claim that the target two-environment architecture, atomic updates, VPN isolation, automatic recovery, or hardware-wide compatibility is already shipped.
+
+- [ ] Merge the exact ISO candidate to `main`; pin every Veyra source used to build it and record the source commit and package versions.
+- [ ] Pass the full ISO workflow on that commit: artifact integrity/checksums, Live QEMU boot, blank-disk installation, and reboot into the installed system.
+- [ ] Complete a disposable-VM Calamares graphical install and first Plasma login. The shell-driven `install-e2e` job does **not** satisfy this item by itself.
+- [ ] Publish a release note with supported target (x86_64 PC/VM), tested boot/install paths, network requirement, Nouveau-only NVIDIA support, and explicit non-goals/known gaps.
+- [ ] Attach the exact tested ISO, its SHA-256/SHA-512 files, and a source/package manifest to a prerelease tag. Keep private package/repository signing keys and credentials out of the ISO and public artifacts.
+- [ ] Confirm AppCenter's installed repository configuration and signing-key/update path; an AppCenter build signed only inside a temporary ISO repository is not evidence of a supported stable update channel.
+
+**Gate:** the published ISO is byte-for-byte the ISO that passed the clean VM install and boot checks, and the release notes accurately describe this conventional single-root preview. If Calamares graphical install or first Plasma login is not verified, do not publish the ISO as an installable preview.
+
+### Dual Environment Alpha
+
+This is a later architecture milestone, not a synonym for the Installer Preview. It is eligible only after the [integrated alpha acceptance gate](#first-integrated-alpha-acceptance-gate) passes on a clean installed VM and its evidence is attached to the release. System/user isolation, VPN confinement, package operations, and independent system rollback must all work in the installed default login path.
+
+### Stable Veyra
+
+Stable release additionally requires Stage 11 security/reliability and Stage 12 release-readiness gates, including supported hardware/filesystem qualification, signed reproducible updates, independent recovery, and a reviewed support/upgrade policy. Unfinished SnapCore or recovery behavior must never be advertised as available.
+
 ### Stage progress at a glance
 
-| Stage | State as of 2026-10-20 | Evidence / next boundary |
+| Stage | State as of 2026-10-22 | Evidence / next boundary |
 | --- | --- | --- |
 | **0 — Experimental audit/CI** | **Merged QEMU/static baseline** | PR #8; threat model still incomplete |
 | **1 — Persistent user environment** | **QEMU prototype milestones passed**, not deployed | PRs #9–13; production OpenRC service, default login and A/B-independent storage pending |
@@ -269,7 +294,7 @@ Parallel tracks are intentional; avoid turning prototypes on in the normal boot 
 
 **Gate:** release-blocking failures addressed and independent tests reproducible in CI.
 
-## Stage 12 — Integration, delivery and release readiness
+## Stage 12 — Integration, delivery and stable release readiness
 
 **Depends on:** all release-blocking gates.
 
@@ -279,19 +304,21 @@ Parallel tracks are intentional; avoid turning prototypes on in the normal boot 
 - [ ] Publish user/admin troubleshooting, limitations, recovery and upgrade instructions.
 - [ ] Run full clean-install, normal boot, broken-boot and rollback release qualification.
 
-**Gate:** reviewed release candidate with evidenced boot, isolation, update, rollback and recovery behavior on supported setups.
+**Gate:** reviewed stable release candidate with evidenced boot, isolation, update, rollback and recovery behavior on supported setups. The separate Installer Preview gate above does not close this stage.
 
 ## Immediate execution order
 
-1. **Stage 0 prototype complete and merged**: PR #8 QEMU/static gates verified; continue its unfinished threat-model work under Stage 2.
-2. **Stage 1 QEMU milestone complete and merged**: PRs #9–13; **next** productionize the tested system manager as a real OpenRC service, finalize persistent rootfs outside A/B, add normal login/auth and trusted cleanup.
-3. **In parallel Stage 1S:** prototype SnapCore genuine block-level CoW with crash-consistent mapping roots, power-cut tests and independent root vs `/home` recovery; preserve system A/B's snapshot-free contract.
-4. Stage 2: adversarially prove the production inner `sudo` cannot escape or control host kernel/devices/boot/network/services; extend inherited-FD/cgroup/LSM audits.
-5. Stage 3: controlled user internet and VPN while host network stays independent.
-6. In parallel, Stage 7: complete the real A -> B -> A QEMU cycle.
-7. Stages 4–5: pair KDE runtime and route all application launch paths.
-8. Stages 6 and 8: stabilize user package management and paired system KDE upgrades.
-9. Stages 9–12: build system-side Guardian, trusted TTY/graphics fallback and a **shared Recovery Engine** for user SnapCore and system A/B in VRE; then installer, destruction/recovery tests and release qualification.
+1. Finish review of the current Installer Preview candidate: pass the pinned ISO build/boot/blank-disk install pipeline, close any failures, and verify the Calamares graphical install and first Plasma login in a disposable VM. Keep the preview unreleased until every item in its publication gate passes.
+2. Publish only the exact tested ISO with checksums, source/package manifest and honest limitations. This release is single-root experimental Alpine/KDE; it is not the dual-environment milestone.
+3. **Stage 0 prototype complete and merged**: PR #8 QEMU/static gates verified; continue its unfinished threat-model work under Stage 2.
+4. **Stage 1 QEMU milestone complete and merged**: PRs #9–13; productionize the tested system manager as a real OpenRC service, finalize persistent rootfs outside A/B, add normal login/auth and trusted cleanup. The separate shared-root account QEMU proof does not replace this installed work.
+5. **In parallel Stage 1S:** prototype SnapCore genuine block-level CoW with crash-consistent mapping roots, power-cut tests and independent root vs `/home` recovery; preserve system A/B's snapshot-free contract.
+6. Stage 2: adversarially prove the production inner `sudo` cannot escape or control host kernel/devices/boot/network/services; extend inherited-FD/cgroup/LSM audits.
+7. Stage 3: controlled user internet and VPN while host network stays independent.
+8. In parallel, Stage 7: complete the real A -> B -> A QEMU cycle.
+9. Stages 4–5: pair KDE runtime and route all application launch paths.
+10. Stages 6 and 8: stabilize user package management and paired system KDE upgrades.
+11. Stages 9–12: build system-side Guardian, trusted TTY/graphics fallback and a **shared Recovery Engine** for user SnapCore and system A/B in VRE; then installer, destruction/recovery tests and stable release qualification.
 
 ## First integrated alpha acceptance gate
 

@@ -2,7 +2,7 @@
 
 **Lightweight by design. Compatible by nature.**
 
-Veyra Linux is an experimental Linux distribution built on Alpine Linux. It combines a minimal foundation with flexible software management and an expanded application environment.
+Veyra Linux is an experimental Linux distribution built on Alpine Linux. The current development image is a conventional KDE desktop and installer; the planned dual-environment system is still in development.
 
 **Target architecture (not shipped yet):** a KDE-only, atomic installed system with separate system and user Linux environments sharing one kernel. KDE packages are system-managed; `plasmashell` runs in the user environment.
 
@@ -21,7 +21,7 @@ See the [full development roadmap](docs/ROADMAP.md) and the [dual-environment se
 
 ## Get started
 
-Veyra is in **early development**. The experimental ISO passed a full **QEMU Live boot → installation onto a blank virtual disk → installed-system reboot** in [GitHub Actions](https://github.com/angyedz/Veyra-Linux/actions/runs/39202330852) on October 19, 2026. This automated test exercises the installer shell scripts, not graphical Calamares clicks; real hardware compatibility is still unverified.
+Veyra is in **early development** and has no public release yet. A first Installer Preview is planned only after a pinned ISO passes Live boot, blank-disk installation and reboot checks, followed by a graphical Calamares install and Plasma login in a disposable VM. The current automated install test exercises installer scripts, not Calamares clicks; real hardware compatibility is unverified. The ISO does not yet ship the planned dual-environment architecture, atomic updates, isolated user VPN, or independent recovery. See the [release gates and roadmap](docs/ROADMAP.md#release-levels-and-publication-gates).
 
 Try the integration in an Alpine Linux x86_64 virtual machine:
 
