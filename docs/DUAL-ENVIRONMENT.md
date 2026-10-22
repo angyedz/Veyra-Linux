@@ -11,10 +11,13 @@ Calamares/TUI installation or A/B boot process.
 
 1. **System environment:** system OpenRC PID 1, kernel, hardware, physical
    networking, GRUB, boot coordinator and protected A/B deployments.
-2. **Persistent user environment:** separate root filesystem, user namespace,
-   mount namespace, PID namespace with its own PID 1 and OpenRC, network and
-   IPC namespaces, package database, services and ordinary user accounts.
-   Users log directly into this environment, with no explicit enter command.
+2. **Persistent user environment:** one shared root filesystem and package
+   database for all ordinary Linux accounts, with a user namespace, mount
+   namespace, PID namespace with its own PID 1 and OpenRC, network and IPC
+   namespaces, and services. Each account has distinct credentials, UID/GID,
+   private `/home/LOGIN` and session; accounts do not receive separate roots
+   or package databases. Every user's normal login starts inside this shared
+   environment, with no explicit enter command.
 3. **Recovery:** independently booted minimal OS; not a third simultaneously
    running PID 1 during ordinary operation.
 
