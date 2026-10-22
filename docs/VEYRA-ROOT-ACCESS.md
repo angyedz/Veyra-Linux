@@ -23,8 +23,10 @@ itself never grants host-root access.
 ## Trusted flow
 
 1. The system-owned session broker accepts a request to open the fixed
-   administration surface. The request carries no username, command, path,
-   environment, TTY number, file descriptor, or credential.
+   administration surface. It verifies the active seat and originating Veyra
+   session from system-owned session state, permits at most one pending request
+   per seat, and rate-limits repeats. The request carries no username,
+   command, path, environment, TTY number, file descriptor, or credential.
 2. The broker allocates a system-owned console TTY from its fixed policy and
    switches the local display to it. The username/password prompt is rendered
    and read on this initial-system TTY, outside user namespaces and outside any
@@ -43,8 +45,10 @@ itself never grants host-root access.
    outcome, and returns the display to the user's session or a system-owned
    login screen.
 
-The bridge may be requested from a user session, but the user's process only
-requests the fixed action. It must never receive the administrator's password,
+The bridge may be requested from a user session, but the request is only a
+fixed action relayed through a system-owned control surface. User-root
+processes cannot connect directly to a privileged broker socket or choose the
+action's parameters. They must never receive the administrator's password,
 PAM conversation, one-use grant, root shell descriptors, or a host command
 channel. A request must not switch to a root shell on the untrusted session's
 PTY.
@@ -71,6 +75,9 @@ PTY.
 
 - The authentication prompt and root shell use only a TTY allocated by the
   initial-system broker. User namespaces cannot open or replace it.
+- Only a system-owned control component may contact the broker. The broker
+  binds requests to the active seat/session in system-owned state and rejects
+  stale, duplicate, or unassociated requests.
 - Accept only a fixed request enum. Ignore or reject extra protocol fields and
   never interpret user-controlled text as an executable, path, environment
   value, terminal device, or shell argument.
@@ -110,6 +117,9 @@ PTY into a host-root shell are out of scope.
 - Requests from a hostile user root cannot supply a command, path, environment,
   terminal, or descriptor; cannot read the prompt or grant; and cannot access
   the root TTY before authorization.
+- A hostile session cannot open the broker socket directly, forge another
+  session's request, or force repeated console switches with duplicate or stale
+  requests.
 - Logout, client disconnect, timeout, concurrent requests, and broker restart
   leave no root shell or descendant alive and restore the expected console.
 - Audit records contain identity and outcome metadata but no secret material.
