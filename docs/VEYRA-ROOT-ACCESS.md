@@ -10,11 +10,15 @@ installed-image wiring, detached-descendant cleanup, or complete QEMU security
 gates. Keep the console disabled until the full implementation passes the
 acceptance gates below and receives independent security review.
 
-The existing package source checks and Alpine APK snapshot build passed before
-the current request-path changes. Commit `faefceb` adds a QEMU denial check for
-an unlisted session account; its APK/QEMU CI run is pending. Successful VT9
-activation, installed-image behavior, and the remaining adversarial bridge
-proof are still open.
+Package source checks ([run 39769183093](https://github.com/angyedz/veyra-pkgrepo/actions/runs/39769183093)),
+all 19 Alpine APK builds, and the session-manager QEMU job passed on package
+head `eb4a939`. The QEMU log and serial artifact show that
+an unlisted account cannot trigger the system-root console
+([run 39769183096](https://github.com/angyedz/veyra-pkgrepo/actions/runs/39769183096),
+[serial artifact](https://github.com/angyedz/veyra-pkgrepo/actions/runs/39769183096/artifacts/12422360281)).
+This does not exercise successful VT9 activation or PAM password entry on that
+VT. Installed-image behavior and the remaining adversarial bridge proof are
+still open.
 
 ## Purpose and authority
 
