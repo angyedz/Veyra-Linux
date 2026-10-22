@@ -31,7 +31,7 @@ Parallel tracks are intentional; avoid turning prototypes on in the normal boot 
 | Dual environments | PRs #8–13 **merged into `main`**: namespace probes; Alpine user-root/OpenRC PID 1; multi-ID mapping and inner `sudo`; QEMU lifecycle manager, rootfs staging, descriptor checks, pidfd safety. PR #30 is a separate shared-root multi-account authentication proof | Installed manager and login, real host privilege-boundary audit, production user storage/KDE/network integration |
 | VPN isolation | Design | veth/network policy, DNS, user VPN and kill-switch tests |
 | KDE cross-boundary launch | Design and experimental KRunner preflight in PR #8 | System-selected read-only KDE runtime, user session, safe Alt+F2, D-Bus/Wayland integration |
-| vpkg | APK-derived prototype plus early Go frontend | Final installed-engine replacement, user root integration, inactive-generation updater |
+| vpkg | APK-derived prototype; Go CLI now has ordered Alpine APK → Veyra APK → Nix install resolution | Behavioral validation in the user root, installed-engine packaging, full user-root integration and inactive-generation updater |
 | glenv/Nix | Signed runtime pairing and Nix prototypes | Full lifecycle/integration in user root and system generations |
 | VRE | Separate console Recovery boot in diskless QEMU | Manual GRUB entry, authenticated artifacts, shared dual-scope restore backend, real repair UI and automatic recovery |
 | SnapCore user snapshots | **Design only**: [block-level CoW engine](VEYRA-SNAPCORE.md), no directory-copy snapshots or required Btrfs | On-disk engine, kernel block interface, crash-consistent snapshots, preservation/rollback QEMU proofs |
@@ -209,7 +209,7 @@ Stable release additionally requires Stage 11 security/reliability and Stage 12 
 **Depends on:** Stage 1; integrates with Stage 7.
 
 - [ ] Finish the independent source-derived `vpkg` engine, preserving APK dependency solver, format, signatures and licenses, without requiring the installed `apk` executable.
-- [ ] Make `vpkg install/remove/upgrade` affect only the persistent **user** rootfs, with no system-root selection flag; implement Alpine APK → Veyra APK → Nix fallback for installs.
+- [ ] Integrate and behaviorally validate the CLI's Alpine APK → signed `veyra-pkgrepo` APK → Nix install resolution inside the persistent **user** rootfs. Make `vpkg install/remove/upgrade` affect only that root, with no system-root selection flag.
 - [ ] Implement separate privileged host A/B transactions for system packages; no in-place change to active deployment.
 - [ ] Integrate signed glenv runtime pairing and Nix profiles without opening host privilege boundaries.
 - [ ] Preserve package database integrity across failures and reboots.
