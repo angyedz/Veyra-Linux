@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -52,6 +53,84 @@ func TestDispatch(t *testing.T) {
 		if !strings.Contains(string(b), want) {
 			t.Fatalf("missing %q: %s", want, b)
 		}
+	}
+}
+
+func TestInstallAutomaticallyPrefersAlpineThenVeyraThenNix(t *testing.T) {
+	dir := t.TempDir()
+	repositories := filepath.Join(dir, "repositories")
+	if err := os.WriteFile(repositories, []byte(
+		"https://dl-cdn.alpinelinux.org/alpine/v3.22/main\n"+
+			"@veyra https://packages.veyra.example/veyra-pkgrepo\n",
+	), 0600); err != nil {
+		t.Fatal(err)
+	}
+	log := filepath.Join(dir, "commands")
+	apk := `#!/bin/sh
+set -eu
+repositories=
+if [ "${1:-}" = "--repositories-file" ]; then
+    repositories=$2
+    shift 2
+fi
+command=$1
+shift
+repo_list=$(tr '\n' ',' < "$repositories")
+case "$command" in
+    update|add)
+        printf 'apk %s %s repositories=%s\n' "$command" "$*" "$repo_list" >> "$VPKG_TEST_LOG"
+        ;;
+    search)
+        package=
+        for argument in "$@"; do package=$argument; done
+        printf 'search %s repositories=%s\n' "$package" "$repo_list" >> "$VPKG_TEST_LOG"
+        case "$repo_list" in
+            *veyra-pkgrepo*) available=$VPKG_TEST_VEYRA_PACKAGES ;;
+            *) available=$VPKG_TEST_ALPINE_PACKAGES ;;
+        esac
+        case " $available " in
+            *" $package "*) printf '%s\n' "$package" ;;
+        esac
+        ;;
+    *) exit 2 ;;
+esac
+`
+	for _, name := range []string{"apk", "vpkg-engine"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(apk), 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	nix := "#!/bin/sh\nprintf 'nix %s\\n' \"$*\" >> \"$VPKG_TEST_LOG\"\n"
+	if err := os.WriteFile(filepath.Join(dir, "nix"), []byte(nix), 0755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("VPKG_APK_REPOSITORIES_FILE", repositories)
+	t.Setenv("VPKG_TEST_LOG", log)
+	t.Setenv("VPKG_TEST_ALPINE_PACKAGES", "alpine-only")
+	t.Setenv("VPKG_TEST_VEYRA_PACKAGES", "alpine-only veyra-only")
+
+	if err := installAutomatically([]string{"alpine-only", "veyra-only", "nix-only"}); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := strings.Split(strings.TrimSpace(string(data)), "\n")
+	want := []string{
+		"apk update  repositories=https://dl-cdn.alpinelinux.org/alpine/v3.22/main,",
+		"search alpine-only repositories=https://dl-cdn.alpinelinux.org/alpine/v3.22/main,",
+		"search veyra-only repositories=https://dl-cdn.alpinelinux.org/alpine/v3.22/main,",
+		"search nix-only repositories=https://dl-cdn.alpinelinux.org/alpine/v3.22/main,",
+		"apk update  repositories=https://dl-cdn.alpinelinux.org/alpine/v3.22/main,@veyra https://packages.veyra.example/veyra-pkgrepo,",
+		"search veyra-only repositories=https://packages.veyra.example/veyra-pkgrepo,",
+		"search nix-only repositories=https://packages.veyra.example/veyra-pkgrepo,",
+		"apk add alpine-only veyra-only@veyra repositories=https://dl-cdn.alpinelinux.org/alpine/v3.22/main,@veyra https://packages.veyra.example/veyra-pkgrepo,",
+		"nix profile install nixpkgs#nix-only",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("source lookup/installation order mismatch\n got: %#v\nwant: %#v", got, want)
 	}
 }
 
