@@ -112,7 +112,7 @@ jobs:
 
               # Keep every inode, including the test-created device nodes,
               # inside the mapped outer UID/GID range.
-              chown -hR 100000:100000 /out/userroot
+              chown -R 100000:100000 /out/userroot
               # chown clears setuid; restore only the test root's sudo bit.
               chmod 4755 /out/userroot/usr/bin/sudo
               chown -R 101000:101000 /out/userroot/home/veyrauser
