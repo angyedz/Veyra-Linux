@@ -90,6 +90,8 @@ The [signed boot regression test](https://github.com/angyedz/Veyra-Linux/actions
 
 The Go manager now has a separate integration test against a **real exported Debian Trixie glibc 2.41 sysroot running on Alpine 3.22/musl**, not a fake libc fixture. The test installs and resolves real libstdc++, Mesa GLVND/EGL/OpenGL, libwayland-client, GTK 3, PipeWire and NSS; compiles the unchanged original `glenv-wayland-filter.so` and loads it through the Debian dynamic linker. It also exercises a real Debian Wayland client and GTK 3 window on Alpine's Weston headless compositor, and Debian `pw-cli` against Alpine's PipeWire service. The manager automatically resolves Debian SPA, PipeWire, GIO, pixbuf, GSettings, icon-theme, and XDG data paths without using incompatible musl plugin directories.
 
+Draft [glenv PR #1](https://github.com/angyedz/veyra-glenv/pull/1) adds Mesa DRI/EGL and Vulkan driver-path isolation, copies graphics manifests into a relocatable runtime, and extends CI to exercise Vulkan through llvmpipe. Both Linux workflows pass; this still does not validate physical Nouveau acceleration.
+
 [Verified real Debian + Alpine CI run](https://github.com/angyedz/veyra-glenv/actions/runs/39223530458).
 
 This proves core ABI, client/server IPC and a GTK window in a headless CI compositor; **not** accelerated KWin/Plasma GPU rendering, hardware audio playback, full screen sharing, or physical machine support. The original glenv shim is reused without editing the upstream repository. The Debian sysroot is **not** required for native Alpine/musl programs.

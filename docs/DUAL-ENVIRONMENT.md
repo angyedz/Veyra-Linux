@@ -197,6 +197,42 @@ Graphics, input, audio, Wayland, portals and D-Bus integration need
 narrow, independently reviewed interfaces; exposing raw devices or
 host control sockets defeats the boundary.
 
+### GPU acceleration through glenv (design; hardware path not implemented)
+
+The first NVIDIA acceleration path is Nouveau: the system kernel owns the
+Nouveau DRM driver, while the glibc user environment supplies its own Mesa
+user-space drivers (NVK for Vulkan and Zink over NVK for OpenGL on supported
+GPUs). Do not copy Alpine/musl Mesa libraries into glenv. The host and glenv
+Mesa packages belong to their respective deployment/runtime builds; only the
+DRM kernel interface is shared. The existing installer selects
+`mesa-dri-gallium`, `mesa-vulkan-nouveau` and `linux-firmware-nvidia` on
+NVIDIA hardware, but that does not yet prove acceleration in glenv.
+Draft [glenv PR #1](https://github.com/angyedz/veyra-glenv/pull/1) adds
+runtime-owned Mesa DRI, GLVND EGL and Vulkan manifest paths, plus a software
+Vulkan CI probe. Both Linux CI workflows pass, with Vulkan reporting llvmpipe;
+this does not prove Nouveau acceleration. The graphics manifests must resolve
+inside the verified glenv release before applications can use NVK.
+
+After the system authenticates a login, its session manager may grant that
+account access to an allowlisted DRM **render node** (`/dev/dri/renderD*`).
+The manager must select the node from system-owned device discovery, bind only
+that character device into the user environment, scope access to the mapped
+host UID for the authenticated account, restrict device access to its
+major/minor through the system's device policy, and revoke the grant when the
+session ends. The interface must never bind all of `/dev/dri`, a primary
+`card*` node, or a user-selected host path. It must not map the host's broad
+`video` or `render` group into every user namespace. If no eligible node or
+safe device policy is available, glenv runs without GPU acceleration and
+reports that fact; it must not silently claim hardware rendering.
+
+Only after an installed-session test reports the expected NVIDIA device and
+NVK/Zink renderer from inside glenv, with no software renderer fallback, can
+Veyra claim Nouveau acceleration. Vulkan/OpenGL conformance does not by itself
+guarantee proprietary-driver gaming performance, CUDA support, video encode,
+or performance parity. Any later proprietary NVIDIA profile needs its own
+version-paired glibc libraries, host kernel module, exact device-node allowlist
+and independent security review; it must not widen the Nouveau interface.
+
 ## Package management
 
 The user environment has its own package state and a normal default
@@ -223,6 +259,7 @@ an inactive A/B generation, never implicit from user sudo.
 - [ ] Prove user sudo cannot write host root, A/B store, /boot or host sockets.
 - [ ] Prove host networking stays unchanged under user VPN and kill switch.
 - [ ] Prove system-owned KDE integration with user-executed plasmashell and private user D-Bus.
+- [ ] Implement an authenticated, per-session DRM render-node grant to glenv; test NVK/Vulkan and Zink/OpenGL on real Nouveau hardware and report software-rendering fallback clearly.
 - [ ] Prove KDE A/B upgrade and rollback atomically switch the entire version-matched runtime (KWin, plasmashell, KRunner, Frameworks, Qt, plugins) with no stale binaries, modules or user-owned substitutes.
 - [ ] Prove Alt+F2/KRunner, menu, desktop entries and all app launches never execute commands on the host; prove fail-closed behavior when user session is down.
 - [ ] Prove arbitrary package installation changes only the user rootfs.
