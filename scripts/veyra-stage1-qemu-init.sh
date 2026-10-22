@@ -155,12 +155,18 @@ echo 'VEYRA_STAGE1_ROOTFS_REJECT_INIT_ESCAPE'
 first=$(/host-supervisor start)
 case "$first" in RUNNING\ pid=*\ count=*) ;; *) fail "first start failed: $first" ;; esac
 echo "VEYRA_STAGE1_FIRST_RUNNING $first"
-status=$(/host-supervisor status)
+if status=$(/host-supervisor status); then :; else
+    fail "status request failed while running: $status"
+fi
 if [ "$status" != "$first" ]; then fail "status disagreed with running start: $status"; fi
 echo "VEYRA_STAGE1_STATUS_RUNNING $status"
-stopped=$(/host-supervisor stop)
+if stopped=$(/host-supervisor stop); then :; else
+    fail "stop request failed: $stopped"
+fi
 if [ "$stopped" != "STOPPED" ]; then fail "stop failed: $stopped"; fi
-status=$(/host-supervisor status)
+if status=$(/host-supervisor status); then :; else
+    fail "status request failed after stop: $status"
+fi
 if [ "$status" != "STOPPED" ]; then fail "status after stop was $status"; fi
 echo 'VEYRA_STAGE1_STATUS_STOPPED'
 
@@ -175,7 +181,9 @@ fi
 /bin/busybox kill -KILL "$user_pid"
 crash_seen=0
 for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
-    status=$(/host-supervisor status)
+    if status=$(/host-supervisor status); then :; else
+        fail "status request failed while checking nested crash: $status"
+    fi
     case "$status" in FAILED*) crash_seen=1; break ;; esac
     /bin/busybox sleep 1
 done
