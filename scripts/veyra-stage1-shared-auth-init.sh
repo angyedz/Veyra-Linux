@@ -92,7 +92,9 @@ fi
 if [ ! -f "$proof2" ] || [ -L "$proof2" ]; then
     fail "account 1001 login proof is missing"
 fi
+# shellcheck disable=SC2016
 shared_fields_awk='{ print $4, $5, $6, $7 }'
+# shellcheck disable=SC2016
 login_count_awk='{ print $3 }'
 shared1=$("$bb" awk "$shared_fields_awk" "$proof1")
 shared2=$("$bb" awk "$shared_fields_awk" "$proof2")
