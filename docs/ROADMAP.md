@@ -1,6 +1,6 @@
 # Veyra Linux development roadmap
 
-**Last reviewed:** 2026-10-20  
+**Last reviewed:** 2026-10-22  
 **Status:** engineering plan, not a claim that any unfinished component ships.  
 **Target:** an installed KDE-only, filesystem-neutral, atomic Veyra with **two independently administered Linux environments on one kernel**, plus separately bootable Recovery.
 
@@ -133,11 +133,14 @@ Parallel tracks are intentional; avoid turning prototypes on in the normal boot 
 - [x] QEMU-only: verify stale pidfd signal targets are rejected; do not target initial PID 1 during nested environment shutdown.
 - [ ] Separate mounts, users/capabilities, IPC, process visibility, devices, system bus and network by **kernel** primitives and narrowly designed host services.
 - [ ] No writable mount of host root, A/B store, boot files, EFI, host network state or host-only service sockets inside the user environment.
+- [ ] Design a deliberate **system-root access bridge**: only designated system administrators may request entry; a trusted system-side broker reauthenticates them through PAM, then opens a dedicated root TTY in the initial system environment. User-root processes must not choose a host command or path, supply host environment variables, carry capabilities or file descriptors into the host session, or receive a reusable token or system-root password.
+- [ ] Define failed-authentication handling, rate limits, session timeout/revocation, audit records, concurrent requests and cleanup. The bridge must be explicit; ordinary inner `sudo` remains confined to the user environment, and no host-root access starts implicitly.
+- [ ] QEMU-check denied accounts, incorrect credentials, token replay, successful authorized reauthentication, disconnect cleanup and concurrent requests. Prove that a host-root TTY appears only after successful system-side authorization.
 - [ ] Audit inherited file descriptors, proc/sysfs interfaces, mount propagation, device nodes, namespace transitions and seccomp/LSM/cgroups where applicable.
 - [ ] Resource quotas/limits protect system services from user process floods, memory exhaustion and fork bombs.
 - [ ] Explicit threat model for kernel vulnerabilities and shared-kernel attacks.
 
-**Gate:** under inner `sudo`, attempts to modify host kernel state, mounts, packages, boot, devices, host processes and privileged IPC fail; normal inner administration still succeeds.
+**Gate:** under inner `sudo`, attempts to modify host kernel state, mounts, packages, boot, devices, host processes and privileged IPC fail; normal inner administration still succeeds. A separate host-root TTY is available only to an authorized outer administrator after fresh PAM authentication, with no host authority exposed to the user namespace.
 
 ## Stage 3 — User networking and VPN
 
