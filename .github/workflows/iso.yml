@@ -279,3 +279,33 @@ jobs:
           path: calamares-gui-e2e/
           if-no-files-found: ignore
           retention-days: 7
+  live-desktop-diagnostics:
+    name: Collect Live desktop service diagnostics
+    if: ${{ always() && needs['calamares-gui-e2e'].result == 'failure' }}
+    needs: [build, calamares-gui-e2e]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: veyra-linux-iso
+          path: dist
+      - name: Install diagnostic QEMU dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-system-x86 qemu-utils python3-pexpect
+      - name: Inspect SDDM and Plasma startup from the Live ISO
+        run: |
+          iso=$(find dist -maxdepth 1 -name 'veyra-linux-*.iso' -print -quit)
+          test -n "$iso"
+          python3 -m py_compile tests/diagnose-desktop-qemu.py tests/test-installed-qemu.py
+          python3 tests/diagnose-desktop-qemu.py "$iso" --log veyra-live-desktop.log
+      - name: Save Live desktop diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: veyra-live-desktop-diagnostics
+          path: veyra-live-desktop.log
+          retention-days: 7
+          if-no-files-found: ignore

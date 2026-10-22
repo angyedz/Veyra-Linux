@@ -204,6 +204,31 @@ def main():
             child = boot(qemu, str(disk), str(args.iso.resolve()), log, 400)
             try:
                 login(child, 360)
+                # A console-only guest may not trigger NetworkManager's wired
+                # auto-connect path. Bring up QEMU's user-mode NIC explicitly
+                # before installation fetches signed APK indexes.
+                run_command(child, r"""
+set -eu
+rc-service networkmanager start >/dev/null 2>&1 || true
+nmcli networking on >/dev/null 2>&1 || true
+for dev in $(nmcli -t -f DEVICE device status | sed '/^lo$/d; /^$/d'); do
+    timeout 15 nmcli device connect "$dev" >/dev/null 2>&1 || true
+done
+attempt=0
+while [ "$attempt" -lt 10 ]; do
+    if curl -fsS -m 5 -o /dev/null 'https://dl-cdn.alpinelinux.org/alpine/v3.22/main/x86_64/APKINDEX.tar.gz' \
+        && curl -fsS -m 5 -o /dev/null 'https://raw.githubusercontent.com/angyedz/veyra-pkgrepo/main/stable/v1/APKINDEX.tar.gz'; then
+        echo VEYRA_E2E_NETWORK_READY
+        exit 0
+    fi
+    attempt=$((attempt + 1))
+    sleep 3
+done
+nmcli general status || true
+nmcli device status || true
+cat /etc/resolv.conf || true
+exit 1
+""", timeout=150)
                 if args.require_glenv_manager:
                     run_command(child, "test -x /usr/local/lib/veyra/glenv-manager && "
                                 "/usr/local/lib/veyra/glenv-manager version && "
