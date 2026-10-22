@@ -18,8 +18,8 @@ The installed target also has **two concurrent, isolated Linux environments** on
 
 * Initial development and **Live ISO bootstrap** keep genuine Alpine `apk` available until the replacement is feature-complete. Alpine base, mkinitfs, abuild and mkimage depend on it; deleting it now would break the installer.
 * Prototype `vpkg-engine` builds directly from a **pinned apk-tools 2.14.x source** with explicit downstream changes, under a distinct binary name. It runs only in test/build environments until audits pass. This is not a finished forked system package.
-* Future system package operations populate **a fresh inactive deployment** with an independent APK database; post-install scripts must not mutate the running host. Validation comes before the bootloader switch.
-* `vpkg` also offers Nix user-profile operations, but these do **not** alter system images.
+* `vpkg` is for the persistent user environment only. For a requested package, its intended source order is Alpine APK repositories, then the signed `veyra-pkgrepo` APK repository, then Nix if neither APK source has the package. Both APK sources use the APK format. The Veyra repository contains both system and user packages, but repository membership does not give `vpkg` permission to modify the system environment.
+* System package installation is a separate administrative operation: after the future password-gated system-shell bridge is entered, use the system environment's ordinary `apk` tooling. System updates remain staged as host-authorized A/B transactions.
 
 ## Filesystem-neutral system deployments
 
@@ -51,7 +51,7 @@ The installer must permit users to keep choosing ext4, Btrfs, XFS or F2FS. It mu
 - [x] Native apk-tools-derived vpkg engine prototype, tested in an isolated root.
 - [x] Filesystem-neutral **offline staging** implementation with independent APK world databases and persistent data directories.
 - [x] Verify ext4 and XFS staging and A/B GRUB config activation in GitHub Actions on fresh disposable loop disks.
-- [ ] Production-quality vpkg replacing apk inside installed system, while Live bootstrap remains conventional.
+- [ ] Integrate `vpkg` into the persistent user environment with Alpine → Veyra APK → Nix fallback resolution; keep the system environment on ordinary `apk` behind the protected system-shell bridge.
 - [x] Experimental filesystem-neutral GRUB selection and actual early-root bind mounts; validated on ext4 in isolated Linux namespace.
 - [ ] Full production boot metadata authentication and verified kernel/initramfs provenance.
 - [ ] Complete QEMU installed ext4 root A → stage B → boot B → rollback A → boot A.
@@ -74,7 +74,7 @@ The bootloader now loads a kernel and initramfs from the selected directory, for
 
 `scripts/veyra-atomic-convert.sh` is an **opt-in, disposable-VM-only** conversion helper for an already installed, offline conventional Alpine root. It duplicates the OS into deployment A, copies persistent data separately, builds A's own initramfs and configures the GRUB entry. The original root remains as a legacy recovery option. It has **not** been enabled as the default Calamares or TUI installation path. The experimental `tests/test-atomic-qemu.py` and `.github/workflows/atomic-e2e.yml` test real boot A, boot B and rollback A via a temporary QEMU qcow2 disk. A passing boot test does not establish power-loss atomicity, secure boot, unattended recovery or hardware support.
 
-The upstream `vpkg` source offers atomic-mode `deployments`, `activate`, and `rollback` commands routed to `veyra-bootctl`. In-place system installation/upgrade remains blocked on atomic roots, because the new isolated-root package transaction engine is **not production-complete**. The signed `vpkg` package in the repository must be rebuilt and validated before adopting atomic mode on real machines.
+The current experimental `vpkg` source also exposes `deployments`, `activate`, and `rollback` boot-coordinator commands routed to `veyra-bootctl`; these do not make package installation target-selectable. The user-facing package workflow must modify only the user environment. System package changes belong to the protected system shell and ordinary system `apk`, or to the trusted inactive-generation updater.
 
 **Filesystem commitment:** ext4, XFS, F2FS and Btrfs remain choices of the end user. The root design must not depend on any particular filesystem's snapshot, reflink or rename extensions. All existing conventional installations remain usable until explicit migration is tested and supported.
 
@@ -91,4 +91,4 @@ Veyra Linux Pre-Alpha is first qualified on **x86_64 + ext4 in QEMU**. Its updat
 
 This is the **Pre-Alpha target**, not the current implementation. The present `veyra-update` package still runs `apk upgrade` in place; the boot coordinator supports explicit manual activation/rollback and has no complete signed updater or automatic failed-boot fallback. Replace those paths before publishing. A system/user A/B QEMU test must prove both successful confirmation and a deliberately failed trial boot returning to the prior pair while preserving account data and package selections.
 
-`vpkg` presents one package-manager interface over two backends. Its APK backend reads the configured APK source list: Alpine v3.22 main/community and the signed `veyra-pkgrepo` repository. `veyra-pkgrepo` is also APK format and contains both system and user packages; it is a repository, not a separate package format or backend. The Nix backend wraps imperative `nix profile` operations for the current user's profile. Repository membership alone does not determine the install root: the signed release description and package-set policy decide which root receives each package.
+`vpkg` presents one package-manager interface over two backends, always operating in the user environment. Package lookup is intended to fall through in this order: Alpine v3.22 APK repositories, the signed `veyra-pkgrepo` APK repository, then Nix when no APK package exists. `veyra-pkgrepo` contains both system and user packages; that classification informs host updates, while `vpkg` remains confined to the user environment. The Nix backend wraps imperative `nix profile` operations for the current user's profile. The current prototype does not yet implement this automatic source fallback or the user-root integration: `--from apk|nix` selects a backend explicitly, and the APK backend uses the configured APK repositories.

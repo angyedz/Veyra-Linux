@@ -212,12 +212,16 @@ host control sockets defeats the boundary.
 ## Package management
 
 The user environment has its own package state and a normal default
-`vpkg install NAME` experience. Its root can install arbitrary package
-files **inside that environment** without changing host deployments.
-The installed system's vpkg must be independent of an installed apk
-binary or libapk. Nix integration may invoke standalone Nix. System
-deployment updates are a separate host-authorized transaction against
-an inactive A/B generation, never implicit from user sudo.
+`vpkg install NAME` experience. `vpkg` operates only inside that
+environment and resolves packages from Alpine APK repositories first,
+then `veyra-pkgrepo` (also APK format), then Nix if neither APK source
+contains the requested package. The Veyra repository includes both
+system and user packages, but `vpkg` cannot target or modify the system
+root. System packages are installed with ordinary `apk` only after the
+user enters the password-gated system shell; system updates are a
+separate host-authorized transaction against an inactive A/B generation.
+The current prototype still needs user-root integration and automatic
+source fallback.
 
 ## Current prototype limits and CI evidence
 

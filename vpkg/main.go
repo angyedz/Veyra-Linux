@@ -25,8 +25,12 @@ Usage:
   vpkg version
   vpkg help
 
-Default source: APK, using every configured APK repository (including Alpine and
-veyra-pkgrepo). Nix commands affect the current user's profile.
+The intended install lookup order is Alpine APK repositories, signed
+veyra-pkgrepo, then Nix when no APK package exists. This prototype does not yet
+perform automatic source fallback: --from apk uses all configured APK repos,
+and --from nix selects the current user's Nix profile. vpkg is for the user
+environment only; system packages use ordinary apk inside the protected system
+shell.
 `)
 }
 

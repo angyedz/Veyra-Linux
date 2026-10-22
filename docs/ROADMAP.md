@@ -53,7 +53,7 @@ The Pre-Alpha target is a working, updateable x86_64 system validated on ext4 in
 
 - [ ] Clean Calamares install boots through SDDM and reaches a usable KDE session.
 - [ ] Normal authenticated login starts in the persistent shared user Linux environment by default. Accounts keep separate Linux identities and private `/home/LOGIN`; the user environment has its own rootfs, package database and init. Inner `sudo` cannot administer the system environment.
-- [ ] `vpkg` is the unified package-manager interface: its APK backend uses the configured Alpine repositories and the signed `veyra-pkgrepo` repository (both APK format), while its Nix backend provides imperative profile operations in the user environment. The Veyra repository contains both system and user packages; the selected target root/policy decides where a package is installed.
+- [ ] `vpkg` operates only in the user environment and resolves each install in order: configured Alpine APK repositories, signed `veyra-pkgrepo` (also APK format), then Nix if the package is absent from both APK sources. The Veyra repository contains both system and user packages; system packages are applied only by the trusted updater or, after entering the password-gated system shell, with ordinary system `apk`. `vpkg` has no system-root target mode.
 - [ ] A signed release manifest identifies the compatible system and user-environment APK package sets for the Pre-Alpha channel.
 - [ ] The updater stages system changes into an inactive A/B generation and stages a matching user-environment generation whenever the release changes that environment or its compatibility contract. It verifies repository/package signatures and release metadata before activation.
 - [ ] A trial boot confirms health of both environments. Missing confirmation or a forced boot failure returns to the previous confirmed system/user generation pair. The QEMU test proves A → updated B → forced failure → restored A.
@@ -209,7 +209,7 @@ Stable release additionally requires Stage 11 security/reliability and Stage 12 
 **Depends on:** Stage 1; integrates with Stage 7.
 
 - [ ] Finish the independent source-derived `vpkg` engine, preserving APK dependency solver, format, signatures and licenses, without requiring the installed `apk` executable.
-- [ ] Make normal `vpkg install/remove/upgrade` affect only the persistent **user** rootfs by default, with no environment-selection flags.
+- [ ] Make `vpkg install/remove/upgrade` affect only the persistent **user** rootfs, with no system-root selection flag; implement Alpine APK → Veyra APK → Nix fallback for installs.
 - [ ] Implement separate privileged host A/B transactions for system packages; no in-place change to active deployment.
 - [ ] Integrate signed glenv runtime pairing and Nix profiles without opening host privilege boundaries.
 - [ ] Preserve package database integrity across failures and reboots.
