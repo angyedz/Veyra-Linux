@@ -49,9 +49,7 @@ konsole
 fastfetch
 dolphin
 firefox
-# Open source desktop application catalog and Flatpak support for user apps.
-discover
-discover-backend-flatpak
+# Flatpak runtime support; Veyra AppCenter is installed on disk by veyra-meta.
 flatpak
 flatpak-polkit
 xdg-document-portal
