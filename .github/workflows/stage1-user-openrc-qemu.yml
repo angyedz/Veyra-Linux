@@ -12,6 +12,7 @@ on:
       - 'tests/fixtures/stage1-user-inittab'
       - 'tests/fixtures/stage1-system-manager.initd'
       - 'tests/fixtures/stage1-user-autologin'
+      - 'tests/fixtures/stage1-user-multiuser-check'
       - 'tests/fixtures/stage1-user-openrc.initd'
       - '.github/workflows/stage1-user-openrc-qemu.yml'
   pull_request:
@@ -24,6 +25,7 @@ on:
       - 'tests/fixtures/stage1-user-inittab'
       - 'tests/fixtures/stage1-system-manager.initd'
       - 'tests/fixtures/stage1-user-autologin'
+      - 'tests/fixtures/stage1-user-multiuser-check'
       - 'tests/fixtures/stage1-user-openrc.initd'
       - '.github/workflows/stage1-user-openrc-qemu.yml'
   workflow_dispatch:
@@ -97,12 +99,18 @@ jobs:
                 >> /out/userroot/etc/passwd
               printf "veyrauser:x:1000:\n" >> /out/userroot/etc/group
               mkdir -p /out/userroot/etc/sudoers.d
+              chroot /out/userroot addgroup -g 1001 veyrauser2
+              chroot /out/userroot adduser -D -H -u 1001 \
+                -G veyrauser2 -s /bin/sh veyrauser2
               printf "veyrauser ALL=(ALL) NOPASSWD: ALL\n"                 > /out/userroot/etc/sudoers.d/veyrauser
               chmod 0440 /out/userroot/etc/sudoers.d/veyrauser
               mkdir -p /out/userroot/usr/local/sbin
               cp /work/tests/fixtures/stage1-user-autologin \
                 /out/userroot/usr/local/sbin/veyra-stage1-autologin
+              cp /work/tests/fixtures/stage1-user-multiuser-check \
+                /out/userroot/usr/local/sbin/veyra-stage1-multiuser-check
               chmod 0755 /out/userroot/usr/local/sbin/veyra-stage1-autologin
+              chmod 0755 /out/userroot/usr/local/sbin/veyra-stage1-multiuser-check
               test -x /out/userroot/usr/bin/sudo
               # No raw block nodes or host devices inside user rootfs.
               for dev in console null zero tty random urandom; do
@@ -124,6 +132,9 @@ jobs:
               # chown clears setuid; set it again on the test root-owned sudo.
               chmod 4755 /out/userroot/usr/bin/sudo
               chown 101000:101000 /out/userroot/home/veyrauser
+              mkdir -p /out/userroot/home/veyrauser2
+              chown 101001:101001 /out/userroot/home/veyrauser2
+              chmod 0700 /out/userroot/home/veyrauser /out/userroot/home/veyrauser2
               truncate -s 180M /out/veyra-user-root.raw
               mkfs.ext4 -F -q -L VEYRA_USER_ROOT \
                 -E root_owner=100000:100000 \
@@ -244,13 +255,19 @@ jobs:
                 >> /out/userroot/etc/passwd
               printf "veyrauser:x:1000:\\n" >> /out/userroot/etc/group
               mkdir -p /out/userroot/etc/sudoers.d
+              chroot /out/userroot addgroup -g 1001 veyrauser2
+              chroot /out/userroot adduser -D -H -u 1001 \
+                -G veyrauser2 -s /bin/sh veyrauser2
               printf "veyrauser ALL=(ALL) NOPASSWD: ALL\\n" \
                 > /out/userroot/etc/sudoers.d/veyrauser
               chmod 0440 /out/userroot/etc/sudoers.d/veyrauser
               mkdir -p /out/userroot/usr/local/sbin
               cp /work/tests/fixtures/stage1-user-autologin \
                 /out/userroot/usr/local/sbin/veyra-stage1-autologin
+              cp /work/tests/fixtures/stage1-user-multiuser-check \
+                /out/userroot/usr/local/sbin/veyra-stage1-multiuser-check
               chmod 0755 /out/userroot/usr/local/sbin/veyra-stage1-autologin
+              chmod 0755 /out/userroot/usr/local/sbin/veyra-stage1-multiuser-check
               test -x /out/userroot/usr/bin/sudo
               for dev in console null zero tty random urandom; do
                 rm -f "/out/userroot/dev/$dev"
@@ -268,6 +285,9 @@ jobs:
               chown -hR 100000:100000 /out/userroot
               chmod 4755 /out/userroot/usr/bin/sudo
               chown 101000:101000 /out/userroot/home/veyrauser
+              mkdir -p /out/userroot/home/veyrauser2
+              chown 101001:101001 /out/userroot/home/veyrauser2
+              chmod 0700 /out/userroot/home/veyrauser /out/userroot/home/veyrauser2
               truncate -s 180M /out/veyra-user-root.raw
               mkfs.ext4 -F -q -L VEYRA_USER_ROOT \
                 -E root_owner=100000:100000 \

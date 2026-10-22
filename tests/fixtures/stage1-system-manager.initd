@@ -47,12 +47,26 @@ start_post() {
         actual=$(cat /mnt/veyra-user/home/veyrauser/.veyra-stage1-autologin 2>/dev/null || :)
         if [ "$actual" = "uid=1000 count=$count" ]; then
             echo "VEYRA_STAGE1_SYSTEM_OPENRC_AUTOLOGIN_READY uid=1000 count=$count"
+            break
+        fi
+        attempt=$((attempt + 1))
+        sleep 1
+    done
+    [ "$actual" = "uid=1000 count=$count" ] || {
+        eerror "user environment did not autologin as UID 1000"
+        return 1
+    }
+    attempt=0
+    while [ "$attempt" -lt 15 ]; do
+        actual=$(cat /mnt/veyra-user/var/lib/veyra-user/shared-multiuser-proof 2>/dev/null || :)
+        if [ "$actual" = "accounts=1000,1001 shared-root=1 shared-apkdb=1 shared-mountns=1 separate-homes=1 cross-home-denied=1 concurrent=1 count=$count" ]; then
+            echo "VEYRA_STAGE1_SHARED_MULTIUSER_PASS $actual"
             return 0
         fi
         attempt=$((attempt + 1))
         sleep 1
     done
-    eerror "user environment did not autologin as UID 1000"
+    eerror "two accounts did not pass the shared-root QEMU check"
     return 1
 }
 

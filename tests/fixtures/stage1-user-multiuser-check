@@ -1,0 +1,149 @@
+#!/bin/sh
+set -eu
+
+fail() {
+    echo "VEYRA_STAGE1_MULTIUSER_FAILURE: $*" >&2
+    exit 1
+}
+
+[ "$(id -u)" = 0 ] || fail "shared-root check did not start as environment root"
+[ "$(id -u veyrauser)" = 1000 ] || fail "first account UID is not 1000"
+[ "$(id -g veyrauser)" = 1000 ] || fail "first account GID is not 1000"
+[ "$(id -u veyrauser2)" = 1001 ] || fail "second account UID is not 1001"
+[ "$(id -g veyrauser2)" = 1001 ] || fail "second account GID is not 1001"
+[ "$(stat -c '%u:%g:%a' /home/veyrauser)" = 1000:1000:700 ] ||
+    fail "first account home ownership or mode is wrong"
+[ "$(stat -c '%u:%g:%a' /home/veyrauser2)" = 1001:1001:700 ] ||
+    fail "second account home ownership or mode is wrong"
+
+root_identity=$(stat -c '%d:%i' /)
+apk_identity=$(stat -c '%d:%i' /lib/apk/db/installed)
+mount_namespace=$(readlink /proc/self/ns/mnt)
+uid_map=$(tr '\n' ';' < /proc/self/uid_map)
+[ "$uid_map" = '0 100000 65536;' ] || fail "shared environment UID map is unexpected: $uid_map"
+[ -x /usr/bin/busybox ] || fail "shared user software is missing"
+[ -s /lib/apk/db/installed ] || fail "shared APK database is missing"
+
+state_dir=/var/lib/veyra-user
+proof_file=$state_dir/shared-multiuser-proof
+mkdir -p "$state_dir"
+rm -f "$proof_file"
+previous_first=0
+previous_second=0
+for account in veyrauser veyrauser2; do
+    uid=1000
+    [ "$account" = veyrauser ] || uid=1001
+    home_proof=/home/$account/.veyra-stage1-multiuser-proof
+    if [ -f "$home_proof" ]; then
+        saved=$(cat "$home_proof")
+        case "$saved" in
+            "uid=$uid count="*) previous=${saved##*count=} ;;
+            *) fail "persistent home proof for $account is malformed" ;;
+        esac
+        case "$previous" in
+            ''|*[!0-9]*) fail "persistent home count for $account is invalid" ;;
+        esac
+    else
+        previous=0
+    fi
+    if [ "$uid" = 1000 ]; then previous_first=$previous; else previous_second=$previous; fi
+done
+[ "$previous_first" = "$previous_second" ] ||
+    fail "the two persistent homes have different session counts"
+count=$((previous_first + 1))
+
+printf 'first-account-private\n' > /home/veyrauser/.veyra-stage1-private
+printf 'second-account-private\n' > /home/veyrauser2/.veyra-stage1-private
+chown 1000:1000 /home/veyrauser/.veyra-stage1-private
+chown 1001:1001 /home/veyrauser2/.veyra-stage1-private
+chmod 0600 /home/veyrauser/.veyra-stage1-private /home/veyrauser2/.veyra-stage1-private
+
+work=/run/veyra-stage1-multiuser
+rm -rf "$work"
+mkdir -m 1777 "$work"
+cleanup() {
+    if [ -n "${first_pid:-}" ]; then
+        kill "$first_pid" 2>/dev/null || :
+        wait "$first_pid" 2>/dev/null || :
+    fi
+    if [ -n "${second_pid:-}" ]; then
+        kill "$second_pid" 2>/dev/null || :
+        wait "$second_pid" 2>/dev/null || :
+    fi
+    rm -rf "$work"
+    rm -f /home/veyrauser/.veyra-stage1-private \
+        /home/veyrauser2/.veyra-stage1-private
+}
+first_pid=
+second_pid=
+trap cleanup EXIT
+trap 'exit 1' HUP INT TERM
+
+write_probe() {
+    account=$1
+    uid=$2
+    other=$3
+    cat > "$work/$account.sh" <<EOF
+#!/bin/sh
+set -eu
+umask 077
+[ "\$(id -u)" = "$uid" ]
+[ "\$(id -g)" = "$uid" ]
+[ "\$HOME" = "/home/$account" ]
+[ "\$(stat -c '%d:%i' /)" = "$root_identity" ]
+[ "\$(stat -c '%d:%i' /lib/apk/db/installed)" = "$apk_identity" ]
+[ "\$(readlink /proc/self/ns/mnt)" = "$mount_namespace" ]
+[ "\$(tr '\\n' ';' < /proc/self/uid_map)" = '$uid_map' ]
+[ -x /usr/bin/busybox ]
+[ -s /lib/apk/db/installed ]
+test ! -r "/home/$other/.veyra-stage1-private"
+printf 'uid=$uid count=$count\\n' > "\$HOME/.veyra-stage1-multiuser-proof"
+printf 'uid=$uid root=$root_identity apkdb=$apk_identity mount=$mount_namespace uidmap=$uid_map\\n' > "$work/$account.ready"
+while [ ! -e "$work/go" ]; do sleep 0.1; done
+sleep 1
+EOF
+    chmod 0755 "$work/$account.sh"
+}
+
+write_probe veyrauser 1000 veyrauser2
+write_probe veyrauser2 1001 veyrauser
+/bin/busybox su -l -s /bin/sh -c "exec $work/veyrauser.sh" veyrauser &
+first_pid=$!
+/bin/busybox su -l -s /bin/sh -c "exec $work/veyrauser2.sh" veyrauser2 &
+second_pid=$!
+
+attempt=0
+while [ ! -s "$work/veyrauser.ready" ] || [ ! -s "$work/veyrauser2.ready" ]; do
+    [ "$attempt" -lt 100 ] || fail "both account sessions did not become ready"
+    attempt=$((attempt + 1))
+    sleep 0.1
+done
+
+expected_first="uid=1000 root=$root_identity apkdb=$apk_identity mount=$mount_namespace uidmap=$uid_map"
+expected_second="uid=1001 root=$root_identity apkdb=$apk_identity mount=$mount_namespace uidmap=$uid_map"
+[ "$(cat "$work/veyrauser.ready")" = "$expected_first" ] ||
+    fail "first account did not see the shared environment"
+[ "$(cat "$work/veyrauser2.ready")" = "$expected_second" ] ||
+    fail "second account did not see the shared environment"
+kill -0 "$first_pid" && kill -0 "$second_pid" ||
+    fail "the two account sessions did not overlap"
+touch "$work/go"
+wait "$first_pid" || fail "first account session failed"
+first_pid=
+wait "$second_pid" || fail "second account session failed"
+second_pid=
+
+[ "$(cat /home/veyrauser/.veyra-stage1-multiuser-proof)" = "uid=1000 count=$count" ] ||
+    fail "first account home proof is missing"
+[ "$(cat /home/veyrauser2/.veyra-stage1-multiuser-proof)" = "uid=1001 count=$count" ] ||
+    fail "second account home proof is missing"
+[ "$(stat -c '%u:%g:%a' /home/veyrauser/.veyra-stage1-multiuser-proof)" = 1000:1000:600 ] ||
+    fail "first account did not own its home proof"
+[ "$(stat -c '%u:%g:%a' /home/veyrauser2/.veyra-stage1-multiuser-proof)" = 1001:1001:600 ] ||
+    fail "second account did not own its home proof"
+
+printf 'accounts=1000,1001 shared-root=1 shared-apkdb=1 shared-mountns=1 separate-homes=1 cross-home-denied=1 concurrent=1 count=%s\n' \
+    "$count" > "$proof_file"
+sync
+
+echo "VEYRA_STAGE1_SHARED_MULTIUSER_PASS $(cat "$proof_file")"

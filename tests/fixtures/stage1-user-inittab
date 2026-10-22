@@ -2,6 +2,7 @@
 # BusyBox is namespace PID 1; OpenRC manages user-side service runlevels.
 ::sysinit:/sbin/openrc sysinit
 ::sysinit:/sbin/openrc boot
+::sysinit:/usr/local/sbin/veyra-stage1-multiuser-check
 ::wait:/sbin/openrc default
 ::respawn:/bin/busybox getty -L -n -l /usr/local/sbin/veyra-stage1-autologin 115200 console vt100
 ::shutdown:/sbin/openrc shutdown
