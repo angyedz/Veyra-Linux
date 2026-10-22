@@ -74,8 +74,10 @@ def guest_boot(qemu, kernel, initramfs, user_disk, boot, logfile):
                 raise RuntimeError(f"guest reported an init failure during boot {boot}")
         shared_identity = None
         for account_index, (account, password, uid) in enumerate(ACCOUNTS):
-            if account_index > 0:
-                guest.expect(LOGIN_PROMPT, timeout=90)
+            # The boot-readiness loop consumes the first login prompt; after
+            # each successful profile, the branch below consumes the next.
+            # Do not wait for another prompt here or the second account stalls
+            # until the guest's bounded authentication window expires.
             reject_wrong_password(guest, account)
             count = str(boot).encode()
             identity = login(guest, account, password, (uid, count))
