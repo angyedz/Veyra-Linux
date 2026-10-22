@@ -52,6 +52,13 @@ if [ -r /etc/resolv.conf ]; then
     cp -L /etc/resolv.conf "$target/etc/resolv.conf"
 fi
 
+# installer-copy.sh deliberately omits /var/cache/apk, so the target has no
+# repository indexes yet. Refresh its signed repositories before changing the
+# installed package set; otherwise apk del cannot resolve the remaining world
+# entries (including packages from Veyra's repository).
+echo 'Refreshing signed repositories for the installed system...'
+chroot "$target" apk update
+
 # Calamares runs only on live media; installed systems must not retain
 # the build-specific Calamares package or its temporary local repository.
 if chroot "$target" apk info -e veyra-calamares >/dev/null 2>&1; then
@@ -62,7 +69,6 @@ fi
 # AppCenter was installed from the ISO's pinned local APK repo; omit it here
 # so stable cannot replace this pinned development build with its older published one.
 echo 'Installing Veyra desktop applications from the signed repository...'
-chroot "$target" apk update
 chroot "$target" apk add --no-cache veyra-meta linux-firmware
 for package in veyra-meta veyra-appcenter flatpak telegram-desktop linux-firmware; do
     chroot "$target" apk info -e "$package" >/dev/null || {
