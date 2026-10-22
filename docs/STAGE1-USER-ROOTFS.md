@@ -12,12 +12,13 @@ the system environment.
 Draft follow-up branches that create a full rootfs per account are experiments
 for a different model; their results do not meet the shared-root acceptance
 gate. A first shared-root multi-account session proof now passes in draft
-[PR #18](https://github.com/angyedz/Veyra-Linux/pull/18): both [QEMU jobs](https://github.com/angyedz/Veyra-Linux/actions/runs/39778762369)
-passed across two boots, and [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39778762246)
-passed. The fixture starts concurrent `su -l` sessions for UIDs 1000 and 1001
-and verifies one rootfs, APK database and mount namespace, separate private
-homes, denied cross-home reads and persistence. It does not prove independent
-PAM authentication; that remains the next account-login gate.
+[PR #18](https://github.com/angyedz/Veyra-Linux/pull/18): both [QEMU jobs](https://github.com/angyedz/Veyra-Linux/actions/runs/39780239358)
+passed across two boots, and [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39780239017)
+passed. The fixture uses Alpine `addgroup`/`adduser` to create accounts with
+UIDs 1000 and 1001, then starts concurrent `su -l` sessions. It verifies one
+rootfs, APK database and mount namespace, separate private homes, denied
+cross-home reads and persistence. It does not prove independent PAM
+authentication; that remains the next account-login gate.
 
 **Status:** the trusted-stage rootfs binding and descriptor-hardening milestone **passed** in [two-boot QEMU CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39404374568) and [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39404374542). This remains test-only and is not enabled by the installed Veyra or Live ISO. Earlier, the QEMU lifecycle and rootfs-validation milestone passed in [PR #10 QEMU CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39312323358) and [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39312323395). The [PR #11 manager-exit cleanup follow-up](https://github.com/angyedz/Veyra-Linux/pull/11) passed [QEMU](https://github.com/angyedz/Veyra-Linux/actions/runs/39318056661) and [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39318056566). The [PR #12 rootfs launch validation follow-up](https://github.com/angyedz/Veyra-Linux/pull/12) passed [QEMU](https://github.com/angyedz/Veyra-Linux/actions/runs/39320831998) and [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39320831889), including both inode-comparator outcomes and rejection of an init symlink that points outside the user rootfs. **Not enabled** by installed Veyra or Live ISO; this remains a disposable prototype, not production security validation.
 This prototype is stacked on [Stage 0](DUAL-ENVIRONMENT.md) in PR #8.

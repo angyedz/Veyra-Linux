@@ -43,7 +43,7 @@ Parallel tracks are intentional; avoid turning prototypes on in the normal boot 
 | Stage | State as of 2026-10-22 | Evidence / next boundary |
 | --- | --- | --- |
 | **0 — Experimental audit/CI** | **Merged QEMU/static baseline** | PR #8; threat model still incomplete |
-| **1 — Persistent user environment** | **Shared-root multi-account session proof passed in draft PR #18**, not deployed | [QEMU run 39778762369](https://github.com/angyedz/Veyra-Linux/actions/runs/39778762369) passed both jobs across two boots; [integration CI 39778762246](https://github.com/angyedz/Veyra-Linux/actions/runs/39778762246) passed. Two `su -l` probes share rootfs, APK DB and mount namespace, with separate private homes and cross-home denial. PAM-authenticated multi-account login, production service, default login and A/B-independent storage remain pending |
+| **1 — Persistent user environment** | **Shared-root multi-account session proof passed in draft PR #18**, not deployed | [QEMU run 39780239358](https://github.com/angyedz/Veyra-Linux/actions/runs/39780239358) passed both jobs across two boots; [integration CI 39780239017](https://github.com/angyedz/Veyra-Linux/actions/runs/39780239017) passed. Alpine `addgroup`/`adduser` create two accounts; concurrent `su -l` probes share rootfs, APK DB and mount namespace, with separate private homes and cross-home denial. PAM-authenticated multi-account login, production service, default login and A/B-independent storage remain pending |
 | **1S — SnapCore snapshots (parallel research)** | **Architecture only; no prototype** | CoW block-map engine, immutable generations, FS-specific tests and safe user rollback pending |
 | **2 — System/user isolation** | **Partial defensive proofs only** | Rootfs validation, FD filtering and pidfd tests; full adversarial host boundary unproven |
 | **3 — User network/VPN** | Not integrated | Virtual link, independent routing/DNS/TUN and VPN tests pending |
@@ -121,12 +121,13 @@ logout leaves the shared environment and other session running; and verify
 account/home persistence across reboot. `sudo` must be shown to affect the
 shared environment only, never the system environment.
 
-**Shared-root QEMU evidence (draft PR #18):** [run 39778762369](https://github.com/angyedz/Veyra-Linux/actions/runs/39778762369)
-passed both QEMU jobs across two boots. Two ordinary accounts share one
+**Shared-root QEMU evidence (draft PR #18):** [run 39780239358](https://github.com/angyedz/Veyra-Linux/actions/runs/39780239358)
+passed both QEMU jobs across two boots; [integration CI 39780239017](https://github.com/angyedz/Veyra-Linux/actions/runs/39780239017)
+passed. Alpine `addgroup`/`adduser` create two ordinary accounts that share one
 rootfs, APK database and mount namespace; their homes are separate and private,
 cross-home reads fail, sessions overlap, and account-home proof files persist.
-The probes use `su -l` from a test fixture and do not establish independent
-PAM-authenticated logins.
+The concurrent probes use `su -l` from a test fixture and do not establish
+independent PAM-authenticated logins.
 
 **Gate:** the shared-root multi-account session model now has a disposable
 QEMU proof, but installed Stage 1 remains **OPEN**. PAM-authenticated
