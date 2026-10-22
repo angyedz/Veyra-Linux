@@ -92,17 +92,19 @@ fi
 if [ ! -f "$proof2" ] || [ -L "$proof2" ]; then
     fail "account 1001 login proof is missing"
 fi
-shared1=$("$bb" cat "$proof1" | "$bb" awk '{ print $4, $5, $6, $7 }')
-shared2=$("$bb" cat "$proof2" | "$bb" awk '{ print $4, $5, $6, $7 }')
+shared_fields_awk='{ print $4, $5, $6, $7 }'
+login_count_awk='{ print $3 }'
+shared1=$("$bb" awk "$shared_fields_awk" "$proof1")
+shared2=$("$bb" awk "$shared_fields_awk" "$proof2")
 [ "$shared1" = "$shared2" ] ||
     fail "accounts did not observe the same shared root, APK database, mount namespace and UID map"
 [ "$("$bb" stat -c '%u:%g:%a' "$proof1")" = "101000:101000:600" ] ||
     fail "first authenticated proof has unexpected mapped ownership or mode"
 [ "$("$bb" stat -c '%u:%g:%a' "$proof2")" = "101001:101001:600" ] ||
     fail "second authenticated proof has unexpected mapped ownership or mode"
-[ "$("$bb" cat "$proof1" | "$bb" awk '{ print $3 }')" = "count=$uid1000" ] ||
+[ "$("$bb" awk "$login_count_awk" "$proof1")" = "count=$uid1000" ] ||
     fail "first account's persistent login count is wrong"
-[ "$("$bb" cat "$proof2" | "$bb" awk '{ print $3 }')" = "count=$uid1001" ] ||
+[ "$("$bb" awk "$login_count_awk" "$proof2")" = "count=$uid1001" ] ||
     fail "second account's persistent login count is wrong"
 
 echo "VEYRA_STAGE1_SHARED_AUTH_MULTIUSER_PASS accounts=1000,1001 shared-root=1 shared-apkdb=1 shared-mountns=1 separate-homes=1 wrong-password-rejected=1 persistent-count=$expected_boot"

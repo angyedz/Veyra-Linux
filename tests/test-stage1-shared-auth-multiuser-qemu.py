@@ -86,7 +86,8 @@ def guest_boot(qemu, kernel, initramfs, user_disk, boot, logfile):
             elif identity != shared_identity:
                 raise RuntimeError(
                     "the two authenticated accounts did not observe the same root, "
-                    "APK database, mount namespace and UID map"
+                    "APK database, mount namespace and UID map: "
+                    f"first={shared_identity!r}, second={identity!r}"
                 )
             if account_index == 0:
                 guest.expect(LOGIN_PROMPT, timeout=45)
