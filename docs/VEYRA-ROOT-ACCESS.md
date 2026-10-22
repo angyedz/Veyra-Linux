@@ -10,12 +10,13 @@ installed-image wiring, detached-descendant cleanup, or complete QEMU security
 gates. Keep the console disabled until the full implementation passes the
 acceptance gates below and receives independent security review.
 
-Package source checks ([run 39769183093](https://github.com/angyedz/veyra-pkgrepo/actions/runs/39769183093)),
+Package source checks ([run 39770175510](https://github.com/angyedz/veyra-pkgrepo/actions/runs/39770175510)),
 all 19 Alpine APK builds, and the session-manager QEMU job passed on package
-head `eb4a939`. The QEMU log and serial artifact show that
-an unlisted account cannot trigger the system-root console
-([run 39769183096](https://github.com/angyedz/veyra-pkgrepo/actions/runs/39769183096),
-[serial artifact](https://github.com/angyedz/veyra-pkgrepo/actions/runs/39769183096/artifacts/12422360281)).
+head `a4099d7`. The QEMU log and serial artifact show that an unlisted account
+cannot trigger the system-root console and that even an allowlisted account is
+rejected when its session is on a serial TTY
+([run 39770175564](https://github.com/angyedz/veyra-pkgrepo/actions/runs/39770175564),
+[serial artifact](https://github.com/angyedz/veyra-pkgrepo/actions/runs/39770175564/artifacts/12422530539)).
 This does not exercise successful VT9 activation or PAM password entry on that
 VT. Installed-image behavior and the remaining adversarial bridge proof are
 still open.
