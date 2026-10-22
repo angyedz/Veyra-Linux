@@ -113,8 +113,25 @@ jobs:
               # Keep every inode, including the test-created device nodes,
               # inside the mapped outer UID/GID range.
               chown -R 100000:100000 /out/userroot
-              # chown clears setuid; restore only the test root's sudo bit.
-              chmod 4755 /out/userroot/usr/bin/sudo
+              # chown clears setuid; restore it on the sudo executable installed in this root.
+              sudo_bin=$(chroot /out/userroot /bin/sh -c 'command -v sudo') || {
+                chroot /out/userroot apk info -L sudo || true
+                find /out/userroot -name sudo -print
+                exit 1
+              }
+              [ -n "$sudo_bin" ] || {
+                chroot /out/userroot apk info -L sudo || true
+                find /out/userroot -name sudo -print
+                exit 1
+              }
+              sudo_path="/out/userroot$sudo_bin"
+              [ -x "$sudo_path" ] || {
+                echo "Installed sudo executable is missing: $sudo_path" >&2
+                chroot /out/userroot apk info -L sudo || true
+                find /out/userroot -name sudo -print
+                exit 1
+              }
+              chmod 4755 "$sudo_path"
               chown -R 101000:101000 /out/userroot/home/veyrauser
               chown -R 101001:101001 /out/userroot/home/veyrauser2
               chmod 0700 /out/userroot/home/veyrauser /out/userroot/home/veyrauser2
