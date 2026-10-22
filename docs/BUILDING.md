@@ -30,7 +30,7 @@ sh tests/static.sh
 sh scripts/test-iso.sh dist/veyra-linux-*.iso
 ```
 
-The ISO is still a **development build**. The glenv upstream installer is available through `veyra-setup` but is not baked into this live ISO. The ISO build requires Calamares and Veyra AppCenter APKs in `dist/calamares/`; both are bundled from a local signed APK repository. AppCenter source is pinned to the commit shown above while its stable package update is reviewed. A full QEMU install/reboot test **passed** on October 19, 2026 ([workflow run 39202330852](https://github.com/angyedz/Veyra-Linux/actions/runs/39202330852)). This test invokes Veyra's actual installer shell scripts inside a disposable virtual machine and boots the installed disk; it is not a GUI automation test of clicking through Calamares. Real hardware and all supported desktops still need validation.
+The ISO is still a **development build**. The glenv upstream installer is available through `veyra-setup` but is not baked into this live ISO. The ISO build requires Calamares and Veyra AppCenter APKs in `dist/calamares/`; both are bundled from a local signed APK repository. AppCenter source is pinned to the commit shown above; publishing it as a stable package remains pending review. A full QEMU install/reboot test **passed** on October 19, 2026 ([workflow run 39202330852](https://github.com/angyedz/Veyra-Linux/actions/runs/39202330852)). This test invokes Veyra's actual installer shell scripts inside a disposable virtual machine and boots the installed disk; it is not a GUI automation test of clicking through Calamares. Real hardware and all supported desktops still need validation.
 
 ## GitHub Actions image verification
 

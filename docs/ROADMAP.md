@@ -1,6 +1,6 @@
 # Veyra Linux development roadmap
 
-**Last reviewed:** 2026-10-20  
+**Last reviewed:** 2026-10-22  
 **Status:** engineering plan, not a claim that any unfinished component ships.  
 **Target:** an installed KDE-only, filesystem-neutral, atomic Veyra with **two independently administered Linux environments on one kernel**, plus separately bootable Recovery.
 
@@ -136,8 +136,10 @@ Parallel tracks are intentional; avoid turning prototypes on in the normal boot 
 - [ ] Audit inherited file descriptors, proc/sysfs interfaces, mount propagation, device nodes, namespace transitions and seccomp/LSM/cgroups where applicable.
 - [ ] Resource quotas/limits protect system services from user process floods, memory exhaustion and fork bombs.
 - [ ] Explicit threat model for kernel vulnerabilities and shared-kernel attacks.
+- [ ] Add a system-owned, password-authenticated bridge for entering the host root maintenance environment. Validate credentials against system-side PAM; inner `sudo` or a user-root identity alone must never authorize it.
+- [ ] Deliver the authenticated session through a system-controlled TTY first, with rate limiting, logout/timeout cleanup and no password or reusable root capability exposed to user-side processes. Add a trusted graphical entry point only after the KDE bridge gates pass.
 
-**Gate:** under inner `sudo`, attempts to modify host kernel state, mounts, packages, boot, devices, host processes and privileged IPC fail; normal inner administration still succeeds.
+**Gate:** under inner `sudo`, attempts to modify host kernel state, mounts, packages, boot, devices, host processes and privileged IPC fail; normal inner administration still succeeds. The system root bridge opens only after host-side password verification and closes cleanly without leaving authority in the user environment.
 
 ## Stage 3 — User networking and VPN
 
