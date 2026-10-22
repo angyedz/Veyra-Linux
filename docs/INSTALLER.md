@@ -12,9 +12,9 @@ A complete installer must handle GPT/EFI and BIOS bootloaders, partitioning, use
 
 The wizard now provides a single required desktop choice: **KDE Plasma** (default), **GNOME**, **Xfce** or **LXQt**. The live system keeps Plasma, but the installed system is configured with only the selected desktop and its login manager. Installation requires working repository connectivity and checks for this before partitioning.
 
-After copying the Alpine live root, Veyra configures that desktop and reads the live system's PCI hardware and CPU vendor. It installs the matching Mesa components, firmware and microcode from signed Alpine repositories, then Calamares completes user setup and bootloader configuration. NVIDIA currently uses Nouveau, not the unavailable proprietary Linux driver on musl.
+After copying the Alpine live root, Veyra configures that desktop and scans all PCI display-class devices, including hybrid systems. The installed `linux-lts` kernel supplies the kernel modules; the installer adds matching Mesa user-space drivers, firmware and CPU microcode from signed Alpine repositories. AMD selects RadeonSI/RADV support, Intel selects Mesa ANV plus `i915`/`xe` firmware, and NVIDIA selects Nouveau/NVK support. Virtual and unknown devices retain the generic Mesa software path. NVIDIA's proprietary driver is not offered by Alpine's pinned musl repositories. See [Desktop selection and hardware](DESKTOPS.md) for package mapping and support limits.
 
-See [Desktop selection and hardware](DESKTOPS.md) for development details. Automated config, package resolution and detection checks do **not** replace an end-to-end installation to a blank VM.
+Automated config, package resolution and detection checks do **not** replace an end-to-end installation to a blank VM.
 
 The installer re-extracts the on-disk kernel/modules from Alpine (the live ISO uses a separate modloop image) and regenerates the installed initramfs after firmware selection. This path is still awaiting a full installation-and-reboot check in QEMU.
 

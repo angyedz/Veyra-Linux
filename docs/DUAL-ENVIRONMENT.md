@@ -199,19 +199,25 @@ host control sockets defeats the boundary.
 
 ### GPU acceleration through glenv (design; hardware path not implemented)
 
-The first NVIDIA acceleration path is Nouveau: the system kernel owns the
-Nouveau DRM driver, while the glibc user environment supplies its own Mesa
-user-space drivers (NVK for Vulkan and Zink over NVK for OpenGL on supported
-GPUs). Do not copy Alpine/musl Mesa libraries into glenv. The host and glenv
-Mesa packages belong to their respective deployment/runtime builds; only the
-DRM kernel interface is shared. The existing installer selects
-`mesa-dri-gallium`, `mesa-vulkan-nouveau` and `linux-firmware-nvidia` on
-NVIDIA hardware, but that does not yet prove acceleration in glenv.
+The installed host detects every PCI display-class device and selects the
+matching Intel, AMD, NVIDIA/Nouveau or virtual-GPU support; a hybrid system
+gets packages for every detected adapter. `linux-lts` owns the kernel DRM
+modules and firmware stays in the system environment. For graphics inside
+glenv, the glibc runtime must supply its own Mesa user-space drivers. The
+first physical glenv acceleration validation targets Nouveau (NVK for Vulkan
+and Zink over NVK for OpenGL on supported GPUs), while AMD/RADV and
+Intel/ANV must remain explicit hardware-qualification targets too. Do not
+copy Alpine/musl Mesa libraries into glenv. The host and glenv Mesa packages
+belong to their respective deployment/runtime builds; only the DRM kernel
+interface is shared. System package selection does not yet prove acceleration
+inside glenv.
 Draft [glenv PR #1](https://github.com/angyedz/veyra-glenv/pull/1) adds
 runtime-owned Mesa DRI, GLVND EGL and Vulkan manifest paths, plus a software
-Vulkan CI probe. Both Linux CI workflows pass, with Vulkan reporting llvmpipe;
-this does not prove Nouveau acceleration. The graphics manifests must resolve
-inside the verified glenv release before applications can use NVK.
+Vulkan CI probe. Its current runtime build uses official Trixie backports for
+Mesa while retaining the stable Trixie glibc. All three Linux workflows pass,
+with Vulkan reporting llvmpipe; this does not prove Nouveau acceleration. The
+graphics manifests must resolve inside the verified glenv release before
+applications can use NVK.
 
 After the system authenticates a login, its session manager may grant that
 account access to an allowlisted DRM **render node** (`/dev/dri/renderD*`).
@@ -227,7 +233,9 @@ reports that fact; it must not silently claim hardware rendering.
 
 Only after an installed-session test reports the expected NVIDIA device and
 NVK/Zink renderer from inside glenv, with no software renderer fallback, can
-Veyra claim Nouveau acceleration. Vulkan/OpenGL conformance does not by itself
+Veyra claim Nouveau acceleration. AMD/RADV and Intel/ANV need equivalent
+model-specific checks before their accelerated glenv paths are claimed.
+Vulkan/OpenGL conformance does not by itself
 guarantee proprietary-driver gaming performance, CUDA support, video encode,
 or performance parity. Any later proprietary NVIDIA profile needs its own
 version-paired glibc libraries, host kernel module, exact device-node allowlist

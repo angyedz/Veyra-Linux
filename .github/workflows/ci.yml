@@ -57,9 +57,9 @@ jobs:
           apk add --simulate plasma-desktop lxqt-desktop sddm
       - name: Validate GPU and CPU packages in Alpine repositories
         run: |
-          apk add --simulate intel-ucode linux-firmware-i915 linux-firmware-xe mesa-vulkan-intel intel-media-driver
-          apk add --simulate amd-ucode linux-firmware-amdgpu linux-firmware-radeon mesa-vulkan-ati
-          apk add --simulate linux-firmware-nvidia mesa-vulkan-nouveau
+          apk add --simulate intel-ucode linux-firmware-i915 linux-firmware-xe mesa-dri-gallium mesa-vulkan-intel intel-media-driver libva-intel-driver
+          apk add --simulate amd-ucode linux-firmware-amdgpu linux-firmware-radeon mesa-dri-gallium mesa-vulkan-ati mesa-va-gallium
+          apk add --simulate linux-firmware-nvidia mesa-dri-gallium mesa-vulkan-nouveau mesa-va-gallium
       - name: Verify native Nix package availability
         run: apk add --no-cache nix nix-openrc && nix --version
 
