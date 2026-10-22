@@ -21,7 +21,7 @@ See the [full development roadmap](docs/ROADMAP.md) and the [dual-environment se
 
 ## Get started
 
-Veyra is in **early development** and has no public release yet. A first Installer Preview is planned only after a pinned ISO passes Live boot, blank-disk installation and reboot checks, followed by a graphical Calamares install and Plasma login in a disposable VM. The current automated install test exercises installer scripts, not Calamares clicks; real hardware compatibility is unverified. The ISO does not yet ship the planned dual-environment architecture, atomic updates, isolated user VPN, or independent recovery. See the [release gates and roadmap](docs/ROADMAP.md#release-levels-and-publication-gates).
+Veyra is in **early development** and has no public release yet. A first Installer Preview is planned only after a pinned ISO passes Live boot, blank-disk installation and reboot checks, followed by a graphical Calamares install and Plasma login in a disposable VM. The current automated install test exercises installer scripts, not Calamares clicks; real hardware compatibility is unverified. The ISO does not yet include the planned separate system and user environments or production update and recovery systems. See the [release gates and roadmap](docs/ROADMAP.md#release-levels-and-publication-gates).
 
 Try the integration in an Alpine Linux x86_64 virtual machine:
 
