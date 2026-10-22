@@ -1,9 +1,13 @@
 # Veyra system-root access bridge
 
-**Status: design contract only.** No broker, authentication profile, privileged
-TTY service, installer wiring, or QEMU proof currently implements this
-contract. The feature must remain disabled until its implementation passes the
-acceptance gates below and receives independent security review.
+**Status: design contract plus an experimental console prototype.** Draft
+package PR [#7](https://github.com/angyedz/veyra-pkgrepo/pull/7) adds a
+system-only PAM profile, root-owned administrator allowlist, and a launcher for
+a manually configured `/dev/tty9`. It does not implement the user-session
+request broker, seat/session binding, display handoff, installer wiring,
+detached-descendant cleanup, or QEMU security gates. Keep the console disabled
+until the full implementation passes the acceptance gates below and receives
+independent security review.
 
 ## Purpose and authority
 
@@ -13,6 +17,12 @@ user-session processes and inner `sudo` remain confined to that user's
 namespaces. The bridge is an explicit, separately authenticated system
 administration session; it is not a namespace transition requested by a user
 process.
+
+The current prototype requires the person at the machine to switch to a
+dedicated initial-system TTY. Its sample BusyBox getty entry is documentation
+only; package installation does not change `/etc/inittab` or activate the TTY.
+There is no request path from Plasma or another process in the user
+environment.
 
 The system administrator authenticates as an outer Linux account selected by
 root-owned system policy. That policy is separate from ordinary dual-environment
@@ -45,6 +55,13 @@ itself never grants host-root access.
    outcome, and returns the display to the user's session or a system-owned
    login screen.
 
+PR #7 prototypes only the authentication and launcher portions of steps 3–4:
+it requires `/dev/tty9`, starts a fixed root shell with a clean environment,
+relays through a system-side PTY, records local audit events, and expires an
+idle shell after 15 minutes. It does not allocate or switch to the TTY, return
+the display, or contain detached descendants in a cgroup. The prototype must
+not be described as the completed user-to-system bridge.
+
 The bridge may be requested from a user session, but the request is only a
 fixed action relayed through a system-owned control surface. User-root
 processes cannot connect directly to a privileged broker socket or choose the
@@ -57,15 +74,18 @@ PTY.
 
 - Use a dedicated PAM service whose `auth` and `account` stacks use the system
   account database and enforce current account lock/expiry state.
-- Require membership in a root-owned system-administrator policy. The exact
-  policy storage and account-management UX must be chosen during implementation;
-  user-root files, groups, and environment are never authoritative.
+- Require membership in a root-owned system-administrator policy. PR #7 uses
+  `/etc/veyra/root-admins`, a root-owned mode `0600` file listing eligible
+  outer account names. User-root files, groups, and environment are never
+  authoritative. The enrollment and account-management UX remains open.
 - Reject `root` direct login unless a separately reviewed policy explicitly
   enables it. The default route authenticates a named administrator and then
   enters the fixed root shell.
 - Apply bounded retries, a delay or lockout policy, and a session timeout.
-  Fail closed if PAM, the policy source, the system TTY, or the audit sink is
-  unavailable.
+  PR #7 allows one attempt per launcher invocation, requests PAM failure delay,
+  adds a delay after failed attempts, and expires a shell after 15 minutes
+  without keyboard input. Fail closed if PAM, the policy source, the system
+  TTY, or the audit sink is unavailable.
 - Do not pass reusable passwords or tokens between the PAM frontend, user
   session, and broker. If an internal grant is needed, keep it system-side,
   single-use, short-lived, and bound to the authenticated process and allocated
@@ -74,7 +94,10 @@ PTY.
 ## Boundary rules
 
 - The authentication prompt and root shell use only a TTY allocated by the
-  initial-system broker. User namespaces cannot open or replace it.
+  initial-system broker. User namespaces cannot open or replace it. PR #7
+  currently pins the prototype to `/dev/tty9` and rejects non-initial UID/GID
+  maps; it does not prove the installed image hides that TTY and host input
+  devices from the user environment.
 - Only a system-owned control component may contact the broker. The broker
   binds requests to the active seat/session in system-owned state and rejects
   stale, duplicate, or unassociated requests.
@@ -98,9 +121,14 @@ PTY.
 
 Write root-owned records for request, authenticated outer account, allocated
 TTY, start/end time, result, and termination reason. Never log passwords,
-PAM response values, grants, or user-supplied command text. Authentication
-failures are rate-limited and visible in the system journal. Failed setup must
-leave no shell, session grant, open TTY, or root-owned child process behind.
+PAM response values, grants, or user-supplied command text. PR #7 records
+timestamped authentication and session outcomes in
+`/var/log/veyra/root-bridge.log` and syslog; success is denied if the local
+audit file is unavailable. Authentication failures are delayed and visible in
+syslog. Its process-group cleanup is not a substitute for the required
+system-owned cgroup/supervisor that terminates detached descendants.
+Failed setup must leave no shell, session grant, open TTY, or root-owned child
+process behind.
 
 The bridge is local-console-only in its first version. Remote SSH, graphical
 password prompts rendered by user Plasma, and forwarding the user's session
@@ -129,3 +157,5 @@ PTY into a host-root shell are out of scope.
 Passing these checks proves only the specified disposable guest scenario. It
 does not replace review of PAM policy, terminal ownership, kernel attack
 surface, service supervision, or the installed system's full threat model.
+PR #7's local PAM/PTTY tests are preliminary component tests; they are not the
+required adversarial QEMU or installed-image proof.
