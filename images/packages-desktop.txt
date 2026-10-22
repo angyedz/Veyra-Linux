@@ -49,6 +49,15 @@ konsole
 fastfetch
 dolphin
 firefox
+# Open source desktop application catalog and Flatpak support for user apps.
+discover
+discover-backend-apk
+discover-backend-flatpak
+flatpak
+flatpak-polkit
+xdg-document-portal
+# Native Telegram Desktop package from Alpine community.
+telegram-desktop
 nix
 nix-openrc
 bash
