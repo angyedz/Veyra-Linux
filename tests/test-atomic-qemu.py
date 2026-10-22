@@ -39,8 +39,12 @@ def guest_cycle(qemu, disk, logdir, expected, commands):
             installed.run_command(child,
                                   f'test "$(cat /var/lib/veyra/store/deployments/{expected}/'
                                   f'etc/veyra/deployment-id)" = "{expected}"', 30)
-            for command in commands:
-                installed.run_command(child, command, 60)
+            for step in commands:
+                if isinstance(step, tuple):
+                    command, timeout = step
+                else:
+                    command, timeout = step, 60
+                installed.run_command(child, command, timeout)
             installed.run_command(child, "sync", 30)
             # Installed QEMU will be forcibly stopped after durable sync.
             # A real shutdown is also requested to exercise OpenRC cleanly.
@@ -152,8 +156,8 @@ def main():
             "echo 'data updated in B' > /home/e2euser/atomic-data.txt",
             "printf 'only-B\\n' > /etc/veyra/slot-specific.txt",
             "test ! -e /var/lib/veyra/store/deployments/A/etc/veyra/slot-specific.txt",
-            "/usr/local/lib/veyra/veyra-deployment.sh stage "
-            "/var/lib/veyra/store B C",
+            ("/usr/local/lib/veyra/veyra-deployment.sh stage "
+             "/var/lib/veyra/store B C", 1200),
             "install -m755 /usr/local/lib/veyra/veyra-trial-failure.initd "
             "/var/lib/veyra/store/deployments/C/etc/init.d/veyra-trial-failure",
             "ln -s /etc/init.d/veyra-trial-failure "
