@@ -1,18 +1,20 @@
 # Veyra system-root access bridge
 
-**Status: design contract plus an experimental console prototype.** Draft
-package PR [#7](https://github.com/angyedz/veyra-pkgrepo/pull/7) adds a
-system-only PAM profile, root-owned administrator allowlist, and a launcher for
-a manually configured `/dev/tty9`. It does not implement the user-session
-request broker, seat/session binding, display handoff, installer wiring,
-detached-descendant cleanup, or QEMU security gates. Keep the console disabled
-until the full implementation passes the acceptance gates below and receives
-independent security review.
+**Status: design contract plus an experimental managed-TTY request path.**
+Draft package PR [#7](https://github.com/angyedz/veyra-pkgrepo/pull/7) adds a
+system-only PAM profile, root-owned administrator allowlist, fixed per-session
+request descriptor, and a system-manager path to the reserved `/dev/tty9`.
+This first path is limited to managed local virtual-terminal sessions. It does
+not provide a Plasma/Wayland request surface or system seat/session binding,
+installed-image wiring, detached-descendant cleanup, or complete QEMU security
+gates. Keep the console disabled until the full implementation passes the
+acceptance gates below and receives independent security review.
 
-The package source checks and Alpine APK snapshot build pass in CI. The QEMU
-job in that workflow covers the separate user-session manager, not this
-root-bridge prototype; bridge-specific QEMU and installed-image proof remain
-open.
+The existing package source checks and Alpine APK snapshot build passed before
+the current request-path changes. Commit `faefceb` adds a QEMU denial check for
+an unlisted session account; its APK/QEMU CI run is pending. Successful VT9
+activation, installed-image behavior, and the remaining adversarial bridge
+proof are still open.
 
 ## Purpose and authority
 
@@ -23,11 +25,13 @@ namespaces. The bridge is an explicit, separately authenticated system
 administration session; it is not a namespace transition requested by a user
 process.
 
-The current prototype requires the person at the machine to switch to a
-dedicated initial-system TTY. Its sample BusyBox getty entry is documentation
-only; package installation does not change `/etc/inittab` or activate the TTY.
-There is no request path from Plasma or another process in the user
-environment.
+The prototype accepts one fixed request from a managed local TTY session over
+a private per-session descriptor. The system manager checks the session's
+outer account against the administrator policy and confirms that its virtual
+TTY is active before switching to reserved VT9. It starts the console itself
+and returns to the original VT when it exits. There is no Plasma/Wayland
+request surface, seat/session binding, or graphical display handoff. The
+package does not change `/etc/inittab` or install a getty on VT9.
 
 The system administrator authenticates as an outer Linux account selected by
 root-owned system policy. That policy is separate from ordinary dual-environment
@@ -37,15 +41,17 @@ itself never grants host-root access.
 
 ## Trusted flow
 
-1. The system-owned session broker accepts a request to open the fixed
-   administration surface. It verifies the active seat and originating Veyra
-   session from system-owned session state, permits at most one pending request
-   per seat, and rate-limits repeats. The request carries no username,
-   command, path, environment, TTY number, file descriptor, or credential.
-2. The broker allocates a system-owned console TTY from its fixed policy and
-   switches the local display to it. The username/password prompt is rendered
-   and read on this initial-system TTY, outside user namespaces and outside any
-   client-controlled PTY or compositor surface.
+1. The system-owned session manager accepts a fixed request packet over a
+   private socketpair descriptor created for that managed session. The user
+   environment receives no broker path and cannot provide a username, command,
+   path, environment, TTY number, extra descriptor, or credential. The current
+   implementation checks the outer account policy and that the local virtual
+   TTY is active; authoritative seat/session binding remains unfinished.
+2. The manager switches to its fixed, reserved initial-system VT9 and starts
+   the console itself. The username/password prompt is rendered and read on
+   this initial-system TTY, outside user namespaces and outside any
+   client-controlled PTY or compositor surface. The manager returns to the
+   previous VT after the console exits.
 3. The system login process authenticates through a dedicated PAM service and
    checks account eligibility against current system-owned policy. It requires
    fresh authentication for each bridge session; an existing user-session
@@ -60,12 +66,15 @@ itself never grants host-root access.
    outcome, and returns the display to the user's session or a system-owned
    login screen.
 
-PR #7 prototypes only the authentication and launcher portions of steps 3–4:
-it requires `/dev/tty9`, starts a fixed root shell with a clean environment,
-relays through a system-side PTY, records local audit events, and expires an
-idle shell after 15 minutes. It does not allocate or switch to the TTY, return
-the display, or contain detached descendants in a cgroup. The prototype must
-not be described as the completed user-to-system bridge.
+PR #7 prototypes the fixed-action path and portions of steps 1–5 for managed
+local TTY sessions: it passes only a private request descriptor, checks the
+outer account policy and active VT, switches to `/dev/tty9`, starts a fixed
+root shell with a clean environment, records local audit events, bounds login
+input, and expires an idle shell after 15 minutes. The manager restores the
+previous VT on exit. Seat/session binding, desktop UI and display integration,
+installed-image wiring, and cgroup cleanup for detached descendants remain
+unfinished. The prototype must not be described as the completed
+user-to-system bridge.
 
 The bridge may be requested from a user session, but the request is only a
 fixed action relayed through a system-owned control surface. User-root
@@ -103,9 +112,10 @@ PTY.
   currently pins the prototype to `/dev/tty9` and rejects non-initial UID/GID
   maps; it does not prove the installed image hides that TTY and host input
   devices from the user environment.
-- Only a system-owned control component may contact the broker. The broker
-  binds requests to the active seat/session in system-owned state and rejects
-  stale, duplicate, or unassociated requests.
+- Only a system-owned control component may contact the broker. The current
+  managed-TTY path uses a private per-session descriptor and active-VT check;
+  binding a request to authoritative seat/session state and rejecting stale or
+  unassociated requests remains required.
 - Accept only a fixed request enum. Ignore or reject extra protocol fields and
   never interpret user-controlled text as an executable, path, environment
   value, terminal device, or shell argument.
