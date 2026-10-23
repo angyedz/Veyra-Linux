@@ -36,9 +36,11 @@ const (
 	maxHTTPManifest    = 1 << 20
 	maxHTTPSignature   = 256
 	maxBootStatusBytes = 16 << 10
+	recoveryMarkerData = "VEYRA-RECOVERY-v1\n"
 )
 
 var environmentID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
+var recoveryMarkerPath = "/run/veyra/recovery-environment"
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
@@ -51,15 +53,30 @@ func run(args []string) error {
 	flags := flag.NewFlagSet("veyra-atomic-update", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	check := flags.Bool("check", false, "show whether a newer signed release is available")
+	offline := flags.Bool("offline", false, "apply only from the independent Veyra Recovery Environment")
 	store := flags.String("store", defaultStore, "mounted Veyra deployment store")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 {
-		return errors.New("usage: veyra-atomic-update [--check] [--store STORE]")
+		return errors.New("usage: veyra-atomic-update [--check | --offline] [--store STORE]")
 	}
 	if !filepath.IsAbs(*store) || filepath.Clean(*store) == filepath.Dir(filepath.Clean(*store)) {
 		return errors.New("deployment store must be an absolute path")
+	}
+	if *check && *offline {
+		return errors.New("--check and --offline cannot be used together")
+	}
+	if !*check {
+		if os.Geteuid() != 0 {
+			return errors.New("applying a paired release requires root; run from the Veyra Recovery Environment")
+		}
+		if !*offline {
+			return errors.New("refusing to stage from a running installation; boot the independent Veyra Recovery Environment and use --offline")
+		}
+		if err := requireRecoveryEnvironment(); err != nil {
+			return err
+		}
 	}
 	manifestURL, err := readUpdateURL(channelFile)
 	if err != nil {
@@ -69,29 +86,30 @@ func run(args []string) error {
 	if err != nil {
 		return fmt.Errorf("read trusted update key: %w", err)
 	}
-	release, err := fetchAndVerify(manifestURL, publicKey)
+	if *check {
+		release, err := fetchAndVerify(manifestURL, publicKey)
+		if err != nil {
+			return err
+		}
+		current, err := readConfirmedPair(filepath.Clean(*store), publicKey, true)
+		if err != nil {
+			return err
+		}
+		return printCheck(release, current.Sequence)
+	}
+	lock, err := acquireUpdateLock(*store)
 	if err != nil {
 		return err
 	}
-	if !*check && os.Geteuid() != 0 {
-		return errors.New("applying a paired release requires root; run sudo veyra-update")
+	defer releaseUpdateLock(lock)
+	current, err := readConfirmedPair(filepath.Clean(*store), publicKey, false)
+	if err != nil {
+		return err
 	}
-	var lock *os.File
-	if !*check {
-		lock, err = acquireUpdateLock(*store)
-		if err != nil {
-			return err
-		}
-		defer releaseUpdateLock(lock)
+	if err := verifyUpdateRootsAreOffline(filepath.Clean(*store), current); err != nil {
+		return err
 	}
-	if *check {
-		_, _, sequence, err := readStoredRelease("/", publicKey)
-		if err != nil {
-			return err
-		}
-		return printCheck(release, sequence)
-	}
-	current, err := readConfirmedPair(*store, publicKey)
+	release, err := fetchAndVerify(manifestURL, publicKey)
 	if err != nil {
 		return err
 	}
@@ -187,7 +205,7 @@ func fetchHTTPS(client *http.Client, target *url.URL, limit int64) ([]byte, erro
 	return data, nil
 }
 
-func readConfirmedPair(store string, publicKey []byte) (update.ConfirmedPair, error) {
+func readConfirmedPair(store string, publicKey []byte, requireRunning bool) (update.ConfirmedPair, error) {
 	status, err := commandOutput(bootctlPath, "--store", store, "status")
 	if err != nil {
 		return update.ConfirmedPair{}, fmt.Errorf("read boot selection: %w", err)
@@ -199,18 +217,27 @@ func readConfirmedPair(store string, publicKey []byte) (update.ConfirmedPair, er
 	if trial != "none" {
 		return update.ConfirmedPair{}, fmt.Errorf("a trial deployment %s is already armed", trial)
 	}
-	running, err := readEnvironmentID("/etc/veyra/deployment-id")
-	if err != nil {
-		return update.ConfirmedPair{}, fmt.Errorf("read running deployment ID: %w", err)
-	}
-	cmdlineID, err := runningDeploymentID()
-	if err != nil {
-		return update.ConfirmedPair{}, err
-	}
-	if running != confirmed || cmdlineID != confirmed {
-		return update.ConfirmedPair{}, errors.New("running generation is not the last confirmed deployment")
-	}
 	systemRoot := filepath.Join(store, "deployments", confirmed)
+	storedSystemID, err := readEnvironmentID(filepath.Join(systemRoot, "etc", "veyra", "deployment-id"))
+	if err != nil {
+		return update.ConfirmedPair{}, fmt.Errorf("read confirmed deployment ID: %w", err)
+	}
+	if storedSystemID != confirmed {
+		return update.ConfirmedPair{}, errors.New("confirmed deployment metadata does not match boot selection")
+	}
+	if requireRunning {
+		running, err := readEnvironmentID("/etc/veyra/deployment-id")
+		if err != nil {
+			return update.ConfirmedPair{}, fmt.Errorf("read running deployment ID: %w", err)
+		}
+		cmdlineID, err := runningDeploymentID()
+		if err != nil {
+			return update.ConfirmedPair{}, err
+		}
+		if running != confirmed || cmdlineID != confirmed {
+			return update.ConfirmedPair{}, errors.New("running generation is not the last confirmed deployment")
+		}
+	}
 	userID, err := readEnvironmentID(filepath.Join(systemRoot, "etc", "veyra", "user-environment-id"))
 	if err != nil {
 		return update.ConfirmedPair{}, fmt.Errorf("read paired user environment ID: %w", err)
@@ -245,6 +272,61 @@ func readConfirmedPair(store string, publicKey []byte) (update.ConfirmedPair, er
 		}
 	}
 	return update.ConfirmedPair{SystemID: confirmed, UserID: userID, Sequence: sequence, UserWorld: world}, nil
+}
+
+func requireRecoveryEnvironment() error {
+	data, err := readProtectedFile(recoveryMarkerPath, 128)
+	if err != nil {
+		return fmt.Errorf("verify offline recovery environment: %w", err)
+	}
+	return validateRecoveryMarker(data)
+}
+
+func validateRecoveryMarker(data []byte) error {
+	if !bytes.Equal(data, []byte(recoveryMarkerData)) {
+		return errors.New("offline recovery environment marker is invalid")
+	}
+	return nil
+}
+
+func verifyUpdateRootsAreOffline(store string, pair update.ConfirmedPair) error {
+	runningDevice, err := filesystemDevice("/")
+	if err != nil {
+		return fmt.Errorf("inspect running recovery filesystem: %w", err)
+	}
+	var targetDevices []uint64
+	for _, path := range []string{
+		filepath.Join(store, "deployments", pair.SystemID),
+		filepath.Join(store, "user-environments", pair.UserID),
+	} {
+		targetDevice, err := filesystemDevice(path)
+		if err != nil {
+			return fmt.Errorf("inspect offline update target %s: %w", path, err)
+		}
+		targetDevices = append(targetDevices, targetDevice)
+	}
+	return requireDistinctFilesystemDevices(runningDevice, targetDevices...)
+}
+
+func requireDistinctFilesystemDevices(runningDevice uint64, targetDevices ...uint64) error {
+	for _, targetDevice := range targetDevices {
+		if runningDevice == targetDevice {
+			return errors.New("update target shares a filesystem with the running recovery environment; refusing to stage")
+		}
+	}
+	return nil
+}
+
+func filesystemDevice(path string) (uint64, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return 0, err
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return 0, errors.New("filesystem device identity is unavailable")
+	}
+	return uint64(stat.Dev), nil
 }
 
 func parseBootStatus(status string) (confirmed, trial string, err error) {

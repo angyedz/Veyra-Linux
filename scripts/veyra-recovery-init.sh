@@ -13,6 +13,9 @@ export PATH=/sbin:/bin:/usr/sbin:/usr/bin
 /bin/busybox mount -t devpts devpts /dev/pts || true
 /bin/busybox mount -t tmpfs tmpfs /run || true
 /bin/busybox mount -t tmpfs tmpfs /tmp || true
+/bin/busybox mkdir -p /run/veyra
+/bin/busybox printf 'VEYRA-RECOVERY-v1\n' > /run/veyra/recovery-environment
+/bin/busybox chmod 0444 /run/veyra/recovery-environment
 [ -e /dev/console ] || /bin/busybox mknod /dev/console c 5 1
 exec </dev/console >/dev/console 2>&1
 printf '\033[2J\033[H'
@@ -25,15 +28,17 @@ echo
 while :; do
     echo '1) Show block devices'
     echo '2) Show kernel boot command line'
-    echo '3) Reboot'
-    echo '4) Power off'
+    echo '3) Verify recovery environment marker'
+    echo '4) Reboot'
+    echo '5) Power off'
     printf 'Choice: '
     IFS= read -r choice || choice=3
     case "$choice" in
         1) /bin/busybox cat /proc/partitions ;;
         2) /bin/busybox cat /proc/cmdline ;;
-        3) /bin/busybox sync; /bin/busybox reboot -f ;;
-        4) /bin/busybox sync; /bin/busybox poweroff -f ;;
+        3) /bin/busybox cat /run/veyra/recovery-environment ;;
+        4) /bin/busybox sync; /bin/busybox reboot -f ;;
+        5) /bin/busybox sync; /bin/busybox poweroff -f ;;
         *) echo 'Unknown choice' ;;
     esac
 done

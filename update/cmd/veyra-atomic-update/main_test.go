@@ -68,6 +68,33 @@ func TestParseBootStatusRequiresUniqueConfirmedAndTrialValues(t *testing.T) {
 	}
 }
 
+func TestValidateRecoveryMarkerRequiresExactVersion(t *testing.T) {
+	if err := validateRecoveryMarker([]byte(recoveryMarkerData)); err != nil {
+		t.Fatalf("valid recovery marker was rejected: %v", err)
+	}
+	for _, data := range [][]byte{
+		[]byte("VEYRA-RECOVERY-v0\n"),
+		[]byte("VEYRA-RECOVERY-v1\nextra"),
+		[]byte(""),
+	} {
+		if err := validateRecoveryMarker(data); err == nil {
+			t.Errorf("invalid recovery marker was accepted: %q", data)
+		}
+	}
+}
+
+func TestUpdateTargetsMustUseDifferentFilesystemFromRecoveryRoot(t *testing.T) {
+	if err := requireDistinctFilesystemDevices(1, 2, 3); err != nil {
+		t.Fatalf("distinct filesystems were rejected: %v", err)
+	}
+	for _, targetDevice := range []uint64{1, 2} {
+		err := requireDistinctFilesystemDevices(1, targetDevice)
+		if (targetDevice == 1) != (err != nil) {
+			t.Errorf("running device 1 vs target %d: error=%v", targetDevice, err)
+		}
+	}
+}
+
 func TestReadStoredReleaseVerifiesExactSignedSequence(t *testing.T) {
 	release, publicKey := signedReleaseFixture(t)
 	root := t.TempDir()
