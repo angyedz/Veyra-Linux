@@ -28,6 +28,11 @@ grep -qx 'ID_LIKE=alpine' branding/os-release
 grep -qx plasma-desktop images/packages-desktop.txt
 test -f images/veyra-tui-install.sh
 test -f images/veyra-live-mode.sh
+grep -q 'need localmount elogind' images/veyra-live.initd
+grep -q "sed -i '/\^tty1::respawn:/d' /etc/inittab" images/veyra-live-mode.sh
+grep -q '/tmp/.X11-unix' images/veyra-live-user.sh
+grep -q 'sddm_uid=$(id -u sddm)' images/veyra-live-user.sh
+grep -q 'find images branding scripts -type f' images/mkimg.veyra.sh
 grep -q 'veyra-live-mode' images/genapkovl-veyra.sh
 grep -q 'tui-install.sh' images/veyra-install.sh
 grep -q 'XAUTHORITY' images/veyra-install.sh
@@ -78,10 +83,14 @@ fi
     profile_standard() { apks=alpine-base; }
     # shellcheck disable=SC1091
     . ./images/mkimg.veyra.sh
+    all_sections='kernel apks apkovl veyra_apks'
     profile_veyra
     [ "$image_name" = veyra-linux ]
     [ "$apkovl" = images/genapkovl-veyra.sh ]
     case " $apks " in *" nix "* ) : ;; * ) exit 1 ;; esac
+    case " $all_sections " in *" apks "* ) exit 1 ;; esac
+    case " $all_sections " in *" veyra_apks "* ) : ;; * ) exit 1 ;; esac
+    [ "$(printf '%s\n' "$all_sections" | tr ' ' '\n' | grep -xc veyra_apks)" -eq 1 ]
 )
 
 # The image overlay is reproducible and contains our setup script.

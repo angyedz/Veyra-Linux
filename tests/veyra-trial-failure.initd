@@ -10,6 +10,10 @@ depend() {
 
 start() {
     [ "$(cat /etc/veyra/deployment-id)" = C ] || return 1
+    grep -Fq 'veyra_user_environment=U-C' /proc/cmdline || return 1
+    mountpoint -q /var/lib/veyra/user-root || return 1
+    [ "$(cat /var/lib/veyra/user-root/etc/veyra/user-environment-id)" = U-C ] || return 1
+    [ "$(cat /var/lib/veyra/user-root/etc/veyra/e2e-root-id)" = U-C ] || return 1
     echo VEYRA_INJECTED_TRIAL_FAILURE
     printf '%s\n' C > /var/lib/veyra/store/boot-state/trial-failed
     printf '%s\n' 'data written by failed C' > /home/e2euser/atomic-data.txt

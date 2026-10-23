@@ -26,5 +26,11 @@ if [ "$mode" = tty ]; then
     touch /run/veyra-live-tty
     printf '\nTTY selected. Run: veyra-install --tui\n' > /dev/tty1
 else
+    # SDDM must own tty1 in graphical mode; the default Alpine getty races it
+    # for the same VT and prevents the live Wayland session from starting.
+    if [ -f /etc/inittab ]; then
+        sed -i '/^tty1::respawn:/d' /etc/inittab
+        telinit q 2>/dev/null || :
+    fi
     printf '\nStarting KDE Plasma...\n' > /dev/tty1
 fi

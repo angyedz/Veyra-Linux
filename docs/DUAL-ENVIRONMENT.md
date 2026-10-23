@@ -27,6 +27,17 @@ update may keep the existing user root when their compatibility contract
 allows it; a release that changes both roots activates them as one tested pair.
 Per-account homes and declared user data stay outside both roots.
 
+The boot-pair prototype stores user roots at
+`/var/lib/veyra/store/user-environments/ID`. A system deployment that requires
+one records that ID in `/etc/veyra/user-environment-id`; GRUB passes both IDs
+to initramfs, which verifies the match and mounts the selected root at
+`/var/lib/veyra/user-root`. Boot confirmation checks the mounted root and its
+ID against the running system deployment. This only selects and mounts a
+prepared pair. `veyra-deployment.sh stage-pair` can copy and verify the
+system/user roots together while leaving boot selection unchanged; it does not
+update packages, verify a signed release, provision user accounts, start user
+OpenRC, or install SDDM/PAM integration.
+
 **Resilience design (2026-10-20, not implemented):** a system OpenRC-owned [Veyra Guardian](VEYRA-RESILIENCE.md) must detect user-init/Plasma failures without depending on the user rootfs. A system-owned TTY and independently bootable [VRE](VEYRA-RECOVERY.md) provide fallback. [SnapCore](VEYRA-SNAPCORE.md) is a proposed block-level CoW user snapshot layer below ext4/XFS/F2FS, **not** directory copies or a Btrfs/LVM requirement. User-root and `/home` must be separately restorable; system A/B rollback must not implicitly touch them.
 
 ## Privileges

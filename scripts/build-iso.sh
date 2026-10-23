@@ -60,16 +60,30 @@ cp "${PACKAGER_PRIVKEY}.pub" /etc/apk/keys/
 # Build a signed, local APK repository from the Calamares build artifact.
 extra_dir="${VEYRA_EXTRA_APK_DIR:-$root/dist/calamares}"
 repo_base="$buildroot/veyra-repository"
-repo_arch="$repo_base/x86_64"
 temporary_apk_keys="$buildroot/temporary-apk-keys.txt"
-mkdir -p "$repo_arch"
+mkdir -p "$repo_base"
 if [ ! -d "$extra_dir" ] || \
     [ -z "$(find "$extra_dir" -maxdepth 1 -name 'veyra-calamares-*.apk' -print -quit)" ] || \
     [ -z "$(find "$extra_dir" -maxdepth 1 -name 'veyra-appcenter-*.apk' -print -quit)" ]; then
     echo 'Missing Calamares or Veyra AppCenter APK. Run scripts/build-calamares.sh first.' >&2
     exit 1
 fi
-cp "$extra_dir"/*.apk "$repo_arch/"
+for package_dir in "$repo_base"/*; do
+    [ -d "$package_dir" ] || continue
+    rm -f "$package_dir"/*.apk "$package_dir"/APKINDEX.tar.gz
+done
+for package in "$extra_dir"/*.apk; do
+    package_arch=$(tar -xOf "$package" .PKGINFO | sed -n 's/^arch = //p' | head -n 1)
+    case "$package_arch" in
+        x86_64|noarch) ;;
+        *)
+            echo "Unsupported architecture in local APK: $package ($package_arch)" >&2
+            exit 1
+            ;;
+    esac
+    mkdir -p "$repo_base/$package_arch"
+    cp "$package" "$repo_base/$package_arch/"
+done
 : > "$temporary_apk_keys"
 for key in "$extra_dir"/*.pub; do
     [ -f "$key" ] || continue
@@ -83,8 +97,9 @@ done
 basename "${PACKAGER_PRIVKEY}.pub" >> "$temporary_apk_keys"
 LC_ALL=C sort -u "$temporary_apk_keys" > "$temporary_apk_keys.sorted"
 mv "$temporary_apk_keys.sorted" "$temporary_apk_keys"
-apk index -o "$repo_arch/APKINDEX.tar.gz" "$repo_arch"/*.apk
-abuild-sign "$repo_arch/APKINDEX.tar.gz"
+set -- "$repo_base/x86_64"/*.apk "$repo_base/noarch"/*.apk
+apk index -o "$repo_base/x86_64/APKINDEX.tar.gz" "$@"
+abuild-sign "$repo_base/x86_64/APKINDEX.tar.gz"
 
 if [ ! -f "$aports/scripts/mkimage.sh" ]; then
     git clone --depth 1 --branch "$version-stable" \

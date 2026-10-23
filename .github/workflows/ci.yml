@@ -438,6 +438,7 @@ jobs:
           sh -n /tmp/veyra-init
           grep -q 'Veyra: booting deployment' /tmp/veyra-init
           grep -q 'veyra_deployment' /tmp/veyra-init
+          grep -q 'veyra_user_environment' /tmp/veyra-init
           sh -n scripts/veyra-initramfs-select.sh
           shellcheck -s sh scripts/build-veyra-init.sh
           test -x /tmp/veyra-init

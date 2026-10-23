@@ -68,7 +68,8 @@ for path in home nix; do
 done
 
 mkdir -p "$root/etc/veyra" "$root/usr/local/lib/veyra" "$root/usr/local/sbin" \
-    "$root/home" "$root/nix" "$root/var/lib/veyra/shared" "$root/var/lib/veyra/store"
+    "$root/home" "$root/nix" "$root/var/lib/veyra/shared" \
+    "$root/var/lib/veyra/store" "$root/var/lib/veyra/user-root"
 # --exclude=/run/*** and similar rsync filters remove the directories as
 # well as volatile contents. OpenRC requires a real /run before boot.
 # Every generation must provide empty Linux mountpoint placeholders.

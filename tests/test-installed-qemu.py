@@ -98,7 +98,9 @@ echo VEYRA_E2E_INSTALL_SUCCESS
 def boot(qemu, disk, iso, logfile, timeout, installed=False):
     cmd = [
         qemu, "-machine", "accel=tcg", "-m", "6144", "-smp", "2",
-        "-vga", "virtio", "-display", "none",
+        # Serial-only tests do not need virtio-gpu. Standard VGA also avoids
+        # a QEMU 11 / WSL TCG crash before the guest starts.
+        "-vga", os.environ.get("VEYRA_QEMU_VGA", "std"), "-display", "none",
         "-monitor", "none", "-serial", "stdio", "-no-reboot",
         "-nic", "user,model=virtio-net-pci",
         "-drive", f"file={disk},format=qcow2,if=virtio",
@@ -165,6 +167,7 @@ def upload_script(child, content, remote_path):
         }
     ):
         raise ValueError("Unexpected remote script path")
+    content = content.replace(b"\r\n", b"\n")
     payload = base64.b64encode(content).decode("ascii")
     run_command(child, ": > /tmp/veyra-e2e-transfer.b64", 30)
     for pos in range(0, len(payload), 512):

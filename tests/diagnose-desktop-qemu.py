@@ -45,11 +45,15 @@ with tempfile.TemporaryDirectory(prefix="veyra-desktop-diagnostics-") as tmp:
                 "find /home/veyra/.local/share /home/veyra/.cache -maxdepth 5 -type f "
                 "\\( -iname '*sddm*' -o -iname '*session*' -o -iname '*.log' \\) -print 2>/dev/null || true",
                 "for f in /home/veyra/.local/share/sddm/* /home/veyra/.cache/sddm/*; do "
-                "[ -f \"$f\" ] && { echo \"===== $f\"; tail -n 120 \"$f\"; }; done",
+                "[ -f \"$f\" ] && { echo \"===== $f\"; tail -n 120 \"$f\"; }; done; true",
                 "find /var/log -maxdepth 3 -iname '*sddm*' -o -iname '*xorg*' || true",
                 "ls -l /etc/conf.d/sddm /etc/init.d/sddm",
                 "rc-service sddm restart || true",
                 "rc-service sddm status || true",
+                "mkdir -p /tmp/.X11-unix && chmod 1777 /tmp/.X11-unix && "
+                "rc-service sddm restart || true; sleep 5; "
+                "rc-service sddm status || true; "
+                "tail -n 80 /var/log/sddm.log /home/veyra/.local/share/sddm/wayland-session.log 2>&1 || true",
             ):
                 print("Inspect:", cmd, flush=True)
                 helpers.run_command(child, cmd, timeout=70)

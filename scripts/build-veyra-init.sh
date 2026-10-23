@@ -24,6 +24,7 @@ awk -v snippet="$inject" '
   $0 == "\trootfstype" {
       print
       print "\tveyra_deployment"
+      print "\tveyra_user_environment"
       opt++
       next
   }
