@@ -34,6 +34,8 @@ font-noto-emoji
 dbus
 dbus-openrc
 elogind
+openrc-settingsd
+openrc-settingsd-openrc
 polkit
 networkmanager
 networkmanager-wifi

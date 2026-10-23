@@ -78,6 +78,9 @@ for app in systemsettings kscreen kde-cli-tools plasma-systemmonitor plasma-work
 done
 grep -qx qt6-qtwayland images/packages-desktop.txt
 grep -qx sddm-openrc images/packages-desktop.txt
+grep -qx openrc-settingsd images/packages-desktop.txt
+grep -qx openrc-settingsd-openrc images/packages-desktop.txt
+grep -q 'openrc-settingsd' images/genapkovl-veyra.sh
 grep -q '^      - locale$' calamares/settings.conf
 grep -q '^      - keyboard$' calamares/settings.conf
 test -f calamares/modules/locale.conf

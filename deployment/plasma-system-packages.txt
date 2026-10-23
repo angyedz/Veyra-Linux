@@ -25,6 +25,8 @@ mesa-vulkan-swrast
 dbus
 dbus-openrc
 elogind
+openrc-settingsd
+openrc-settingsd-openrc
 polkit
 networkmanager
 networkmanager-wifi

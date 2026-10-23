@@ -90,6 +90,7 @@ grep -q 'ext4 virtio nvme' "$target/etc/mkinitfs/mkinitfs.conf"
 test "$(cat "$target/etc/veyra/desktop")" = DESKTOP
 # Check the supported Plasma display manager is enabled.
 test -e "$target/etc/runlevels/default/sddm"
+test -e "$target/etc/runlevels/default/openrc-settingsd"
 test -e "$target/etc/runlevels/default/veyra-sddm-runtime"
 grep -Fq 'need localmount elogind' "$target/etc/init.d/veyra-sddm-runtime"
 grep -Fq 'before sddm' "$target/etc/init.d/veyra-sddm-runtime"
@@ -294,6 +295,8 @@ exit 1
                 run_command(child, "test -r /etc/veyra/desktop && cat /etc/veyra/desktop", 30)
                 run_command(child, "test -s /boot/grub/grub.cfg", 30)
                 run_command(child, "test -s /etc/machine-id && rc-service dbus status", 60)
+                run_command(child, "rc-service openrc-settingsd status >/dev/null && "
+                            "rc-service sddm status >/dev/null", 45)
                 run_command(child,
                     "grep -Fqx '@veyra https://raw.githubusercontent.com/angyedz/veyra-pkgrepo/main/stable/v1' /etc/apk/repositories && "
                     "test -s /etc/apk/keys/veyra.rsa.pub", 30)

@@ -31,6 +31,7 @@ export VEYRA_TEST_LOG="$tmp/operations"
 sh "$root/scripts/installer-desktop.sh" "$target" plasma
 grep -qx plasma "$target/etc/veyra/desktop"
 grep -q 'rc-update add sddm default' "$VEYRA_TEST_LOG"
+grep -q 'rc-update add openrc-settingsd default' "$VEYRA_TEST_LOG"
 grep -q 'rc-update add veyra-sddm-runtime default' "$VEYRA_TEST_LOG"
 cmp "$root/scripts/veyra-sddm-runtime.initd" "$target/etc/init.d/veyra-sddm-runtime"
 if grep -Eq 'apk (add|del).* (gnome|xfce|lxqt)' "$VEYRA_TEST_LOG"; then

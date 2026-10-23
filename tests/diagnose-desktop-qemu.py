@@ -51,9 +51,17 @@ with tempfile.TemporaryDirectory(prefix="veyra-desktop-diagnostics-") as tmp:
                 "rc-service sddm restart || true",
                 "rc-service sddm status || true",
                 "mkdir -p /tmp/.X11-unix && chmod 1777 /tmp/.X11-unix && "
-                "rc-service sddm restart || true; sleep 5; "
+                "rc-service sddm restart || true; sleep 20; "
                 "rc-service sddm status || true; "
-                "tail -n 80 /var/log/sddm.log /home/veyra/.local/share/sddm/wayland-session.log 2>&1 || true",
+                "rc-service openrc-settingsd status || true; "
+                "ps -ef | grep -E 'sddm|Xorg|kwin|plasma|startplasma' || true; "
+                "ls -ld /run/user/* /dev/dri/* 2>&1 || true; "
+                "find /home/veyra/.local/share/sddm /home/veyra/.cache -maxdepth 4 "
+                "-type f -iname '*log*' -print 2>/dev/null || true; "
+                "tail -n 100 /var/log/sddm.log "
+                "/home/veyra/.local/share/sddm/wayland-session.log "
+                "/home/veyra/.local/share/sddm/xorg-session.log 2>&1 || true; "
+                "dmesg | grep -iE 'drm|virtio.*gpu|kwin' | tail -n 80 || true",
             ):
                 print("Inspect:", cmd, flush=True)
                 helpers.run_command(child, cmd, timeout=70)

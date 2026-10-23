@@ -18,6 +18,7 @@ if [ -f "$target/etc/inittab" ]; then
     sed -i '/^tty1::respawn:/d' "$target/etc/inittab"
 fi
 chroot "$target" rc-update add sddm default
+chroot "$target" rc-update add openrc-settingsd default
 
 # Alpine's sddm-openrc start hook waits briefly for /run/user/<sddm-uid>.
 # The Live image creates it in its ephemeral veyra-live service; installed
