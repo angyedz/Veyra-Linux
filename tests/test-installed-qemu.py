@@ -91,7 +91,8 @@ test "$(cat "$target/etc/veyra/desktop")" = DESKTOP
 # Check the supported Plasma display manager is enabled.
 test -e "$target/etc/runlevels/default/sddm"
 test -e "$target/etc/runlevels/default/openrc-settingsd"
-test -e "$target/etc/runlevels/default/veyra-sddm-runtime"
+test -L "$target/etc/runlevels/default/veyra-sddm-runtime"
+chroot "$target" /bin/sh -c 'test -x /etc/runlevels/default/veyra-sddm-runtime && test -f /etc/init.d/veyra-sddm-runtime'
 grep -Fq 'need localmount elogind' "$target/etc/init.d/veyra-sddm-runtime"
 grep -Fq 'before sddm' "$target/etc/init.d/veyra-sddm-runtime"
 grep -Fqx 'DisplayServer=x11' "$target/etc/sddm.conf.d/zz-veyra.conf"
