@@ -192,7 +192,7 @@ func readConfirmedPair(store string, publicKey []byte) (update.ConfirmedPair, er
 	if err != nil {
 		return update.ConfirmedPair{}, fmt.Errorf("read boot selection: %w", err)
 	}
-	confirmed, trial, err := parseBootStatus(status)
+	confirmed, trial, err := parseBootStatus(string(status))
 	if err != nil {
 		return update.ConfirmedPair{}, err
 	}
@@ -413,7 +413,7 @@ mount -t tmpfs -o mode=1777,nosuid,nodev tmpfs "$root/tmp"
 apk --root "$root" --repositories-file "$root/etc/apk/repositories" update
 apk --root "$root" --repositories-file "$root/etc/apk/repositories" upgrade --available
 `
-	_, err := commandOutput("unshare", "--mount", "--propagation", "private", "--fork", "--",
+	_, err = commandOutput("unshare", "--mount", "--propagation", "private", "--fork", "--",
 		"/bin/sh", "-c", script, "veyra-apk-update", root)
 	return err
 }
