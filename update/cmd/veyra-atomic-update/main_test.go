@@ -95,6 +95,36 @@ func TestUpdateTargetsMustUseDifferentFilesystemFromRecoveryRoot(t *testing.T) {
 	}
 }
 
+func TestOfflineUpdateTargetsMustNotBeMounted(t *testing.T) {
+	storeMount := "36 25 8:1 / /mnt/veyra rw,relatime - ext4 /dev/sda1 rw\n"
+	systemTarget := "/mnt/veyra/deployments/S-next"
+	userTarget := "/mnt/veyra/user-environments/U-next"
+	if err := requireNoMountedTargets([]byte(storeMount), systemTarget, userTarget); err != nil {
+		t.Fatalf("store mount ancestor should be allowed: %v", err)
+	}
+
+	for _, mountpoint := range []string{
+		"/mnt/veyra/deployments/S-next",
+		"/mnt/veyra/deployments/S-next/var/lib/data",
+	} {
+		mountInfo := "36 25 8:2 / " + mountpoint + " rw,relatime - ext4 /dev/sdb1 rw\n"
+		if err := requireNoMountedTargets([]byte(mountInfo), systemTarget, userTarget); err == nil {
+			t.Errorf("accepted mounted update target path %q", mountpoint)
+		}
+	}
+
+	if err := requireNoMountedTargets([]byte("36 25 8:2 / /mnt/veyra\\040deploy/deployments/S-next rw - ext4 /dev/sdb1 rw\n"),
+		"/mnt/veyra deploy/deployments/S-next"); err == nil {
+		t.Fatal("accepted a target mounted at a path containing an escaped space")
+	}
+	if err := requireNoMountedTargets([]byte("not mountinfo\n"), systemTarget); err == nil {
+		t.Fatal("accepted a malformed mount table")
+	}
+	if err := requireNoMountedTargets(nil, systemTarget); err == nil {
+		t.Fatal("accepted an empty mount table")
+	}
+}
+
 func TestReadStoredReleaseVerifiesExactSignedSequence(t *testing.T) {
 	release, publicKey := signedReleaseFixture(t)
 	root := t.TempDir()

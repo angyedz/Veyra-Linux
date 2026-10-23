@@ -294,11 +294,19 @@ func verifyUpdateRootsAreOffline(store string, pair update.ConfirmedPair) error 
 	if err != nil {
 		return fmt.Errorf("inspect running recovery filesystem: %w", err)
 	}
-	var targetDevices []uint64
-	for _, path := range []string{
+	mountInfo, err := readRegularFile("/proc/self/mountinfo", 4<<20)
+	if err != nil {
+		return fmt.Errorf("inspect mounted filesystems before offline update: %w", err)
+	}
+	roots := []string{
 		filepath.Join(store, "deployments", pair.SystemID),
 		filepath.Join(store, "user-environments", pair.UserID),
-	} {
+	}
+	if err := requireNoMountedTargets(mountInfo, roots...); err != nil {
+		return err
+	}
+	var targetDevices []uint64
+	for _, path := range roots {
 		targetDevice, err := filesystemDevice(path)
 		if err != nil {
 			return fmt.Errorf("inspect offline update target %s: %w", path, err)
@@ -315,6 +323,73 @@ func requireDistinctFilesystemDevices(runningDevice uint64, targetDevices ...uin
 		}
 	}
 	return nil
+}
+
+func requireNoMountedTargets(mountInfo []byte, targets ...string) error {
+	cleanTargets := make([]string, 0, len(targets))
+	for _, target := range targets {
+		if !filepath.IsAbs(target) {
+			return errors.New("offline update target must be an absolute path")
+		}
+		cleanTargets = append(cleanTargets, filepath.Clean(target))
+	}
+	if len(cleanTargets) == 0 {
+		return errors.New("offline update has no target roots")
+	}
+	if len(mountInfo) == 0 {
+		return errors.New("mount table is empty; refusing offline update")
+	}
+	for _, line := range strings.Split(string(mountInfo), "\n") {
+		if line == "" {
+			continue
+		}
+		left, _, found := strings.Cut(line, " - ")
+		fields := strings.Fields(left)
+		if !found || len(fields) < 6 {
+			return errors.New("mount table contains a malformed entry; refusing offline update")
+		}
+		mountpoint, err := unescapeMountInfoPath(fields[4])
+		if err != nil || !filepath.IsAbs(mountpoint) {
+			return errors.New("mount table contains an invalid mountpoint; refusing offline update")
+		}
+		mountpoint = filepath.Clean(mountpoint)
+		for _, target := range cleanTargets {
+			relative, err := filepath.Rel(target, mountpoint)
+			if err == nil && (relative == "." || (relative != ".." && !strings.HasPrefix(relative, ".."+string(os.PathSeparator)))) {
+				return fmt.Errorf("offline update target %s contains mounted filesystem %s; refusing to stage", target, mountpoint)
+			}
+		}
+	}
+	return nil
+}
+
+func unescapeMountInfoPath(value string) (string, error) {
+	var decoded strings.Builder
+	for i := 0; i < len(value); {
+		if value[i] != '\\' {
+			decoded.WriteByte(value[i])
+			i++
+			continue
+		}
+		if i+3 >= len(value) {
+			return "", errors.New("truncated mountinfo escape")
+		}
+		escape := value[i+1 : i+4]
+		switch escape {
+		case "040":
+			decoded.WriteByte(' ')
+		case "011":
+			decoded.WriteByte('\t')
+		case "012":
+			decoded.WriteByte('\n')
+		case "134":
+			decoded.WriteByte('\\')
+		default:
+			return "", errors.New("unsupported mountinfo escape")
+		}
+		i += 4
+	}
+	return decoded.String(), nil
 }
 
 func filesystemDevice(path string) (uint64, error) {
@@ -571,7 +646,7 @@ func (b *systemBackend) VerifyPair(systemID, userID string) error {
 }
 
 func (b *systemBackend) DiscardStagedPair(source, target update.ConfirmedPair) error {
-	current, err := readConfirmedPair(b.store, b.publicKey)
+	current, err := readConfirmedPair(b.store, b.publicKey, false)
 	if err != nil {
 		return fmt.Errorf("cannot prove the source pair is still confirmed: %w", err)
 	}
