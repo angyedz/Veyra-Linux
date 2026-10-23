@@ -40,10 +40,10 @@ if [ -x /usr/sbin/veyra-atomic-update ]; then
         /usr/libexec/veyra/veyra-deployment.sh \
         /etc/veyra/update-manifest-url \
         /etc/veyra/trust/update-ed25519.pub; do
-        [ -f "$required" ] && [ ! -L "$required" ] || {
+        if [ ! -f "$required" ] || [ -L "$required" ]; then
             echo "Recovery updater configuration is incomplete: $required" >&2
             exit 1
-        }
+        fi
     done
     for utility in apk rsync unshare python3 grub-editenv findmnt blkid; do
         command -v "$utility" >/dev/null 2>&1 || {
