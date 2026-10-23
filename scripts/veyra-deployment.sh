@@ -147,10 +147,14 @@ copy_system_root() {
         --exclude='/dev/***' --exclude='/run/***' \
         --exclude='/tmp/***' --exclude='/mnt/***' \
         --exclude='/media/***' \
+        --exclude='/var/lib/veyra/store/***' \
+        --exclude='/var/lib/veyra/user-root/***' \
+        --exclude='/var/lib/veyra/shared/***' \
         "$copy_source/" "$copy_target/"; then
         die "staging system copy failed; inspect $copy_target before cleanup"
     fi
-    for runtime_dir in dev proc sys run tmp media mnt; do
+    for runtime_dir in dev proc sys run tmp media mnt \
+        var/lib/veyra/store var/lib/veyra/user-root var/lib/veyra/shared; do
         [ ! -L "$copy_target/$runtime_dir" ] ||
             die "symlinked staged runtime mountpoint: $runtime_dir"
         mkdir -p "$copy_target/$runtime_dir"
@@ -273,9 +277,27 @@ case "$action" in
         [ ! -e "$temp_user" ] && [ ! -L "$temp_user" ] ||
             die 'user staging directory already exists (manual recovery required)'
         [ -x "$(command -v rsync)" ] || die 'rsync is required for safe offline root copies'
-        # Both sources must be QUIESCENT. Rename the user root first so a
-        # failed system rename can leave only an unreferenced orphan. The
-        # system boot entry appears only after both complete roots exist.
+        stage_complete=0
+        cleanup_stage_pair() {
+            result=$?
+            trap - EXIT HUP INT TERM
+            if [ "$stage_complete" -ne 1 ]; then
+                for staged_path in "$temp_system" "$temp_user" "$target_system" "$target_user"; do
+                    case "$staged_path" in
+                        "$store"/deployments/*|"$store"/user-environments/*)
+                            rm -rf "$staged_path" ||
+                                echo "veyra-deployment: unable to clean incomplete stage path: $staged_path" >&2
+                            ;;
+                        *) echo 'veyra-deployment: unsafe internal cleanup path' >&2 ;;
+                    esac
+                done
+            fi
+            exit "$result"
+        }
+        trap cleanup_stage_pair EXIT HUP INT TERM
+        # Both sources must be QUIESCENT. Publish the user root first; the
+        # cleanup trap removes either target if the second publication or
+        # final pair verification fails.
         copy_user_environment "$source_user" "$temp_user" "$6"
         verify_user_environment_root "$temp_user" "$6"
         copy_system_root "$source_system" "$temp_system" "$4"
@@ -289,6 +311,8 @@ case "$action" in
         mv -T "$temp_user" "$target_user"
         mv -T "$temp_system" "$target_system"
         verify_pair "$4" "$6"
+        stage_complete=1
+        trap - EXIT HUP INT TERM
         echo "Staged inactive Veyra deployment pair $4+$6 on $filesystem; boot unchanged"
         ;;
     *) usage ;;

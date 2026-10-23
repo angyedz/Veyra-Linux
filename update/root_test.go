@@ -12,6 +12,12 @@ func TestReadAndWriteAPKConfiguration(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(root, "etc", "apk"), 0755); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.MkdirAll(filepath.Join(root, "etc", "veyra"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "etc", "veyra", "user-environment-id"), []byte("U-next\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(filepath.Join(root, "etc", "apk", "world"), []byte("alpine-base=3.21-r0\nfirefox\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -54,6 +60,12 @@ func TestReadAndWriteAPKConfiguration(t *testing.T) {
 func TestWriteAPKConfigurationRejectsSymlinkedAPKDirectory(t *testing.T) {
 	root := t.TempDir()
 	if err := os.Mkdir(filepath.Join(root, "etc"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(root, "etc", "veyra"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "etc", "veyra", "user-environment-id"), []byte("U-next\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	outside := t.TempDir()
@@ -104,6 +116,9 @@ func TestWriteReleaseMetadataPreservesSignedDocumentAndSequence(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(root, "etc", "veyra"), 0755); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(root, "etc", "veyra", "deployment-id"), []byte("S-2026-10-23\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
 	if err := WriteReleaseMetadata(root, release); err != nil {
 		t.Fatal(err)
 	}
@@ -119,5 +134,46 @@ func TestWriteReleaseMetadataPreservesSignedDocumentAndSequence(t *testing.T) {
 		if string(got) != expected {
 			t.Errorf("%s = %q, want %q", relative, got, expected)
 		}
+	}
+}
+
+func TestWriteReleaseMetadataRequiresMatchingEnvironmentKindAndID(t *testing.T) {
+	document, signature, key := signedFixture(t, nil)
+	release, err := VerifyRelease(document, signature, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	userRoot := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(userRoot, "etc", "veyra"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(userRoot, "etc", "veyra", "user-environment-id"), []byte("U-2026-10-23\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteReleaseMetadata(userRoot, release); err != nil {
+		t.Fatalf("valid user root rejected: %v", err)
+	}
+
+	wrongSystemRoot := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(wrongSystemRoot, "etc", "veyra"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(wrongSystemRoot, "etc", "veyra", "deployment-id"), []byte("U-2026-10-23\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(wrongSystemRoot, "etc", "veyra", "user-environment-id"), []byte("U-2026-10-23\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteReleaseMetadata(wrongSystemRoot, release); err == nil ||
+		!strings.Contains(err.Error(), "does not target") {
+		t.Fatalf("system root confused with its paired user root: %v", err)
+	}
+}
+
+func TestSafeRootRejectsFilesystemRoot(t *testing.T) {
+	filesystemRoot := string(os.PathSeparator)
+	if _, err := safeRoot(filesystemRoot); err == nil {
+		t.Fatal("filesystem root was accepted as a staged environment")
 	}
 }

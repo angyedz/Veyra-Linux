@@ -62,6 +62,9 @@ func WriteAPKConfiguration(root string, environment Environment, world []string)
 	if err := requireSafeDirectory(root, apkDir); err != nil {
 		return err
 	}
+	if err := verifyEnvironmentRootIdentity(root, environment.ID); err != nil {
+		return err
+	}
 	repositories, err := environment.APKRepositoryLines()
 	if err != nil {
 		return err
@@ -129,6 +132,13 @@ func WriteReleaseMetadata(root string, release VerifiedRelease) error {
 	}
 	if err := requireSafeDirectory(root, veyraDir); err != nil {
 		return err
+	}
+	rootID, isSystemRoot, err := environmentRootID(root)
+	if err != nil {
+		return err
+	}
+	if (isSystemRoot && rootID != manifest.System.ID) || (!isSystemRoot && rootID != manifest.User.ID) {
+		return errors.New("release manifest does not target this staged environment root")
 	}
 	if err := atomicWriteRegular(veyraDir, filepath.Join(veyraDir, "release-manifest.json"), document); err != nil {
 		return err
@@ -200,6 +210,9 @@ func safeRoot(root string) (string, error) {
 		return "", errors.New("staged root must be an absolute path")
 	}
 	root = filepath.Clean(root)
+	if filepath.Dir(root) == root {
+		return "", errors.New("refusing to operate on a filesystem root")
+	}
 	info, err := os.Lstat(root)
 	if err != nil {
 		return "", err
@@ -220,6 +233,43 @@ func safeRoot(root string) (string, error) {
 		}
 	}
 	return root, nil
+}
+
+func verifyEnvironmentRootIdentity(root, expected string) error {
+	actual, _, err := environmentRootID(root)
+	if err != nil {
+		return err
+	}
+	if actual != expected {
+		return fmt.Errorf("staged environment identity %q does not match %q", actual, expected)
+	}
+	return nil
+}
+
+func environmentRootID(root string) (string, bool, error) {
+	veyraDir := filepath.Join(root, "etc", "veyra")
+	if err := requireSafeDirectory(root, filepath.Join(root, "etc")); err != nil {
+		return "", false, err
+	}
+	if err := requireSafeDirectory(root, veyraDir); err != nil {
+		return "", false, err
+	}
+	path := filepath.Join(veyraDir, "deployment-id")
+	if _, err := os.Lstat(path); err == nil {
+		data, err := readRegular(path, 128)
+		if err != nil {
+			return "", true, err
+		}
+		return strings.TrimSpace(string(data)), true, nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return "", false, err
+	}
+	path = filepath.Join(veyraDir, "user-environment-id")
+	data, err := readRegular(path, 128)
+	if err != nil {
+		return "", false, err
+	}
+	return strings.TrimSpace(string(data)), false, nil
 }
 
 func requireSafeDirectory(root, directory string) error {

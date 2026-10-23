@@ -23,9 +23,17 @@ for fs in ext4 xfs; do
     mount -o loop "$image" "$top"
     sh "$root/scripts/veyra-deployment.sh" init "$top"
     mkdir -p "$top/deployments/A/etc/veyra" "$top/deployments/A/etc/apk" \
-        "$top/deployments/A/var/lib/veyra/user-root"
+        "$top/deployments/A/var/lib/veyra/store/deployments/A" \
+        "$top/deployments/A/var/lib/veyra/user-root/etc/veyra" \
+        "$top/deployments/A/var/lib/veyra/shared"
     printf 'A\n' > "$top/deployments/A/etc/veyra/deployment-id"
     printf 'alpine-base\nplasma-desktop\nkwin\n' > "$top/deployments/A/etc/apk/world"
+    printf 'backing store must not be copied into a generation\n' \
+        > "$top/deployments/A/var/lib/veyra/store/.veyra-deployment-store"
+    printf 'active user root must not be copied into the system generation\n' \
+        > "$top/deployments/A/var/lib/veyra/user-root/etc/veyra/user-environment-id"
+    printf 'persistent shared state must not be copied into a generation\n' \
+        > "$top/deployments/A/var/lib/veyra/shared/user-state"
     # Unit fixture: each deployment has its own kernel/initramfs and can be
     # selected by GRUB. These are NOT kernel images; QEMU boot tests are separate.
     mkdir -p "$top/deployments/A/boot" "$top/boot/grub"
@@ -74,6 +82,14 @@ for fs in ext4 xfs; do
         exit 1
     fi
     test "$(cat "$top/deployments/C/etc/veyra/user-environment-id")" = U-C
+    for mountpoint in store user-root shared; do
+        test -d "$top/deployments/C/var/lib/veyra/$mountpoint" || {
+            echo "Missing staged Veyra mountpoint: $mountpoint" >&2; exit 1;
+        }
+    done
+    test ! -e "$top/deployments/C/var/lib/veyra/store/.veyra-deployment-store"
+    test ! -e "$top/deployments/C/var/lib/veyra/user-root/etc/veyra/user-environment-id"
+    test ! -e "$top/deployments/C/var/lib/veyra/shared/user-state"
     test "$(cat "$top/user-environments/U-C/etc/veyra/user-environment-id")" = U-C
     test "$(cat "$top/user-environments/U-C/etc/apk/world")" = "$(cat "$top/user-environments/U-A/etc/apk/world")"
     test ! -e "$top/user-environments/U-C/home/private.txt"
@@ -83,6 +99,23 @@ for fs in ext4 xfs; do
     sh "$root/scripts/veyra-deployment.sh" stage-pair "$top" A C U-A U-C && {
         echo 'Overwrote an existing paired generation' >&2; exit 1;
     }
+    mkdir -p "$tmp/fail-rsync"
+    cat > "$tmp/fail-rsync/rsync" <<'EOF'
+#!/bin/sh
+for destination do :; done
+mkdir -p "$destination"
+printf 'partial copy\n' > "$destination/.partial"
+exit 23
+EOF
+    chmod 0755 "$tmp/fail-rsync/rsync"
+    if PATH="$tmp/fail-rsync:$PATH" sh "$root/scripts/veyra-deployment.sh" \
+        stage-pair "$top" A D U-A U-D; then
+        echo 'Failed rsync unexpectedly staged a pair' >&2; exit 1;
+    fi
+    test ! -e "$top/deployments/D"
+    test ! -e "$top/user-environments/U-D"
+    test ! -e "$top/deployments/.staging-system-D"
+    test ! -e "$top/user-environments/.staging-user-U-D"
     mkdir -p "$top/user-environments/U-OTHER/etc/apk" \
         "$top/user-environments/U-OTHER/etc/veyra" "$top/user-environments/U-OTHER/sbin"
     printf 'alpine-base\n' > "$top/user-environments/U-OTHER/etc/apk/world"
