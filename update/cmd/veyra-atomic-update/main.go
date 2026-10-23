@@ -28,8 +28,8 @@ const (
 	defaultStore       = "/var/lib/veyra/store"
 	channelFile        = "/etc/veyra/update-manifest-url"
 	publicKeyFile      = "/etc/veyra/trust/update-ed25519.pub"
-	bootctlPath        = "/usr/local/sbin/veyra-bootctl"
-	deploymentScript   = "/usr/local/lib/veyra/veyra-deployment.sh"
+	bootctlPath        = "/usr/libexec/veyra/bootctl"
+	deploymentScript   = "/usr/libexec/veyra/veyra-deployment.sh"
 	maxChannelFile     = 4096
 	maxKeyFile         = 256
 	maxSequenceFile    = 64
@@ -619,7 +619,7 @@ for modules in "$root"/lib/modules/*; do
 done
 [ "$count" -eq 1 ] || { echo 'expected exactly one installed kernel modules directory' >&2; exit 1; }
 [ ! -e "$patched" ] && [ ! -L "$patched" ] || { echo 'stale Veyra init script exists' >&2; exit 1; }
-chroot "$root" /usr/local/lib/veyra/build-veyra-init.sh "/boot/.veyra-init-$generation"
+chroot "$root" /usr/libexec/veyra/build-veyra-init.sh "/boot/.veyra-init-$generation"
 chroot "$root" mkinitfs -i "/boot/.veyra-init-$generation" -o /boot/initramfs-lts "$kernel"
 test -s "$root/boot/vmlinuz-lts"
 test -s "$root/boot/initramfs-lts"

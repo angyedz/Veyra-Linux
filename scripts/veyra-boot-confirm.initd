@@ -2,7 +2,7 @@
 # Experimental A/B boot success marker. Runs late in the default runlevel and
 # confirms only the deployment named by the running kernel command line.
 description="Confirm booted Veyra deployment and retain previous fallback"
-command=/usr/local/sbin/veyra-bootctl
+command=/usr/libexec/veyra/bootctl
 command_background=no
 supervisor=supervise-daemon
 

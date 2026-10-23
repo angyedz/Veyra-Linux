@@ -141,6 +141,13 @@ def main():
                     timeout=1200)
                 installed.run_command(
                     child,
+                    "test -x /mnt/veyra-e2e/usr/libexec/veyra/bootctl && "
+                    "test -x /mnt/veyra-e2e/usr/libexec/veyra/veyra-deployment.sh && "
+                    "grep -Fqx 'command=/usr/libexec/veyra/bootctl' "
+                    "/mnt/veyra-e2e/etc/init.d/veyra-boot-confirm",
+                    timeout=30)
+                installed.run_command(
+                    child,
                     "mkdir -p /mnt/veyra-e2e/user-environments/U-A/etc/apk "
                     "/mnt/veyra-e2e/user-environments/U-A/etc/veyra "
                     "/mnt/veyra-e2e/user-environments/U-A/sbin && "
@@ -165,7 +172,7 @@ def main():
                     "mount --bind /mnt/veyra-store-view "
                     "/mnt/veyra-e2e/var/lib/veyra/store && "
                     "chroot /mnt/veyra-e2e /usr/bin/python3 "
-                    "/usr/local/lib/veyra/veyra-bootctl.py "
+                    "/usr/libexec/veyra/bootctl "
                     "--store /var/lib/veyra/store rollback A",
                     timeout=45)
                 installed.run_command(
@@ -200,7 +207,7 @@ def main():
             "grub-editenv /var/lib/veyra/store/boot/grub/grubenv list | "
             "grep -Fqx saved_entry=veyra-A",
             "echo 'data created in A' > /home/e2euser/atomic-data.txt",
-            "/usr/local/sbin/veyra-bootctl "
+            "/usr/libexec/veyra/bootctl "
             "--store /var/lib/veyra/store activate B",
         ])
         print("Booting B from its own Alpine+Plasma system tree", flush=True)
@@ -211,17 +218,17 @@ def main():
             "echo 'data updated in B' > /home/e2euser/atomic-data.txt",
             "printf 'only-B\\n' > /etc/veyra/slot-specific.txt",
             "test ! -e /var/lib/veyra/store/deployments/A/etc/veyra/slot-specific.txt",
-            ("/usr/local/lib/veyra/veyra-deployment.sh stage-pair "
+            ("/usr/libexec/veyra/veyra-deployment.sh stage-pair "
              "/var/lib/veyra/store B C U-B U-C && "
              "printf 'U-C\\n' > /var/lib/veyra/store/user-environments/"
              "U-C/etc/veyra/e2e-root-id && "
-             "/usr/local/lib/veyra/veyra-deployment.sh verify-pair "
+             "/usr/libexec/veyra/veyra-deployment.sh verify-pair "
              "/var/lib/veyra/store C U-C", 1200),
             "install -m755 /usr/local/lib/veyra/veyra-trial-failure.initd "
             "/var/lib/veyra/store/deployments/C/etc/init.d/veyra-trial-failure",
             "ln -s /etc/init.d/veyra-trial-failure "
             "/var/lib/veyra/store/deployments/C/etc/runlevels/default/veyra-trial-failure",
-            "/usr/local/sbin/veyra-bootctl --store /var/lib/veyra/store activate C",
+            "/usr/libexec/veyra/bootctl --store /var/lib/veyra/store activate C",
         ])
         print("Injecting failure during trial C; expecting automatic fallback to B",
               flush=True)
@@ -233,7 +240,7 @@ def main():
             "test \"$(cat /var/lib/veyra/store/boot-state/trial-failed)\" = C",
             "test \"$(cat /etc/veyra/slot-specific.txt)\" = only-B",
             "test \"$(cat /home/e2euser/atomic-data.txt)\" = 'data written by failed C'",
-            "/usr/local/sbin/veyra-bootctl --store /var/lib/veyra/store rollback A",
+            "/usr/libexec/veyra/bootctl --store /var/lib/veyra/store rollback A",
         ])
         print("Booting explicitly rolled-back A and checking durable user data", flush=True)
         guest_cycle(qemu, disk, args.log_dir, "A", "U-A", [
