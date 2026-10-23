@@ -15,7 +15,7 @@ for d in dev proc sys run tmp media mnt boot/efi; do
 done
 
 # Avoid live-user autologin and boot initialization on the installed system.
-rm -f "$target/etc/sddm.conf.d/10-veyra-live.conf"
+rm -f "$target/etc/sddm.conf.d/zz-veyra-live.conf" "$target/etc/sddm.conf.d/zz-veyra.conf"
 rm -f "$target/etc/sudoers.d/veyra-live"
 rm -f "$target/etc/polkit-1/rules.d/49-veyra-live.rules"
 rm -f "$target/etc/runlevels/boot/veyra-live"

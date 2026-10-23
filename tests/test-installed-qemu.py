@@ -90,6 +90,9 @@ grep -q 'ext4 virtio nvme' "$target/etc/mkinitfs/mkinitfs.conf"
 test "$(cat "$target/etc/veyra/desktop")" = DESKTOP
 # Check the supported Plasma display manager is enabled.
 test -e "$target/etc/runlevels/default/sddm"
+grep -Fqx 'DisplayServer=x11' "$target/etc/sddm.conf.d/zz-veyra.conf"
+test ! -e "$target/etc/sddm.conf.d/zz-veyra-live.conf"
+! grep -q '^tty1::respawn:' "$target/etc/inittab"
 sync
 echo VEYRA_E2E_INSTALL_SUCCESS
 """.replace("DESKTOP", desktop)

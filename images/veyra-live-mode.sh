@@ -20,7 +20,8 @@ fi
 if [ "$mode" = tty ]; then
     rc-update del sddm default >/dev/null 2>&1 || :
     if [ -f /etc/inittab ]; then
-        sed -i '/^tty1::respawn:/c\\tty1::respawn:/sbin/agetty --autologin veyra 38400 tty1 linux' /etc/inittab
+        sed -i '/^tty1::respawn:/d' /etc/inittab
+        printf '%s\n' 'tty1::respawn:/sbin/agetty --autologin veyra 38400 tty1 linux' >> /etc/inittab
         telinit q 2>/dev/null || :
     fi
     touch /run/veyra-live-tty

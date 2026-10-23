@@ -30,13 +30,25 @@ test -f images/veyra-tui-install.sh
 test -f images/veyra-live-mode.sh
 grep -q 'need localmount elogind' images/veyra-live.initd
 grep -q "sed -i '/\^tty1::respawn:/d' /etc/inittab" images/veyra-live-mode.sh
+! grep -q '^tty1::respawn:' images/inittab-veyra
+grep -q 'tty1::respawn:/sbin/agetty --autologin veyra' images/veyra-live-mode.sh
+grep -q 'inittab-veyra.*etc/inittab' images/genapkovl-veyra.sh
+grep -q 'sed -i.*tty1::respawn' scripts/installer-desktop.sh
+grep -q 'DisplayServer=x11' scripts/installer-desktop.sh
+grep -q 'zz-veyra-live.conf' scripts/installer-copy.sh
 grep -q '/tmp/.X11-unix' images/veyra-live-user.sh
 grep -q 'sddm_uid=$(id -u sddm)' images/veyra-live-user.sh
-grep -q 'find images branding scripts -type f' images/mkimg.veyra.sh
+grep -q 'find images branding scripts calamares -type f' images/mkimg.veyra.sh
+grep -q 'VEYRA_TEST_CALAMARES_AUTOSTART=' images/mkimg.veyra.sh
 grep -q 'veyra-live-mode' images/genapkovl-veyra.sh
 grep -q 'tui-install.sh' images/veyra-install.sh
 grep -q 'XAUTHORITY' images/veyra-install.sh
 grep -q 'sudo -n --preserve-env' images/veyra-install.sh
+grep -q 'VEYRA_TEST_CALAMARES_AUTOSTART' images/genapkovl-veyra.sh
+grep -q 'calamares-autostart-diagnostic.sh' images/genapkovl-veyra.sh
+grep -q 'VEYRA_DIAGNOSTIC_AUTOSTART:' images/calamares-autostart-diagnostic.sh
+grep -q 'veyra-calamares-diagnostic.lock' images/calamares-autostart-diagnostic.sh
+grep -q '^lock_dir=/tmp$' images/calamares-autostart-diagnostic.sh
 grep -q 'veyra-install --tui' images/veyra-install-tui.sh
 grep -q 'NOPASSWD: ALL' images/genapkovl-veyra.sh
 grep -q '49-veyra-live.rules' images/genapkovl-veyra.sh
@@ -110,8 +122,10 @@ tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'usr/local/bin/veyra-setup'
 tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'usr/local/bin/veyra-install-tui'
 tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'usr/share/applications/veyra-testdisk.desktop'
 tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'usr/share/applications/veyra-photorec.desktop'
+tar -xOf "$tmpdir/veyra.apkovl.tar.gz" 'etc/skel/Desktop/Install Veyra Linux.desktop' | grep -qx 'Exec=/usr/local/bin/veyra-install'
+tar -tvzf "$tmpdir/veyra.apkovl.tar.gz" | grep 'etc/skel/Desktop/Install Veyra Linux.desktop$' | grep -q '^-rwxr-xr-x'
 tar -xOf "$tmpdir/veyra.apkovl.tar.gz" etc/hostname | grep -qx veyra
-tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/sddm.conf.d/10-veyra-live.conf'
+tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/sddm.conf.d/zz-veyra-live.conf'
 tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/sudoers.d/veyra-live'
 tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/polkit-1/rules.d/49-veyra-live.rules'
 tar -xOf "$tmpdir/veyra.apkovl.tar.gz" etc/sudoers.d/veyra-live | grep -qx 'veyra ALL=(root) NOPASSWD: ALL'
@@ -131,8 +145,24 @@ tar -tvzf "$tmpdir/veyra.apkovl.tar.gz" | grep 'usr/local/lib/veyra/live-mode.sh
 tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/calamares/settings.conf'
 tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/calamares/modules/locale.conf'
 tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/calamares/branding/veyra/desktop-plasma.svg'
+tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/calamares/branding/veyra/veyra-logo.svg'
 tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'usr/local/lib/veyra/installer-hardware.sh'
 tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'usr/local/lib/veyra/installer-desktop.sh'
 tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'usr/local/lib/veyra/installer-copy.sh'
+if tar -tzf "$tmpdir/veyra.apkovl.tar.gz" | grep -qx 'etc/xdg/autostart/veyra-calamares-diagnostic.desktop'; then
+    echo 'Diagnostic Calamares autostart must not enter normal live images' >&2
+    exit 1
+fi
+
+mkdir "$tmpdir/diagnostic"
+(cd "$tmpdir/diagnostic" && VEYRA_TEST_CALAMARES_AUTOSTART=1 \
+    sh "$root/images/genapkovl-veyra.sh" veyra)
+tar -tzf "$tmpdir/diagnostic/veyra.apkovl.tar.gz" \
+    | grep -qx 'etc/xdg/autostart/veyra-calamares-diagnostic.desktop'
+tar -tzf "$tmpdir/diagnostic/veyra.apkovl.tar.gz" \
+    | grep -qx 'usr/local/lib/veyra/calamares-autostart-diagnostic.sh'
+tar -xOf "$tmpdir/diagnostic/veyra.apkovl.tar.gz" \
+    etc/xdg/autostart/veyra-calamares-diagnostic.desktop \
+    | grep -qx 'Exec=/usr/local/lib/veyra/calamares-autostart-diagnostic.sh'
 
 printf 'Veyra static and overlay tests passed\n'

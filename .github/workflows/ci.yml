@@ -20,6 +20,10 @@ jobs:
         run: sh tests/test-recovery-builder.sh
       - name: Syntax-check atomic QEMU automation
         run: python3 -m py_compile tests/test-atomic-qemu.py tests/test-installed-qemu.py
+      - name: Verify Calamares GUI screen-state detection
+        run: |
+          python3 -m py_compile tests/test-calamares-gui.py tests/calamares_gui_state.py
+          python3 tests/test-calamares-gui-state.py
       - name: Verify GRUB generation-selection policies
         run: python3 tests/test-bootctl-config.py
       - name: Verify recovery artifact hashes and immutable publication

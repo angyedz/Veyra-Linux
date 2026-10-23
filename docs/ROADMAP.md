@@ -1,6 +1,6 @@
 # Veyra Linux development roadmap
 
-**Last reviewed:** 2026-10-22
+**Last reviewed:** 2026-10-23
 
 **Status:** engineering plan, not a claim that any unfinished component ships. The first public release target is **Veyra Linux Pre-Alpha**; choose its version and tag only after the release candidate passes its gates. The conventional single-root installer is an internal validation path, not a public release milestone.
 **Target:** an installed KDE-only, filesystem-neutral, atomic Veyra with **two independently administered Linux environments on one kernel**, plus separately bootable Recovery.
@@ -26,8 +26,8 @@ Parallel tracks are intentional; avoid turning prototypes on in the normal boot 
 | Area | Baseline in main / PR | Still missing |
 | --- | --- | --- |
 | Alpine 3.22, OpenRC, KDE Live ISO | Existing conventional image and installer tests | Final dual-environment installed runtime |
-| Desktop installer | PR #15 merged: KDE-only Calamares plus shell-driven blank-disk QEMU install/reboot | Graphical Calamares click-through, first Plasma login and final separate-root install |
-| Atomic boot | Offline FS-neutral staging, GRUB/initramfs selectors and QEMU automation | Passing and reviewed full A -> B -> A; authenticated, power-loss-safe updates |
+| Desktop installer | PR #15 merged; local 2026-10-23 clean ext4 qcow2 install/reboot passed with the installed X11 SDDM config, no copied Live config, and tty1 reserved | Graphical Calamares click-through and an installed SDDM greeter/session check |
+| Atomic boot | Offline FS-neutral staging, GRUB/initramfs selectors, and a local disposable ext4 QEMU run through confirmed B, failed trial C, automatic fallback to B, and explicit rollback to A; user roots were test fixtures | Signed paired system/user updates, production fallback guarantees, and power-loss-safe transactions |
 | Dual environments | PRs #8–13 **merged into `main`**: namespace probes; Alpine user-root/OpenRC PID 1; multi-ID mapping and inner `sudo`; QEMU lifecycle manager, rootfs staging, descriptor checks, pidfd safety. PR #30 is a separate shared-root multi-account authentication proof | Installed manager and login, real host privilege-boundary audit, production user storage/KDE/network integration |
 | VPN isolation | Design | veth/network policy, DNS, user VPN and kill-switch tests |
 | KDE cross-boundary launch | Design and experimental KRunner preflight in PR #8 | System-selected read-only KDE runtime, user session, safe Alt+F2, D-Bus/Wayland integration |
@@ -46,6 +46,10 @@ The first public ISO is **Veyra Linux Pre-Alpha**. It may have unfinished featur
 ### Internal installer validation (not a release)
 
 Keep the current conventional Alpine/KDE image available for development and for isolating installer, SDDM and package-repository defects. Continue to require a clean graphical install and first Plasma login before using it as the base for the dual-environment installer. Do not publish it as the Veyra Linux Pre-Alpha or imply it contains the two-environment architecture.
+
+**QEMU Live smoke check (2026-10-23):** the rebuilt internal ISO selected the X11 SDDM greeter and started the Wayland Plasma session (`sddm-helper`, `kwin_wayland` and `plasmashell` were present). This verifies the Live login path only; it does not verify the installed SDDM greeter/session.
+
+**Clean ext4 install smoke check (2026-10-23):** `tests/test-installed-qemu.py` installed the ISO into a fresh 20 GiB qcow2 disk, verified the installed SDDM configuration and absence of the Live autologin fragment, then booted the installed system successfully. This uses the shell-driven installer path and serial console; graphical Calamares interaction and the installed SDDM greeter/session remain unverified.
 
 ### Veyra Linux Pre-Alpha
 
@@ -77,7 +81,7 @@ Stable release additionally requires Stage 11 security/reliability and Stage 12 
 | **3 — User network/VPN** | Not integrated | Virtual link, independent routing/DNS/TUN and VPN tests pending |
 | **4–5 — KDE/launch paths** | Architecture and early launcher preflight | Version-locked system KDE with user-executed Plasma/KRunner still pending |
 | **6 — vpkg/glenv/Nix** | Existing component prototypes | User-root and A/B integration pending |
-| **7 — Filesystem-neutral A/B** | Independent experimental staging/boot track | Installed A → B → A with fault injection still pending |
+| **7 — Filesystem-neutral A/B** | System-only experimental ext4 QEMU cycle passed locally; fixture user roots were synthetic | Signed paired update and broader fault-injection/recovery gates remain pending |
 | **8 — Coherent KDE A/B** | Planned | Matched runtime activation/rollback pending |
 | **9 — Recovery** | Independent console VRE QEMU proof; **Guardian/Resilience design recorded** | Shared online/VRE repair engine, system A/B + user SnapCore restore, independent TTY and trusted graphical UI pending |
 | **10–12 — Installer, QA, release** | Not release-ready | Dual-root installed path and qualification pending |
@@ -220,7 +224,8 @@ Stable release additionally requires Stage 11 security/reliability and Stage 12 
 
 **Can proceed in parallel with Stages 1–6.**
 
-- [ ] Prove full installed QEMU A -> stage B -> boot B -> rollback A -> boot A on ext4 (then XFS/F2FS/Btrfs compatibility).
+- [x] System-only disposable ext4 QEMU prototype: boot confirmed A, activate and confirm B, fail trial C, automatically fall back to B, then explicitly roll back and boot A. User roots in this test are synthetic fixtures; this does not qualify the paired updater.
+- [ ] Prove the signed, installed system/user update pair on ext4 (then XFS/F2FS/Btrfs compatibility).
 - [ ] Implement verified inactive-generation package staging with an independent package database; never mutate active A.
 - [ ] Authenticate generation metadata, kernel/initramfs and update artifacts. Add limited trial boots and durable boot-success confirmation.
 - [ ] Guarantee fallback across interrupted writes, kernel panic, missing root, hangs and power loss; test actual bad deployments.
@@ -312,9 +317,9 @@ Stable release additionally requires Stage 11 security/reliability and Stage 12 
 
 ## Immediate execution order
 
-1. Fix the current SDDM/desktop boot and clean graphical-install failures in the internal ISO workflow.
+1. Finish qualifying SDDM/desktop boot and clean graphical installation in the internal ISO workflow.
 2. Install the shared user-environment runtime as the default SDDM login, reusing the merged namespace/lifecycle prototypes and authenticating multiple system accounts into one package root with private homes.
-3. Complete system A/B boot and rollback, then implement a matching user-root generation transaction for the x86_64/ext4 alpha target.
+3. Turn the system-only A/B QEMU prototype into a signed update transaction, then add matching user-root generations for the x86_64/ext4 alpha target.
 4. Replace the current in-place `apk upgrade` utility with a signed, paired-release updater that stages inactive generations, performs a health-confirmed trial boot and rolls back the pair on failure.
 5. Run a clean QEMU install → SDDM login → signed update → successful confirmation → injected failed update → automatic rollback cycle while checking user data and package selections.
 6. Choose the release version, then publish Veyra Linux Pre-Alpha only from the exact ISO and repository state that passed this cycle; document unfinished VPN, recovery, other-filesystem and physical-hardware support.

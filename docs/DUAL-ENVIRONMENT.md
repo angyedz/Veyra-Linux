@@ -74,9 +74,11 @@ package classification, command blacklist, sudo wrapper or convention.
   recovery feature and must never be implied by system A/B.
 
 This is a release requirement, not an implementation claim. The current
-`veyra-update` utility still performs in-place APK upgrades, and the current
-boot coordinator lacks a complete update transaction and automatic failed-boot
-fallback.
+`veyra-update` utility still performs in-place APK upgrades, and there is no
+complete signed system/user update transaction. A local disposable ext4 QEMU
+test has demonstrated automatic fallback from a failed system-only trial C to
+confirmed B, followed by explicit rollback to A; its user roots are synthetic
+fixtures and this does not qualify paired user-root fallback.
 
 **Do not expose** the host mount namespace, privileged Docker/container
 sockets, host D-Bus system bus, host OpenRC controls, writable sysfs,

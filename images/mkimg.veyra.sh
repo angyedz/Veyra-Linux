@@ -46,9 +46,11 @@ section_veyra_apks() {
 section_apkovl() {
     [ -n "$apkovl" ] && [ -n "$hostname" ] || return 0
     _veyra_apkovl_id=$(
-        find images branding scripts -type f -exec cksum '{}' \; |
-            LC_ALL=C sort |
-            checksum
+        {
+            printf 'VEYRA_TEST_CALAMARES_AUTOSTART=%s\n' \
+                "${VEYRA_TEST_CALAMARES_AUTOSTART:-0}"
+            find images branding scripts calamares -type f -exec cksum '{}' \;
+        } | LC_ALL=C sort | checksum
     )
     build_section apkovl "$hostname" "veyra-apkovl-v2-$_veyra_apkovl_id"
 }

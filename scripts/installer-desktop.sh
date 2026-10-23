@@ -12,8 +12,18 @@ case "$choice" in
 esac
 
 # Plasma is already in the live image; retain the tested SDDM session.
+if [ -f "$target/etc/inittab" ]; then
+    # PID 1 reads inittab before SDDM starts; do not leave a respawning getty
+    # holding the VT that SDDM needs for its authenticated session.
+    sed -i '/^tty1::respawn:/d' "$target/etc/inittab"
+fi
 chroot "$target" rc-update add sddm default
 
 mkdir -p "$target/etc/veyra"
+mkdir -p "$target/etc/sddm.conf.d"
+cat > "$target/etc/sddm.conf.d/zz-veyra.conf" <<'SDDM'
+[General]
+DisplayServer=x11
+SDDM
 printf '%s\n' "$choice" > "$target/etc/veyra/desktop"
 echo 'Desktop installed: KDE Plasma (display manager: SDDM)'

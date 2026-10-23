@@ -48,6 +48,9 @@ cp "$root/scripts/bootstrap.sh" usr/local/lib/veyra/bootstrap.sh
 cp "$root/scripts/setup-pkgrepo.sh" usr/local/lib/veyra/setup-pkgrepo.sh
 cp "$root/scripts/compat.sh" usr/local/lib/veyra/compat.sh
 cp "$root/scripts/smoke.sh" usr/local/lib/veyra/smoke.sh
+# Reserve tty1 for SDDM before PID 1 reads inittab. BusyBox init may keep
+# already-parsed respawn entries even after telinit asks it to reread inittab.
+cp "$root/images/inittab-veyra" etc/inittab
 # Development-only Go manager is kept separate from the original glenv
 # executable and installer. Neither boot helper is enabled automatically.
 cp "$root/scripts/glenv-boot-pin.sh" usr/local/lib/veyra/glenv-boot-pin.sh
@@ -68,12 +71,27 @@ cp "$root/images/veyra-tui-install.sh" usr/local/lib/veyra/tui-install.sh
 cp "$root/images/veyra-live-user.sh" usr/local/lib/veyra/live-user.sh
 cp "$root/images/veyra-install.sh" usr/local/bin/veyra-install
 cp "$root/images/veyra-install-tui.sh" usr/local/bin/veyra-install-tui
+if [ "${VEYRA_TEST_CALAMARES_AUTOSTART:-0}" = 1 ]; then
+    # Diagnostic-only ISO path to isolate GUI launch failures from desktop input.
+    cp "$root/images/calamares-autostart-diagnostic.sh" \
+        usr/local/lib/veyra/calamares-autostart-diagnostic.sh
+    chmod 755 usr/local/lib/veyra/calamares-autostart-diagnostic.sh
+    mkdir -p etc/xdg/autostart
+    cat > etc/xdg/autostart/veyra-calamares-diagnostic.desktop <<'DIAGNOSTIC'
+[Desktop Entry]
+Type=Application
+Name=Veyra Calamares diagnostic launch
+Exec=/usr/local/lib/veyra/calamares-autostart-diagnostic.sh
+Terminal=false
+DIAGNOSTIC
+fi
 cp "$root/scripts/installer-copy.sh" usr/local/lib/veyra/installer-copy.sh
 cp "$root/scripts/installer-prepare.sh" usr/local/lib/veyra/installer-prepare.sh
 cp "$root/scripts/installer-desktop.sh" usr/local/lib/veyra/installer-desktop.sh
 cp "$root/scripts/installer-hardware.sh" usr/local/lib/veyra/installer-hardware.sh
 cp "$root/scripts/hardware-detect.sh" usr/local/lib/veyra/hardware-detect.sh
 cp "$root/calamares/branding/veyra/"*.svg etc/calamares/branding/veyra/
+cp "$root/branding/veyra-logo.svg" etc/calamares/branding/veyra/veyra-logo.svg
 cp "$root/calamares/settings.conf" etc/calamares/settings.conf
 cp "$root/calamares/modules/"*.conf etc/calamares/modules/
 cp "$root/calamares/branding/veyra/branding.desc" etc/calamares/branding/veyra/branding.desc
@@ -92,7 +110,7 @@ exec sh /usr/local/lib/veyra/bootstrap.sh "$@"
 SETUP
 chmod 755 usr/local/bin/veyra-setup
 
-cat > etc/sddm.conf.d/10-veyra-live.conf <<'SDDM'
+cat > etc/sddm.conf.d/zz-veyra-live.conf <<'SDDM'
 [General]
 DisplayServer=x11
 
@@ -124,7 +142,7 @@ cat > usr/share/applications/veyra-install.desktop <<'DESKTOP'
 Type=Application
 Name=Install Veyra Linux
 Comment=Install Veyra Linux onto your computer
-Exec=veyra-install
+Exec=/usr/local/bin/veyra-install
 Icon=drive-harddisk
 Terminal=false
 Categories=System;

@@ -19,7 +19,7 @@ rsync -aHAX --numeric-ids --one-file-system \
     --exclude='/run/***' --exclude='/tmp/***' \
     --exclude='/media/***' --exclude='/mnt/***' \
     --exclude='/home/veyra/***' --exclude='/var/cache/apk/***' \
-    --exclude='/etc/sddm.conf.d/10-veyra-live.conf' \
+    --exclude='/etc/sddm.conf.d/zz-veyra-live.conf' \
     --exclude='/etc/runlevels/boot/veyra-live' \
     / "$target/"
 test -f "$target/etc/apk/world"

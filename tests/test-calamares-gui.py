@@ -14,6 +14,8 @@ import sys
 import tempfile
 import time
 
+from calamares_gui_state import is_live_desktop
+
 
 class Gui:
     def __init__(self, window, output_dir, label):
@@ -22,6 +24,7 @@ class Gui:
         self.label = label
         self.serial_log_path = output_dir / f"{label}-serial.log"
         self.last_text = ""
+        self.wake_toggle = False
 
     def command(self, *args, check=True, timeout=30):
         result = subprocess.run(args, text=True, capture_output=True, timeout=timeout)
@@ -33,8 +36,26 @@ class Gui:
         return result
 
     def screenshot(self, name=None):
+        geometry = self.command(
+            "xdotool", "getwindowgeometry", "--shell", str(self.window)
+        ).stdout
+        size = {
+            key: int(value)
+            for key, value in (line.split("=", 1) for line in geometry.splitlines()
+                               if "=" in line)
+        }
+        self.wake_toggle = not self.wake_toggle
+        wake_x = size["WIDTH"] - (32 if self.wake_toggle else 33)
+        wake_y = size["HEIGHT"] - 64
+        self.command("xdotool", "mousemove", "--sync", "--window", str(self.window),
+                     str(wake_x), str(wake_y))
         path = self.output_dir / (name or f"{self.label}-screen.png")
-        self.command("import", "-window", str(self.window), str(path), timeout=30)
+        if os.environ.get("VEYRA_QEMU_CAPTURE_ROOT") == "1":
+            crop = (f"{size['WIDTH']}x{size['HEIGHT']}+{size['X']}+{size['Y']}")
+            self.command("import", "-window", "root", "-crop", crop,
+                         "+repage", str(path), timeout=30)
+        else:
+            self.command("import", "-window", str(self.window), str(path), timeout=30)
         result = self.command("tesseract", str(path), "stdout", "--psm", "11", "tsv")
         words, boxes = [], []
         for row in csv.DictReader(result.stdout.splitlines(), delimiter="\t"):
@@ -81,6 +102,15 @@ class Gui:
                         "SDDM did not produce the live Plasma desktop; "
                         f"serial tail: {serial[-2400:]}"
                     )
+            if (self.label == "live"
+                    and description == "Calamares welcome page from diagnostic autostart"
+                    and self.serial_log_path.is_file()):
+                serial = self.serial_log_path.read_text(encoding="utf-8", errors="replace")
+                if "VEYRA_DIAGNOSTIC_AUTOSTART: wrapper exited status=" in serial:
+                    raise RuntimeError(
+                        "Diagnostic Calamares launcher exited before the welcome page; "
+                        f"guest serial tail: {serial[-4000:]}"
+                    )
             time.sleep(2)
         raise RuntimeError(
             f"Timed out waiting for {description}; last visible text: {self.last_text[:1200]}"
@@ -88,21 +118,34 @@ class Gui:
 
     def click_word(self, label, lower_right=False, double=False):
         text, boxes = self.screenshot()
+        geometry = self.command(
+            "xdotool", "getwindowgeometry", "--shell", str(self.window)
+        ).stdout
+        size = {
+            key: int(value)
+            for key, value in (line.split("=", 1) for line in geometry.splitlines()
+                               if "=" in line)
+        }
         matches = [box for box in boxes if box[0].lower().strip(".,:;!?") == label.lower()]
         if lower_right:
-            matches = [box for box in matches if box[1] >= 0.55 * 900 and box[2] >= 0.65 * 600]
+            matches = [box for box in matches
+                       if box[1] >= 0.55 * size["WIDTH"]
+                       and box[2] >= 0.65 * size["HEIGHT"]]
         if not matches:
             raise RuntimeError(f"Could not find {label!r}; visible text: {text[:1200]}")
         word, x, y, width, height = sorted(matches, key=lambda box: (box[2], box[1]))[-1]
+        self.click_at(x + max(width // 2, 1), y + max(height // 2, 1), double=double)
+        print(f"{self.label}: clicked {word!r} at {x},{y}", flush=True)
+
+    def click_at(self, x, y, double=False):
         self.focus()
-        self.command("xdotool", "mousemove", "--window", str(self.window),
-                     str(x + max(width // 2, 1)), str(y + max(height // 2, 1)))
+        self.command("xdotool", "mousemove", "--sync", "--window", str(self.window),
+                     str(x), str(y))
         if double:
             self.command("xdotool", "click", "--repeat", "2", "--delay", "250", "1")
         else:
             self.command("xdotool", "click", "1")
         time.sleep(2)
-        print(f"{self.label}: clicked {word!r} at {x},{y}", flush=True)
 
     def click_next(self):
         self.wait_text(["Next"], 60, "Calamares navigation")
@@ -126,8 +169,15 @@ def wait_window(title, process, timeout=360):
 
 def boot(qemu, disk, log_path, iso=None):
     command = [
-        qemu, "-name", "veyra-calamares-e2e", "-machine", "accel=tcg",
-        "-m", "6144", "-smp", "4", "-vga", "virtio", "-display", "sdl",
+        qemu, "-name", "veyra-calamares-e2e", "-machine",
+        f"accel={os.environ.get('VEYRA_QEMU_ACCEL', 'tcg')}",
+        # A USB tablet reports absolute coordinates. QEMU's default relative
+        # PS/2 mouse grabs and recenters the pointer on the first click, which
+        # sends desktop-icon clicks to the middle of the guest screen.
+        "-usb", "-device", "usb-tablet",
+        "-m", "6144", "-smp", "4", "-vga",
+        os.environ.get("VEYRA_QEMU_VGA", "virtio"), "-display",
+        os.environ.get("VEYRA_QEMU_DISPLAY", "sdl"),
         "-monitor", "none", "-serial", f"file:{log_path}", "-no-reboot",
         "-nic", "user,model=virtio-net-pci",
         "-drive", f"file={disk},format=qcow2,if=virtio", "-boot", "c" if iso is None else "d",
@@ -160,11 +210,32 @@ def launch_calamares(gui):
     gui.wait_text(["Install Veyra Linux", "Install Veyra"], 900,
                   "live Plasma desktop and installer shortcut")
     time.sleep(10)
-    gui.key("alt+F2")
-    time.sleep(2)
-    gui.type_text("veyra-install")
+    # Plasma is configured for double-click activation. The QEMU USB tablet
+    # preserves the absolute click position across the guest input.
+    gui.click_word("Install", double=True)
+    try:
+        gui.wait_text(["Welcome", "Location"], 30, "Calamares welcome page")
+        return "desktop"
+    except RuntimeError as desktop_error:
+        gui.screenshot("live-after-desktop-timeout.png")
+        print(f"live: desktop shortcut did not open Calamares: {desktop_error}", flush=True)
+
+    # Use the visible application launcher to separate desktop-shortcut
+    # handling from the installed system-menu entry and its Exec command.
+    gui.click_at(24, 796)
+    time.sleep(1)
+    gui.type_text("Install Veyra Linux")
+    gui.screenshot("live-application-menu-search.png")
     gui.key("Return")
-    gui.wait_text(["Welcome", "Location"], 180, "Calamares welcome page")
+    try:
+        gui.wait_text(["Welcome", "Location"], 90,
+                      "Calamares welcome page via Plasma application launcher")
+    except RuntimeError as error:
+        serial = ""
+        if gui.serial_log_path.is_file():
+            serial = gui.serial_log_path.read_text(encoding="utf-8", errors="replace")[-3000:]
+        raise RuntimeError(f"{error}; guest serial tail: {serial}") from error
+    return "application-menu"
 
 
 def install_via_gui(gui):
@@ -187,18 +258,62 @@ def install_via_gui(gui):
         gui.type_text(value)
     gui.click_next()
     gui.wait_text(["Summary"], 90, "installation summary")
-    gui.click_word("Install", lower_right=True)
+    gui.screenshot("calamares-summary-before-install.png")
+    try:
+        gui.click_word("Install", lower_right=True)
+    except RuntimeError:
+        # OCR can miss the button icon or merge its label with Summary text.
+        geometry = gui.command(
+            "xdotool", "getwindowgeometry", "--shell", str(gui.window)
+        ).stdout
+        size = {
+            key: int(value)
+            for key, value in (line.split("=", 1) for line in geometry.splitlines()
+                               if "=" in line)
+        }
+        x = round(size["WIDTH"] * 0.783)
+        # Summary expands Calamares vertically by about one row; target the
+        # lower primary button rather than the same y-position as Next.
+        y = round(size["HEIGHT"] * 0.91)
+        gui.click_at(x, y)
+        print(f"live: clicked summary primary button at {x},{y}", flush=True)
+    gui.screenshot("calamares-summary-after-install-click.png")
     deadline = time.monotonic() + 3300
     confirmation_handled = False
     completion_terms = ("restart", "finished", "all done", "installation complete")
     while time.monotonic() < deadline:
         text, _ = gui.screenshot()
         lowered = text.lower()
+        installer_restarted = (
+            "welcome to the veyra linux development installer" in lowered
+        )
+        returned_to_desktop = is_live_desktop(lowered)
+        if confirmation_handled and (installer_restarted or returned_to_desktop):
+            serial = ""
+            if gui.serial_log_path.is_file():
+                serial = gui.serial_log_path.read_text(
+                    encoding="utf-8", errors="replace"
+                )[-3000:]
+            if installer_restarted:
+                raise RuntimeError(
+                    "Calamares returned to its Welcome page after disk changes "
+                    f"were confirmed; guest serial tail: {serial}"
+                )
+            print(
+                "live: Calamares closed and returned to the live desktop after "
+                "disk changes were confirmed; checking the installed disk next",
+                flush=True,
+            )
+            return True
         if any(term in lowered for term in completion_terms):
             break
-        if (not confirmation_handled and
-                ("are you sure" in lowered or "confirm" in lowered)):
-            gui.click_word("Install", lower_right=True)
+        if (not confirmation_handled and (
+                "are you sure" in lowered
+                or "confirm" in lowered
+                or "continue with installation" in lowered
+                or "install now" in lowered)):
+            gui.click_word("Now")
+            print("live: confirmed Calamares disk changes", flush=True)
             confirmation_handled = True
         time.sleep(5)
     else:
@@ -207,7 +322,7 @@ def install_via_gui(gui):
     for label in ("Restart", "Done", "Finish", "Quit"):
         try:
             gui.click_word(label, lower_right=True)
-            return
+            return False
         except RuntimeError:
             continue
     raise RuntimeError(f"No completion button found: {gui.last_text[:1200]}")
@@ -231,6 +346,10 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("iso", type=pathlib.Path)
     parser.add_argument("--output-dir", type=pathlib.Path, default=pathlib.Path("calamares-gui-e2e"))
+    parser.add_argument("--launch-only", action="store_true",
+                        help="boot the Live desktop and verify the installer welcome page")
+    parser.add_argument("--autostart-diagnostic", action="store_true",
+                        help="expect Calamares to launch from a diagnostic-only ISO autostart")
     args = parser.parse_args()
     if not args.iso.is_file():
         parser.error("ISO file does not exist")
@@ -247,24 +366,42 @@ def main():
         process, log = boot(qemu, disk, live_log_path, args.iso.resolve())
         try:
             gui = Gui(wait_window("veyra-calamares-e2e", process), args.output_dir, "live")
-            launch_calamares(gui)
-            install_via_gui(gui)
-            try:
-                process.wait(timeout=180)
-            except subprocess.TimeoutExpired:
-                gui.key("ctrl+alt+delete")
-                process.wait(timeout=60)
+            if args.autostart_diagnostic:
+                gui.wait_text(["Welcome", "Location"], 900,
+                              "Calamares welcome page from diagnostic autostart")
+                launch_method = "diagnostic-autostart"
+            else:
+                launch_method = launch_calamares(gui)
+            if args.launch_only:
+                print(f"VEYRA_CALAMARES_LAUNCH_OK method={launch_method}", flush=True)
+                return
+            early_close = install_via_gui(gui)
+            if early_close:
+                stop(process, log)
+                process, log = None, None
+            else:
+                try:
+                    process.wait(timeout=180)
+                except subprocess.TimeoutExpired:
+                    gui.key("ctrl+alt+delete")
+                    process.wait(timeout=60)
         finally:
-            stop(process, log)
+            if process is not None:
+                stop(process, log)
 
         installed_log_path = args.output_dir / "installed-serial.log"
         process, log = boot(qemu, disk, installed_log_path)
         try:
             gui = Gui(wait_window("veyra-calamares-e2e", process), args.output_dir, "installed")
             first_plasma_login(gui)
-            print("VEYRA_CALAMARES_GUI_INSTALL_AND_PLASMA_LOGIN_OK", flush=True)
+            print("VEYRA_INSTALLED_PLASMA_LOGIN_OK", flush=True)
         finally:
             stop(process, log)
+        if early_close:
+            raise RuntimeError(
+                "The installed system booted and Plasma login worked, but "
+                "Calamares closed before showing its completion page."
+            )
 
 
 if __name__ == "__main__":

@@ -35,7 +35,7 @@ with tempfile.TemporaryDirectory(prefix="veyra-desktop-diagnostics-") as tmp:
                 "id sddm; ls -ld /run/user/* /dev/dri/* || true",
                 "ps -ef | grep -E 'sddm|Xorg|kwin|plasmashell' || true",
                 "ls -l /usr/share/wayland-sessions /usr/share/xsessions || true",
-                "cat /etc/sddm.conf.d/10-veyra-live.conf",
+                "cat /etc/sddm.conf.d/zz-veyra-live.conf",
                 "cat /etc/sddm.conf.d/plasma-wayland.conf 2>/dev/null || true",
                 "cat /etc/pam.d/sddm 2>/dev/null || true",
                 "cat /etc/init.d/sddm /etc/conf.d/sddm 2>/dev/null || true",
