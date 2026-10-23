@@ -1,6 +1,15 @@
 name: Veyra Recovery independent boot
 
 on:
+  pull_request:
+    paths:
+      - 'scripts/veyra-recovery-init.sh'
+      - 'scripts/build-veyra-recovery.sh'
+      - 'scripts/veyra-bootctl.py'
+      - 'scripts/veyra-deployment.sh'
+      - 'update/**'
+      - 'tests/test-recovery-qemu.py'
+      - '.github/workflows/recovery-e2e.yml'
   push:
     branches: [main]
     paths:
@@ -44,6 +53,31 @@ jobs:
               test -s /out/vmlinuz-veyra-recovery
             '
           ls -lh "$RUNNER_TEMP/veyra-recovery"
+      - name: Build Recovery with the signed updater runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            -v "$PWD:/work:ro" \
+            -v "$RUNNER_TEMP/veyra-recovery:/out" \
+            alpine:3.22 sh -ec '
+              apk add --no-cache linux-lts mkinitfs ca-certificates grub util-linux python3 rsync go
+              mkdir -p /usr/sbin /usr/libexec/veyra /etc/veyra/trust
+              cd /work/update
+              CGO_ENABLED=0 go build -trimpath -o /usr/sbin/veyra-atomic-update ./cmd/veyra-atomic-update
+              chmod 0755 /usr/sbin/veyra-atomic-update
+              install -m755 /work/scripts/veyra-bootctl.py /usr/libexec/veyra/bootctl
+              install -m755 /work/scripts/veyra-deployment.sh /usr/libexec/veyra/veyra-deployment.sh
+              printf "%s\n" "https://updates.example.invalid/stable/manifest.json" > /etc/veyra/update-manifest-url
+              printf "%064x\n" 1 > /etc/veyra/trust/update-ed25519.pub
+              kernel=$(basename "$(find /lib/modules -mindepth 1 -maxdepth 1 -type d -print -quit)")
+              test -n "$kernel"
+              sh /work/scripts/build-veyra-recovery.sh "$kernel" /out/initramfs-veyra-recovery-updater
+              cp /boot/vmlinuz-lts /out/vmlinuz-veyra-recovery-updater
+              test -s /out/initramfs-veyra-recovery-updater
+              test -s /out/vmlinuz-veyra-recovery-updater
+            '
+          ls -lh "$RUNNER_TEMP/veyra-recovery"
       - name: Verify recovery really boots as PID 1 in diskless QEMU
         shell: bash
         run: |
@@ -53,17 +87,25 @@ jobs:
             "$RUNNER_TEMP/veyra-recovery/vmlinuz-veyra-recovery" \
             "$RUNNER_TEMP/veyra-recovery/initramfs-veyra-recovery" \
             --log "$RUNNER_TEMP/veyra-recovery/serial.log"
+          python3 tests/test-recovery-qemu.py \
+            "$RUNNER_TEMP/veyra-recovery/vmlinuz-veyra-recovery-updater" \
+            "$RUNNER_TEMP/veyra-recovery/initramfs-veyra-recovery-updater" \
+            --expect-update-menu \
+            --log "$RUNNER_TEMP/veyra-recovery/serial-updater.log"
       - name: Show serial log when recovery boot fails
         if: failure()
         run: |
           if [ -f "$RUNNER_TEMP/veyra-recovery/serial.log" ]; then
             tail -n 180 "$RUNNER_TEMP/veyra-recovery/serial.log"
           fi
+          if [ -f "$RUNNER_TEMP/veyra-recovery/serial-updater.log" ]; then
+            tail -n 180 "$RUNNER_TEMP/veyra-recovery/serial-updater.log"
+          fi
       - name: Preserve independent boot diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: veyra-recovery-serial-log
-          path: ${{ runner.temp }}/veyra-recovery/serial.log
+          path: ${{ runner.temp }}/veyra-recovery/serial*.log
           if-no-files-found: ignore
           retention-days: 7

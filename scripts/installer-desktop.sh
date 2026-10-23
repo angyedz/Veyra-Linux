@@ -12,8 +12,31 @@ case "$choice" in
 esac
 
 # Plasma is already in the live image; retain the tested SDDM session.
+if [ -f "$target/etc/inittab" ]; then
+    # PID 1 reads inittab before SDDM starts; do not leave a respawning getty
+    # holding the VT that SDDM needs for its authenticated session.
+    sed -i '/^tty1::respawn:/d' "$target/etc/inittab"
+fi
 chroot "$target" rc-update add sddm default
+chroot "$target" rc-update add openrc-settingsd default
+
+# Alpine's sddm-openrc start hook waits briefly for /run/user/<sddm-uid>.
+# The Live image creates it in its ephemeral veyra-live service; installed
+# systems need a small service to prepare it after elogind starts.
+scriptdir=$(CDPATH='' cd "$(dirname "$0")" && pwd)
+runtime_service="$scriptdir/veyra-sddm-runtime.initd"
+if [ ! -f "$runtime_service" ] || [ -L "$runtime_service" ]; then
+    echo 'Missing safe SDDM runtime service.' >&2
+    exit 1
+fi
+install -m 0755 "$runtime_service" "$target/etc/init.d/veyra-sddm-runtime"
+chroot "$target" rc-update add veyra-sddm-runtime default
 
 mkdir -p "$target/etc/veyra"
+mkdir -p "$target/etc/sddm.conf.d"
+cat > "$target/etc/sddm.conf.d/zz-veyra.conf" <<'SDDM'
+[General]
+DisplayServer=x11
+SDDM
 printf '%s\n' "$choice" > "$target/etc/veyra/desktop"
 echo 'Desktop installed: KDE Plasma (display manager: SDDM)'

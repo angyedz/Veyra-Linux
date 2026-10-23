@@ -19,8 +19,18 @@ strings:
   supportUrl: https://github.com/angyedz/Veyra-Linux/issues
   knownIssuesUrl: https://github.com/angyedz/Veyra-Linux/issues
   releaseNotesUrl: https://github.com/angyedz/Veyra-Linux
+images:
+  productIcon: veyra-logo.svg
+  productLogo: veyra-logo.svg
+  productWelcome: desktop-plasma.svg
 style:
   SidebarBackground: "#111827"
   SidebarText: "#E5E7EB"
   SidebarTextCurrent: "#FFFFFF"
   SidebarBackgroundCurrent: "#2563EB"
+slideshow:
+  - /etc/calamares/branding/veyra/desktop-plasma.svg
+uploadServer:
+  type: none
+  url: ""
+  sizeLimit: -1

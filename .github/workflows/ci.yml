@@ -12,6 +12,8 @@ jobs:
         run: sh tests/static.sh
       - name: Test Calamares Xauthority, diagnostics and no-password fallback
         run: sh tests/test-installer-launch.sh
+      - name: Route detected hardware support into the installed target
+        run: sh tests/test-installer-hardware.sh
       - name: Audit rootless user-environment preflight and negative paths
         run: sh tests/test-user-env-prototype.sh
       - name: Test ISO artifact integrity verifier
@@ -20,6 +22,10 @@ jobs:
         run: sh tests/test-recovery-builder.sh
       - name: Syntax-check atomic QEMU automation
         run: python3 -m py_compile tests/test-atomic-qemu.py tests/test-installed-qemu.py
+      - name: Verify Calamares GUI screen-state detection
+        run: |
+          python3 -m py_compile tests/test-calamares-gui.py tests/calamares_gui_state.py
+          python3 tests/test-calamares-gui-state.py
       - name: Verify GRUB generation-selection policies
         run: python3 tests/test-bootctl-config.py
       - name: Verify recovery artifact hashes and immutable publication
@@ -51,9 +57,9 @@ jobs:
         run: apk update
       - name: Validate GPU and CPU packages in Alpine repositories
         run: |
-          apk add --simulate intel-ucode linux-firmware-i915 linux-firmware-xe mesa-vulkan-intel intel-media-driver
-          apk add --simulate amd-ucode linux-firmware-amdgpu linux-firmware-radeon mesa-vulkan-ati
-          apk add --simulate linux-firmware-nvidia mesa-vulkan-nouveau
+          apk add --simulate intel-ucode linux-firmware-i915 linux-firmware-xe mesa-dri-gallium mesa-vulkan-intel intel-media-driver libva-intel-driver
+          apk add --simulate amd-ucode linux-firmware-amdgpu linux-firmware-radeon mesa-dri-gallium mesa-vulkan-ati mesa-va-gallium
+          apk add --simulate linux-firmware-nvidia mesa-dri-gallium mesa-vulkan-nouveau mesa-va-gallium
       - name: Verify native Nix package availability
         run: apk add --no-cache nix nix-openrc && nix --version
 
@@ -93,7 +99,7 @@ jobs:
       - name: Install vpkg and veyra-glenv using verified APK signatures
         run: |
           apk update
-          apk add --no-cache vpkg veyra-glenv
+          apk add --no-cache vpkg@veyra veyra-glenv@veyra
           command -v vpkg
           command -v veyra-glenv
           apk info -e vpkg
@@ -102,12 +108,21 @@ jobs:
       - name: Install the signed Veyra desktop and AppCenter
         run: |
           set -eu
-          apk add --no-cache veyra-meta veyra-appcenter
+          apk add --no-cache veyra-meta@veyra veyra-appcenter@veyra
           apk info -e veyra-meta
           apk info -e veyra-appcenter
           command -v veyra-appcenter
           test -s /usr/share/veyra/appcenter/main.qml
           test -s /usr/share/veyra/appcenter/backend.py
+      - name: Verify installed Veyra repository and signed update path
+        run: |
+          set -eu
+          repo='@veyra https://raw.githubusercontent.com/angyedz/veyra-pkgrepo/main/stable/v1'
+          grep -Fqx "$repo" /etc/apk/repositories
+          test -s /etc/apk/keys/veyra.rsa.pub
+          apk update
+          apk upgrade --simulate
+          apk policy veyra-appcenter
       - name: Launch signed AppCenter from APK installation
         run: |
           set +e
@@ -407,11 +422,29 @@ jobs:
         with:
           go-version: '1.23'
           cache: false
-      - name: Test vpkg native engine selection and atomic write guard
+      - name: Test vpkg user-environment boundary and native engine selection
         working-directory: vpkg
         run: |
           go test -count=1 ./...
           go vet ./...
+
+  paired-update-manifest:
+    name: Signed paired-update manifest verification
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: false
+      - name: Verify signed release metadata parser and compatibility gates
+        working-directory: update
+        run: |
+          go test -count=1 ./...
+          go vet ./...
+          go build ./cmd/veyra-update-verify
+          go build ./cmd/veyra-atomic-update
 
   veyra-initramfs:
     name: Build filesystem-neutral Alpine A/B initramfs selector
@@ -429,6 +462,7 @@ jobs:
           sh -n /tmp/veyra-init
           grep -q 'Veyra: booting deployment' /tmp/veyra-init
           grep -q 'veyra_deployment' /tmp/veyra-init
+          grep -q 'veyra_user_environment' /tmp/veyra-init
           sh -n scripts/veyra-initramfs-select.sh
           shellcheck -s sh scripts/build-veyra-init.sh
           test -x /tmp/veyra-init

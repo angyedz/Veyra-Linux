@@ -38,8 +38,10 @@ fi
 log="${XDG_CACHE_HOME:-$HOME/.cache}/veyra-calamares.log"
 mkdir -p "$(dirname "$log")"
 run_calamares() {
-    sudo -n --preserve-env=DISPLAY,WAYLAND_DISPLAY,XDG_RUNTIME_DIR,DBUS_SESSION_BUS_ADDRESS,QT_QPA_PLATFORM,XAUTHORITY \
-        /usr/bin/calamares
+    # Calamares runs privileged. Use Xwayland for this root Qt process because
+    # Qt's Wayland backend rejects root-owned clients in a user session.
+    sudo -n --preserve-env=DISPLAY,WAYLAND_DISPLAY,XDG_RUNTIME_DIR,DBUS_SESSION_BUS_ADDRESS,XAUTHORITY \
+        env QT_QPA_PLATFORM=xcb /usr/bin/calamares
 }
 if run_calamares >"$log" 2>&1; then
     exit 0

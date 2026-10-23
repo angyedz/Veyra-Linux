@@ -73,7 +73,7 @@ fi
 # Require a distinct persistent mount with no user-controlled nested mounts.
 bad_mount=/mnt/veyra-user/.veyra-invalid-mount-probe
 /bin/busybox mkdir -p "$bad_mount"
-/bin/busybox chown 100000:100000 "$bad_mount"
+/bin/busybox chown 300000:300000 "$bad_mount"
 /bin/busybox mount -t tmpfs tmpfs "$bad_mount"
 if output=$(/host-supervisor start 2>&1); then
     fail 'manager accepted a nested user-rootfs mount'
@@ -103,7 +103,7 @@ echo 'VEYRA_STAGE1_ROOTFS_REJECT_UNMAPPED_OWNER'
 
 # Block devices are never accepted from the user-owned persistent rootfs.
 /bin/busybox mknod -m 0600 /mnt/veyra-user/dev/.veyra-invalid-block b 8 0
-/bin/busybox chown 100000:100000 /mnt/veyra-user/dev/.veyra-invalid-block
+/bin/busybox chown 300000:300000 /mnt/veyra-user/dev/.veyra-invalid-block
 if output=$(/host-supervisor start 2>&1); then
     fail 'manager accepted a block device in the user rootfs'
 fi
@@ -117,7 +117,7 @@ echo 'VEYRA_STAGE1_ROOTFS_REJECT_BLOCK_DEVICE'
 # Only the explicitly mapped, test-only sudo binary may retain setuid.
 bad_suid=/mnt/veyra-user/home/veyrauser/.veyra-invalid-suid-probe
 /bin/busybox touch "$bad_suid"
-/bin/busybox chown 100000:100000 "$bad_suid"
+/bin/busybox chown 300000:300000 "$bad_suid"
 /bin/busybox chmod 4755 "$bad_suid"
 if output=$(/host-supervisor start 2>&1); then
     fail 'manager accepted an unexpected setuid executable'
@@ -139,7 +139,7 @@ init_escape=/tmp/.veyra-stage1-init-escape
 /bin/busybox mv /mnt/veyra-user/sbin/init "$init_backup"
 /bin/busybox ln -s ../../../../tmp/.veyra-stage1-init-escape \
     /mnt/veyra-user/sbin/init
-/bin/busybox chown -h 100000:100000 /mnt/veyra-user/sbin/init
+/bin/busybox chown -h 300000:300000 /mnt/veyra-user/sbin/init
 if output=$(/host-supervisor start 2>&1); then
     fail 'manager resolved /sbin/init outside the user rootfs'
 fi
@@ -155,12 +155,18 @@ echo 'VEYRA_STAGE1_ROOTFS_REJECT_INIT_ESCAPE'
 first=$(/host-supervisor start)
 case "$first" in RUNNING\ pid=*\ count=*) ;; *) fail "first start failed: $first" ;; esac
 echo "VEYRA_STAGE1_FIRST_RUNNING $first"
-status=$(/host-supervisor status)
+if status=$(/host-supervisor status); then :; else
+    fail "status request failed while running: $status"
+fi
 if [ "$status" != "$first" ]; then fail "status disagreed with running start: $status"; fi
 echo "VEYRA_STAGE1_STATUS_RUNNING $status"
-stopped=$(/host-supervisor stop)
+if stopped=$(/host-supervisor stop); then :; else
+    fail "stop request failed: $stopped"
+fi
 if [ "$stopped" != "STOPPED" ]; then fail "stop failed: $stopped"; fi
-status=$(/host-supervisor status)
+if status=$(/host-supervisor status); then :; else
+    fail "status request failed after stop: $status"
+fi
 if [ "$status" != "STOPPED" ]; then fail "status after stop was $status"; fi
 echo 'VEYRA_STAGE1_STATUS_STOPPED'
 
@@ -175,7 +181,9 @@ fi
 /bin/busybox kill -KILL "$user_pid"
 crash_seen=0
 for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
-    status=$(/host-supervisor status)
+    if status=$(/host-supervisor status); then :; else
+        fail "status request failed while checking nested crash: $status"
+    fi
     case "$status" in FAILED*) crash_seen=1; break ;; esac
     /bin/busybox sleep 1
 done

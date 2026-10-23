@@ -1,19 +1,30 @@
 #!/sbin/openrc-run
-# Experimental A/B boot success marker. Runs after system services reach the
-# default runlevel, confirming a GRUB one-shot candidate only after OpenRC boot.
+# Experimental A/B boot success marker. Runs late in the default runlevel and
+# confirms only the deployment named by the running kernel command line.
 description="Confirm booted Veyra deployment and retain previous fallback"
-command=/usr/local/sbin/veyra-bootctl
-command_args="--store /var/lib/veyra/store confirm"
+command=/usr/libexec/veyra/bootctl
 command_background=no
 supervisor=supervise-daemon
 
 depend() {
     need localmount
-    after bootmisc
+    after bootmisc sddm
 }
 
 start() {
     ebegin "Confirming Veyra OS deployment"
-    "$command" --store /var/lib/veyra/store confirm
+    if [ ! -r /etc/veyra/deployment-id ]; then
+        eend 1 "missing deployment identity"
+        return 1
+    fi
+    deployment=$(cat /etc/veyra/deployment-id) || {
+        eend 1 "cannot read deployment identity"
+        return 1
+    }
+    if ! rc-service sddm status >/dev/null 2>&1; then
+        eend 1 "SDDM did not reach a running state"
+        return 1
+    fi
+    "$command" --store /var/lib/veyra/store confirm "$deployment"
     eend $?
 }

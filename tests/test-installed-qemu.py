@@ -31,6 +31,7 @@ test -b "$disk"
 test "$(cat /sys/block/vda/removable)" = 0
 test -e /dev/sr0
 apk info -e veyra-calamares
+apk info -e veyra-update
 parted -s "$disk" mklabel msdos
 parted -s "$disk" mkpart primary ext4 1MiB 100%
 parted -s "$disk" set 1 boot on
@@ -49,8 +50,27 @@ mount --rbind /sys "$target/sys"
 mount --make-rslave "$target/sys"
 mount -t tmpfs tmpfs "$target/run"
 /usr/local/lib/veyra/installer-prepare.sh "$target"
+if chroot "$target" apk info -e veyra-update >/dev/null 2>&1; then
+    echo 'Conventional installed system retained the unconfigured atomic updater' >&2
+    exit 1
+fi
+# Temporary ISO package/index keys are removed after desktop packages install.
+if [ -r /etc/veyra/temporary-apk-keys ]; then
+    while IFS= read -r key || [ -n "$key" ]; do
+        [ -z "$key" ] || test ! -e "$target/etc/apk/keys/$key"
+    done < /etc/veyra/temporary-apk-keys
+fi
+test ! -e "$target/etc/veyra/temporary-apk-keys"
 /usr/local/lib/veyra/installer-desktop.sh "$target" DESKTOP
 /usr/local/lib/veyra/installer-hardware.sh "$target"
+# The installed system must retain the pinned stable repository and trust
+# anchor after removing the short-lived key used for packages on the ISO.
+repo='@veyra https://raw.githubusercontent.com/angyedz/veyra-pkgrepo/main/stable/v1'
+grep -Fqx "$repo" "$target/etc/apk/repositories"
+test -s "$target/etc/apk/keys/veyra.rsa.pub"
+# Refresh the signed index and resolve an upgrade using the installed root.
+chroot "$target" apk update
+chroot "$target" apk upgrade --simulate
 echo 'root:veyra-test' | chroot "$target" chpasswd
 chroot "$target" adduser -D -s /bin/ash e2euser
 echo 'e2euser:veyra-test' | chroot "$target" chpasswd
@@ -75,6 +95,14 @@ grep -q 'ext4 virtio nvme' "$target/etc/mkinitfs/mkinitfs.conf"
 test "$(cat "$target/etc/veyra/desktop")" = DESKTOP
 # Check the supported Plasma display manager is enabled.
 test -e "$target/etc/runlevels/default/sddm"
+test -e "$target/etc/runlevels/default/openrc-settingsd"
+test -L "$target/etc/runlevels/default/veyra-sddm-runtime"
+chroot "$target" /bin/sh -c 'test -x /etc/runlevels/default/veyra-sddm-runtime && test -f /etc/init.d/veyra-sddm-runtime'
+grep -Fq 'need localmount elogind' "$target/etc/init.d/veyra-sddm-runtime"
+grep -Fq 'before sddm' "$target/etc/init.d/veyra-sddm-runtime"
+grep -Fqx 'DisplayServer=x11' "$target/etc/sddm.conf.d/zz-veyra.conf"
+test ! -e "$target/etc/sddm.conf.d/zz-veyra-live.conf"
+! grep -q '^tty1::respawn:' "$target/etc/inittab"
 sync
 echo VEYRA_E2E_INSTALL_SUCCESS
 """.replace("DESKTOP", desktop)
@@ -83,7 +111,9 @@ echo VEYRA_E2E_INSTALL_SUCCESS
 def boot(qemu, disk, iso, logfile, timeout, installed=False):
     cmd = [
         qemu, "-machine", "accel=tcg", "-m", "6144", "-smp", "2",
-        "-vga", "virtio", "-display", "none",
+        # Serial-only tests do not need virtio-gpu. Standard VGA also avoids
+        # a QEMU 11 / WSL TCG crash before the guest starts.
+        "-vga", os.environ.get("VEYRA_QEMU_VGA", "std"), "-display", "none",
         "-monitor", "none", "-serial", "stdio", "-no-reboot",
         "-nic", "user,model=virtio-net-pci",
         "-drive", f"file={disk},format=qcow2,if=virtio",
@@ -139,15 +169,19 @@ def upload_script(child, content, remote_path):
         remote_path == "/tmp/e2e-install.sh"
         or remote_path.startswith("/usr/local/lib/veyra/installer-")
         or remote_path == "/usr/local/lib/veyra/setup-pkgrepo.sh"
+        or remote_path == "/usr/local/lib/veyra/veyra-sddm-runtime.initd"
         or remote_path in {
             "/usr/local/lib/veyra/veyra-atomic-convert.sh",
             "/usr/local/lib/veyra/veyra-deployment.sh",
             "/usr/local/lib/veyra/veyra-initramfs-select.sh",
             "/usr/local/lib/veyra/build-veyra-init.sh",
             "/usr/local/lib/veyra/veyra-bootctl.py",
+            "/usr/local/lib/veyra/veyra-boot-confirm.initd",
+            "/usr/local/lib/veyra/veyra-trial-failure.initd",
         }
     ):
         raise ValueError("Unexpected remote script path")
+    content = content.replace(b"\r\n", b"\n")
     payload = base64.b64encode(content).decode("ascii")
     run_command(child, ": > /tmp/veyra-e2e-transfer.b64", 30)
     for pos in range(0, len(payload), 512):
@@ -189,6 +223,41 @@ def main():
             child = boot(qemu, str(disk), str(args.iso.resolve()), log, 400)
             try:
                 login(child, 360)
+                # A console-only guest may not trigger NetworkManager's wired
+                # auto-connect path. Bring up QEMU's user-mode NIC explicitly
+                # before installation fetches signed APK indexes.
+                run_command(child, r"""(
+set -eu
+rc-service networkmanager start >/dev/null 2>&1 || true
+if command -v nmcli >/dev/null 2>&1; then
+    nmcli networking on >/dev/null 2>&1 || true
+    for dev in $(nmcli -t -f DEVICE device status | sed '/^lo$/d; /^$/d'); do
+        nmcli -w 10 device connect "$dev" >/dev/null 2>&1 || true
+    done
+fi
+if ! curl -fsS -m 5 -o /dev/null 'https://dl-cdn.alpinelinux.org/alpine/v3.22/main/x86_64/APKINDEX.tar.gz'; then
+    for path in /sys/class/net/*; do
+        dev=${path##*/}
+        [ "$dev" = lo ] && continue
+        ip link set "$dev" up || true
+        udhcpc -q -n -t 5 -T 3 -i "$dev" >/dev/null 2>&1 || true
+    done
+fi
+attempt=0
+while [ "$attempt" -lt 10 ]; do
+    if curl -fsS -m 5 -o /dev/null 'https://dl-cdn.alpinelinux.org/alpine/v3.22/main/x86_64/APKINDEX.tar.gz' \
+        && curl -fsS -m 5 -o /dev/null 'https://raw.githubusercontent.com/angyedz/veyra-pkgrepo/main/stable/v1/x86_64/APKINDEX.tar.gz'; then
+        echo VEYRA_E2E_NETWORK_READY
+        exit 0
+    fi
+    attempt=$((attempt + 1))
+    sleep 3
+done
+nmcli general status || true
+nmcli device status || true
+cat /etc/resolv.conf || true
+exit 1
+ )""", timeout=150)
                 if args.require_glenv_manager:
                     run_command(child, "test -x /usr/local/lib/veyra/glenv-manager && "
                                 "/usr/local/lib/veyra/glenv-manager version && "
@@ -202,6 +271,7 @@ def main():
                 for script in (
                     "installer-copy.sh", "installer-prepare.sh",
                     "installer-desktop.sh", "installer-hardware.sh",
+                    "veyra-sddm-runtime.initd",
                     "setup-pkgrepo.sh",
                 ):
                     upload_script(
@@ -231,6 +301,11 @@ def main():
                 run_command(child, "test -r /etc/veyra/desktop && cat /etc/veyra/desktop", 30)
                 run_command(child, "test -s /boot/grub/grub.cfg", 30)
                 run_command(child, "test -s /etc/machine-id && rc-service dbus status", 60)
+                run_command(child, "rc-service openrc-settingsd status >/dev/null && "
+                            "rc-service sddm status >/dev/null", 45)
+                run_command(child,
+                    "grep -Fqx '@veyra https://raw.githubusercontent.com/angyedz/veyra-pkgrepo/main/stable/v1' /etc/apk/repositories && "
+                    "test -s /etc/apk/keys/veyra.rsa.pub", 30)
                 print(f"VEYRA_E2E_SUCCESS: clean virtual disk boots installed {args.desktop}", flush=True)
             finally:
                 child.close(force=True)

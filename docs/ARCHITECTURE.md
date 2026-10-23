@@ -18,8 +18,8 @@ The installed target also has **two concurrent, isolated Linux environments** on
 
 * Initial development and **Live ISO bootstrap** keep genuine Alpine `apk` available until the replacement is feature-complete. Alpine base, mkinitfs, abuild and mkimage depend on it; deleting it now would break the installer.
 * Prototype `vpkg-engine` builds directly from a **pinned apk-tools 2.14.x source** with explicit downstream changes, under a distinct binary name. It runs only in test/build environments until audits pass. This is not a finished forked system package.
-* Future system package operations populate **a fresh inactive deployment** with an independent APK database; post-install scripts must not mutate the running host. Validation comes before the bootloader switch.
-* `vpkg` also offers Nix user-profile operations, but these do **not** alter system images.
+* `vpkg` is for the persistent user environment only. For a requested package, its intended source order is Alpine APK repositories, then the signed `veyra-pkgrepo` APK repository, then Nix if neither APK source has the package. Both APK sources use the APK format. The Veyra repository contains both system and user packages, but repository membership does not give `vpkg` permission to modify the system environment.
+* System package installation is a separate administrative operation: after the future password-gated system-shell bridge is entered, use the system environment's ordinary `apk` tooling. System updates remain staged as host-authorized A/B transactions.
 
 ## Filesystem-neutral system deployments
 
@@ -40,9 +40,9 @@ ESP (if UEFI)                            # separately managed as required
 
 An inactive system deployment can be created using a **verified file copy**, with full filesystem metadata preservation, on any supported filesystem. On Btrfs an optimized backend may eventually use snapshots, but only as an optional performance optimization and never as a requirement. The source must be offline/quiescent and cannot include active /proc, /sys, /dev, /run, persistent /home or /nix mountpoints.
 
-The filesystem-neutral prototype now includes a GRUB boot-config selector and an opt-in initramfs root-directory selector, but **does not yet implement safe full-system OTA updates or automatic recovery from failed boots**. Full atomicity additionally requires durable staging and verification, independently bootable A/B roots, authenticated kernel/initramfs/boot entries, recovery after power loss and a validated fallback. A simple directory rename alone is **not sufficient** to claim atomic boot, and a read-only mount alone does not prevent privileged changes to the underlying source.
+The filesystem-neutral prototype includes a GRUB boot-config selector and an opt-in initramfs root-directory selector. A local disposable ext4 QEMU run of `tests/test-atomic-qemu.py` passed the system-only sequence A → confirmed B → failed trial C → automatic fallback to B → explicit rollback to A. Its user roots were synthetic fixtures; this is not a signed paired update or production recovery guarantee. Full atomicity still requires durable staging and verification, authenticated kernel/initramfs/boot entries, recovery from power loss and other failure modes, and a validated system/user fallback pair. A simple directory rename alone is **not sufficient** to claim atomic boot, and a read-only mount alone does not prevent privileged changes to the underlying source.
 
-The installer must permit users to keep choosing ext4, Btrfs, XFS or F2FS. It must not reformat, force Btrfs, or silently migrate an existing filesystem. A complete QEMU A → B → rollback A boot test on **at least ext4** is required before production activation; other supported filesystems need compatibility coverage too.
+The installer must permit users to keep choosing ext4, Btrfs, XFS or F2FS. It must not reformat, force Btrfs, or silently migrate an existing filesystem. The system-only ext4 QEMU prototype cycle now has local evidence; a signed installed system/user A/B cycle and failure coverage are still required before production activation. Other supported filesystems need compatibility coverage too.
 
 ## Implementation gates
 
@@ -51,10 +51,11 @@ The installer must permit users to keep choosing ext4, Btrfs, XFS or F2FS. It mu
 - [x] Native apk-tools-derived vpkg engine prototype, tested in an isolated root.
 - [x] Filesystem-neutral **offline staging** implementation with independent APK world databases and persistent data directories.
 - [x] Verify ext4 and XFS staging and A/B GRUB config activation in GitHub Actions on fresh disposable loop disks.
-- [ ] Production-quality vpkg replacing apk inside installed system, while Live bootstrap remains conventional.
+- [ ] Integrate `vpkg` into the persistent user environment with Alpine → Veyra APK → Nix fallback resolution; keep the system environment on ordinary `apk` behind the protected system-shell bridge.
 - [x] Experimental filesystem-neutral GRUB selection and actual early-root bind mounts; validated on ext4 in isolated Linux namespace.
 - [ ] Full production boot metadata authentication and verified kernel/initramfs provenance.
-- [ ] Complete QEMU installed ext4 root A → stage B → boot B → rollback A → boot A.
+- [x] System-only disposable ext4 QEMU A → confirmed B → failed trial C → fallback B → explicit rollback A prototype; user-root fixture is synthetic.
+- [ ] Complete a signed paired system/user update and rollback on an installed ext4 system.
 - [ ] Equivalent compatibility coverage of XFS, F2FS and Btrfs without making any mandatory.
 - [ ] Authenticated full-system metadata, unattended recovery and physical hardware tests.
 
@@ -72,8 +73,23 @@ The bootloader now loads a kernel and initramfs from the selected directory, for
 
 `scripts/veyra-bootctl.py --store STORE init --uuid UUID --fstype ext4 --default A` generates a GRUB config in the *outer* `STORE/boot/grub/` directory. `activate ID` and `rollback ID` only replace a verified config via same-directory atomic rename and fsync. A boot coordinator can adopt and back up a conventional GRUB config with the **explicit** `--adopt-legacy-grub` option, retaining a menu entry for the original Alpine installation as manual recovery. GRUB/kernel/EFI signatures and unattended watchdog fallback are **not yet guaranteed**.
 
-`scripts/veyra-atomic-convert.sh` is an **opt-in, disposable-VM-only** conversion helper for an already installed, offline conventional Alpine root. It duplicates the OS into deployment A, copies persistent data separately, builds A's own initramfs and configures the GRUB entry. The original root remains as a legacy recovery option. It has **not** been enabled as the default Calamares or TUI installation path. The experimental `tests/test-atomic-qemu.py` and `.github/workflows/atomic-e2e.yml` test real boot A, boot B and rollback A via a temporary QEMU qcow2 disk. A passing boot test does not establish power-loss atomicity, secure boot, unattended recovery or hardware support.
+`scripts/veyra-atomic-convert.sh` is an **opt-in, disposable-VM-only** conversion helper for an already installed, offline conventional Alpine root. It duplicates the OS into deployment A, copies persistent data separately, builds A's own initramfs and configures the GRUB entry. The original root remains as a legacy recovery option. It has **not** been enabled as the default Calamares or TUI installation path. The experimental `tests/test-atomic-qemu.py` and `.github/workflows/atomic-e2e.yml` cover QEMU boot A, confirmed B, failed trial C with fallback to B, and explicit rollback to A on a temporary ext4 qcow2 disk. User-root fixtures are synthetic. This does not establish signed paired updates, power-loss atomicity, secure boot, production unattended recovery or hardware support.
 
-The upstream `vpkg` source offers atomic-mode `deployments`, `activate`, and `rollback` commands routed to `veyra-bootctl`. In-place system installation/upgrade remains blocked on atomic roots, because the new isolated-root package transaction engine is **not production-complete**. The signed `vpkg` package in the repository must be rebuilt and validated before adopting atomic mode on real machines.
+`vpkg` exposes package operations only. Boot selection remains a separate system-side `veyra-bootctl` operation and is not part of the user package manager. System package changes belong to the protected system shell and ordinary system `apk`, or to the trusted inactive-generation updater.
 
 **Filesystem commitment:** ext4, XFS, F2FS and Btrfs remain choices of the end user. The root design must not depend on any particular filesystem's snapshot, reflink or rename extensions. All existing conventional installations remain usable until explicit migration is tested and supported.
+
+## Pre-Alpha paired updates and user data
+
+Veyra Linux Pre-Alpha is first qualified on **x86_64 + ext4 in QEMU**. Its update contract is:
+
+1. Keep the system deployment and the shared user-environment root as independently versioned roots. The system root owns the kernel, host services and boot policy; the user root owns its own OpenRC/PID 1, package database and ordinary applications. Both roots share the running kernel.
+2. Deliver one signed release description that names the compatible system package set, user-environment package set and their compatibility IDs. The existing signed `veyra-pkgrepo` index and APK signatures authenticate the packages; release metadata must be authenticated before it can select a pair.
+3. Stage updates only into inactive roots. A system-only release can retain the current user root when its compatibility ID allows it. A release that changes both environments stages both and activates the pair together.
+4. Keep `/home/LOGIN`, user Nix/Flatpak state and declared persistent application data outside both roots. The update payload never includes these paths. The user package selection is retained as desired state and resolved against signed repository packages when creating the next user root.
+5. Treat root-owned configuration and database migrations as versioned update inputs. Apply only declared migrations to staged roots; require backward-compatible persistent state or a verified reversal path before activation. Decline an update when migration safety or space checks fail.
+6. After verifying package signatures, manifest compatibility, each root's package database, kernel and initramfs, arm a one-time trial boot of the new pair. Confirm it only after the system and user-environment supervisors report healthy startup. If confirmation does not happen, the next boot selects the last confirmed pair. `/home` remains unchanged in either direction.
+
+This is the **Pre-Alpha target**, not the current implementation. Go source now includes an experimental signed paired updater and inactive-root stager. Applying is gated to an independent recovery environment, but the current VRE does not bundle the updater, channel configuration, trusted key or required update tools, so there is no usable signed update path in the ISO. The installed `veyra-update` package still runs `apk upgrade` in place. The system-only disposable QEMU prototype has automatic fallback from failed trial C to confirmed B, but its user roots are synthetic. An integrated signed system/user A/B QEMU test must prove successful confirmation and a deliberately failed trial boot returning to the prior pair while preserving account data and package selections.
+
+`vpkg` presents one package-manager interface over APK and Nix, always operating in the user environment. It refuses to invoke either backend unless `/run/veyra/user-environment` contains `user-v1`; this marker is an accidental-misuse guard, while the user namespace and mount layout provide the actual isolation. Its default install path checks configured untagged Alpine APK repositories first, then the signed `@veyra` APK repository, then Nix only when the package is absent from both APK sources. The Veyra repository contains both system and user packages; repository membership never lets `vpkg` modify the system environment. The Nix backend wraps imperative `nix profile` operations for the current user's profile. The CLI implements ordered source lookup, but production user-root integration and end-to-end validation remain incomplete. `--from apk|nix` selects a specific backend. The current installer does not create the marker, so `vpkg` fails closed on the installed development system.

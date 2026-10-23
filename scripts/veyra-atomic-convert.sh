@@ -67,8 +67,9 @@ for path in home nix; do
     fi
 done
 
-mkdir -p "$root/etc/veyra" "$root/usr/local/lib/veyra" "$root/usr/local/sbin" \
-    "$root/home" "$root/nix" "$root/var/lib/veyra/shared" "$root/var/lib/veyra/store"
+mkdir -p "$root/etc/veyra" "$root/usr/libexec/veyra" \
+    "$root/home" "$root/nix" "$root/var/lib/veyra/shared" \
+    "$root/var/lib/veyra/store" "$root/var/lib/veyra/user-root"
 # --exclude=/run/*** and similar rsync filters remove the directories as
 # well as volatile contents. OpenRC requires a real /run before boot.
 # Every generation must provide empty Linux mountpoint placeholders.
@@ -81,9 +82,30 @@ printf '%s\n' A > "$root/etc/veyra/deployment-id"
 printf '%s\n' atomic-v1 > "$root/etc/veyra/deployment-mode"
 for script in veyra-deployment.sh veyra-initramfs-select.sh \
     build-veyra-init.sh; do
-    install -m755 "$scriptdir/$script" "$root/usr/local/lib/veyra/$script"
+    install -m755 "$scriptdir/$script" "$root/usr/libexec/veyra/$script"
 done
-install -m755 "$scriptdir/veyra-bootctl.py" "$root/usr/local/sbin/veyra-bootctl"
+install -m755 "$scriptdir/veyra-bootctl.py" "$root/usr/libexec/veyra/bootctl"
+install -m755 "$scriptdir/veyra-boot-confirm.initd" "$root/etc/init.d/veyra-boot-confirm"
+chroot "$root" rc-update add veyra-boot-confirm default ||
+    die 'failed to enable deployment confirmation service'
+
+# GRUB clears next_entry before booting its one-time candidate. Seed the
+# environment block with A as the confirmed fallback before replacing grub.cfg.
+[ ! -L "$store/boot/grub/grubenv" ] || die 'refusing symlinked GRUB environment block'
+if [ -e "$store/boot/grub/grubenv" ]; then
+    chroot "$store" grub-editenv /boot/grub/grubenv list >/dev/null ||
+        die 'existing GRUB environment block is unreadable'
+else
+    chroot "$store" grub-editenv /boot/grub/grubenv create ||
+        die 'failed to create GRUB environment block'
+fi
+chroot "$store" grub-editenv /boot/grub/grubenv set saved_entry=veyra-A ||
+    die 'failed to select initial confirmed deployment'
+chroot "$store" grub-editenv /boot/grub/grubenv list |
+    grep -Fqx 'saved_entry=veyra-A' ||
+    die 'initial confirmed deployment was not retained'
+chroot "$store" grub-editenv /boot/grub/grubenv unset next_entry ||
+    die 'failed to clear stale GRUB trial selection'
 
 # Build a real initramfs using the selected deployment's kernel modules.
 # The Alpine-provided init remains untouched; -i selects a patched copy.

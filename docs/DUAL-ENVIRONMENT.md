@@ -11,15 +11,32 @@ Calamares/TUI installation or A/B boot process.
 
 1. **System environment:** system OpenRC PID 1, kernel, hardware, physical
    networking, GRUB, boot coordinator and protected A/B deployments.
-2. **Persistent user environment:** separate root filesystem, user namespace,
-   mount namespace, PID namespace with its own PID 1 and OpenRC, network and
-   IPC namespaces, package database, services and ordinary user accounts.
-   Users log directly into this environment, with no explicit enter command.
+2. **Persistent user environment:** one shared root filesystem and package
+   database for all ordinary Linux accounts, with a user namespace, mount
+   namespace, PID namespace with its own PID 1 and OpenRC, network and IPC
+   namespaces, and services. Each account has distinct credentials, UID/GID,
+   private `/home/LOGIN` and session; accounts do not receive separate roots
+   or package databases. Every user's normal login starts inside this shared
+   environment, with no explicit enter command.
 3. **Recovery:** independently booted minimal OS; not a third simultaneously
    running PID 1 during ordinary operation.
 
-The system and user environments share one Linux kernel. A/B changes the
-system deployment, not the persistent user environment.
+The system and user environments share one Linux kernel. The system and user
+root filesystems have separate versions and package databases. A system-only
+update may keep the existing user root when their compatibility contract
+allows it; a release that changes both roots activates them as one tested pair.
+Per-account homes and declared user data stay outside both roots.
+
+The boot-pair prototype stores user roots at
+`/var/lib/veyra/store/user-environments/ID`. A system deployment that requires
+one records that ID in `/etc/veyra/user-environment-id`; GRUB passes both IDs
+to initramfs, which verifies the match and mounts the selected root at
+`/var/lib/veyra/user-root`. Boot confirmation checks the mounted root and its
+ID against the running system deployment. This only selects and mounts a
+prepared pair. `veyra-deployment.sh stage-pair` can copy and verify the
+system/user roots together while leaving boot selection unchanged; it does not
+update packages, verify a signed release, provision user accounts, start user
+OpenRC, or install SDDM/PAM integration.
 
 **Resilience design (2026-10-20, not implemented):** a system OpenRC-owned [Veyra Guardian](VEYRA-RESILIENCE.md) must detect user-init/Plasma failures without depending on the user rootfs. A system-owned TTY and independently bootable [VRE](VEYRA-RECOVERY.md) provide fallback. [SnapCore](VEYRA-SNAPCORE.md) is a proposed block-level CoW user snapshot layer below ext4/XFS/F2FS, **not** directory copies or a Btrfs/LVM requirement. User-root and `/home` must be separately restorable; system A/B rollback must not implicitly touch them.
 
@@ -34,6 +51,34 @@ configuration, or privileged host control sockets.
 
 This must be an enforcement property of the kernel boundary, not a vpkg
 package classification, command blacklist, sudo wrapper or convention.
+
+## Update and persistence contract for Veyra Linux Pre-Alpha
+
+- System packages, kernel, initramfs and host services are installed into the
+  inactive system deployment. They never upgrade the active system root in
+  place.
+- User-environment base packages, OpenRC/PID 1 and its own package database
+  belong to a separately versioned user root. The shared package selection is
+  carried forward when a signed release stages a new user-root generation.
+- The signed release description identifies the system and user package sets
+  and the compatibility relationship between them. It can update one root or
+  both. If both change, both are prepared and verified before either is made
+  the active trial pair.
+- Each account's `/home/LOGIN`, Nix/Flatpak state and explicitly declared
+  application data are mounted from persistent storage. They are not copied
+  into a release image, replaced when a root is rebuilt, or reverted when an
+  OS generation rolls back.
+- Root-owned configuration and state migrations run against staged roots and
+  must preserve the previous confirmed pair. An unsafe or incompatible
+  migration blocks activation. Personal-data rollback is a separate future
+  recovery feature and must never be implied by system A/B.
+
+This is a release requirement, not an implementation claim. The current
+`veyra-update` utility still performs in-place APK upgrades, and there is no
+complete signed system/user update transaction. A local disposable ext4 QEMU
+test has demonstrated automatic fallback from a failed system-only trial C to
+confirmed B, followed by explicit rollback to A; its user roots are synthetic
+fixtures and this does not qualify paired user-root fallback.
 
 **Do not expose** the host mount namespace, privileged Docker/container
 sockets, host D-Bus system bus, host OpenRC controls, writable sysfs,
@@ -180,12 +225,20 @@ host control sockets defeats the boundary.
 ## Package management
 
 The user environment has its own package state and a normal default
-`vpkg install NAME` experience. Its root can install arbitrary package
-files **inside that environment** without changing host deployments.
-The installed system's vpkg must be independent of an installed apk
-binary or libapk. Nix integration may invoke standalone Nix. System
-deployment updates are a separate host-authorized transaction against
-an inactive A/B generation, never implicit from user sudo.
+`vpkg install NAME` experience. `vpkg` operates only inside that
+environment and resolves packages from Alpine APK repositories first,
+then `veyra-pkgrepo` (also APK format), then Nix if neither APK source
+contains the requested package. The Veyra repository includes both
+system and user packages, but `vpkg` cannot target or modify the system
+root. System packages are installed with ordinary `apk` only after the
+user enters the password-gated system shell; system updates are a
+separate host-authorized transaction against an inactive A/B generation.
+The current CLI fails closed unless `/run/veyra/user-environment`
+contains `user-v1`. This is only a misuse guard; the mount and namespace
+boundary is what keeps system files unreachable. Its default install path
+checks Alpine APK repositories, then the signed `@veyra` APK repository,
+then Nix only when the package is absent from both APK sources. The production
+launcher, user-root integration and end-to-end validation remain incomplete.
 
 ## Current prototype limits and CI evidence
 

@@ -38,9 +38,9 @@
  */
 #define PIN_PARENT "/run/veyra-user-rootfs-pin"
 #define PIN_PATH PIN_PARENT "/rootfs"
-#define OUTER_ROOT_UID 100000U
-#define OUTER_NORMAL_UID 101000U
-#define MAPPED_ID_LIMIT 165536U
+#define OUTER_ROOT_UID 300000U
+#define OUTER_NORMAL_UID 301000U
+#define MAPPED_ID_LIMIT 365536U
 #define MAX_TREE_ENTRIES 100000U
 #define START_TIMEOUT_MS 90000
 #define STOP_TIMEOUT_MS 5000
@@ -346,7 +346,7 @@ static int check_proofs(int rootfd, char *error, size_t error_size) {
     int fd = open_in_root(rootfd, "home/veyrauser/normal-user-proof", O_RDONLY);
     if (fd < 0 || fstat(fd, &st) < 0 || st.st_uid != OUTER_NORMAL_UID) {
         if (fd >= 0) close(fd);
-        set_error(error, error_size, "ordinary user write did not map to outside UID 101000");
+        set_error(error, error_size, "ordinary user write did not map to outside UID 301000");
         return -1;
     }
     close(fd);
@@ -361,7 +361,7 @@ static int check_proofs(int rootfd, char *error, size_t error_size) {
     fd = open_in_root(rootfd, "home/veyrauser/inner-sudo-proof", O_PATH);
     if (fd < 0 || fstat(fd, &st) < 0 || st.st_uid != OUTER_ROOT_UID) {
         if (fd >= 0) close(fd);
-        set_error(error, error_size, "namespace-local sudo escaped mapped outside UID 100000");
+        set_error(error, error_size, "namespace-local sudo escaped mapped outside UID 300000");
         return -1;
     }
     close(fd);
@@ -686,7 +686,7 @@ static void launch_user(const struct child_args *ctx) {
     close_unlisted_fds(permitted_fds,
                        sizeof(permitted_fds) / sizeof(permitted_fds[0]));
     if (setgroups(0, NULL) < 0 || setgid(OUTER_ROOT_UID) < 0 ||
-        setuid(OUTER_ROOT_UID) < 0) die("drop to unprivileged outside UID 100000");
+        setuid(OUTER_ROOT_UID) < 0) die("drop to unprivileged outside UID 300000");
     /* Credential changes clear PR_SET_PDEATHSIG, so arm it again after the
      * drop and verify that the system-side manager is still our parent.
      */
@@ -888,8 +888,8 @@ static int start_environment(char *response, size_t response_size) {
         return -1;
     }
     close(ready[0]);
-    install_map(pid, "uid_map", "0 100000 65536\n");
-    install_map(pid, "gid_map", "0 100000 65536\n");
+    install_map(pid, "uid_map", "0 300000 65536\n");
+    install_map(pid, "gid_map", "0 300000 65536\n");
     write_text(proceed[1], "G");
     close(proceed[1]);
     char pid_text[48] = {0};
@@ -942,7 +942,7 @@ static int start_environment(char *response, size_t response_size) {
         if (count == baseline + 1 && check_proofs(rootfd, error, sizeof(error)) == 0) {
                 boot_count = count;
                 state = STATE_RUNNING;
-                printf("VEYRA_STAGE1_SUDO_READY count=%d inside-uid=0 outside-uid=100000\n",
+                printf("VEYRA_STAGE1_SUDO_READY count=%d inside-uid=0 outside-uid=300000\n",
                        boot_count);
                 printf("VEYRA_STAGE1_USER_OPENRC_READY count=%d\n", boot_count);
                 fflush(stdout);

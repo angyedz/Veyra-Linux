@@ -11,6 +11,8 @@ packages=$(grep -vE '^[[:space:]]*(#|$)' "$manifest")
 printf '%s\n' "$packages" | grep -qx plasma-desktop
 printf '%s\n' "$packages" | grep -qx kwin
 printf '%s\n' "$packages" | grep -qx plasma-workspace
+printf '%s\n' "$packages" | grep -qx openrc-settingsd
+printf '%s\n' "$packages" | grep -qx openrc-settingsd-openrc
 printf '%s\n' "$packages" | grep -qx alpine-base
 count=$(printf '%s\n' "$packages" | wc -l)
 unique=$(printf '%s\n' "$packages" | sort -u | wc -l)

@@ -1,17 +1,6 @@
-name: Veyra Atomic A/B (cached ISO)
+name: Veyra Atomic A/B (manual cached ISO)
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'scripts/veyra-atomic-convert.sh'
-      - 'scripts/build-veyra-init.sh'
-      - 'scripts/veyra-initramfs-select.sh'
-      - 'scripts/veyra-bootctl.py'
-      - 'scripts/veyra-deployment.sh'
-      - 'tests/test-atomic-qemu.py'
-      - 'tests/test-installed-qemu.py'
-      - '.github/workflows/atomic-e2e.yml'
   workflow_dispatch:
 
 concurrency:
@@ -24,24 +13,25 @@ permissions:
 
 jobs:
   atomic-ext4:
-    name: Real ext4 A to B to rollback A in QEMU
+    name: Real ext4 trial confirmation and automatic fallback in QEMU
     runs-on: ubuntu-24.04
     timeout-minutes: 80
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Find newest still-available ISO created on main
+      - name: Find newest still-available ISO for this branch
         id: iso
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
+          iso_branch="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
           run_id=$(gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts?name=veyra-linux-iso&per_page=100" \
-            --jq '[.artifacts[] | select(.expired == false and .workflow_run.head_branch == "main")] | sort_by(.created_at) | reverse | .[0].workflow_run.id // empty')
+            | jq --arg branch "$iso_branch" '[.artifacts[] | select(.expired == false and .workflow_run.head_branch == $branch)] | sort_by(.created_at) | reverse | .[0].workflow_run.id // empty')
           if [ -z "$run_id" ]; then
-            echo 'No unexpired main-branch ISO artifact, run Veyra ISO workflow.' >&2
+            echo "No unexpired ISO artifact for branch '$iso_branch'; run the Veyra ISO workflow." >&2
             exit 1
           fi
           echo "run_id=$run_id" >> "$GITHUB_OUTPUT"

@@ -69,7 +69,7 @@ if sh "$launcher"; then :; else
     echo 'Calamares success fixture unexpectedly failed' >&2
     exit 1
 fi
-grep -Fq 'ARGS=-n --preserve-env=DISPLAY,WAYLAND_DISPLAY,XDG_RUNTIME_DIR,DBUS_SESSION_BUS_ADDRESS,QT_QPA_PLATFORM,XAUTHORITY /usr/bin/calamares' "$log"
+grep -Fq 'ARGS=-n --preserve-env=DISPLAY,WAYLAND_DISPLAY,XDG_RUNTIME_DIR,DBUS_SESSION_BUS_ADDRESS,XAUTHORITY env QT_QPA_PLATFORM=xcb /usr/bin/calamares' "$log"
 grep -Fq "AUTH=$home/.Xauthority" "$log"
 grep -Fq 'mock Calamares diagnostic' "$cache/veyra-calamares.log"
 test ! -s "$ui_log"

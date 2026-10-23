@@ -11,7 +11,7 @@ QEMU VM kernel (one kernel)
   |
   +-- System-side /init and test-only C supervisor (initial namespaces)
   |     +-- owns /dev/vda virtual disk, ext4 mount, mapping policy
-  |     +-- maps inner UIDs 0..65535 -> outer UIDs 100000..165535
+  |     +-- maps inner UIDs 0..65535 -> outer UIDs 300000..365535
   |     +-- starts and supervises a separate user-environment init
   |
   +-- User environment (new user/PID/mount/net/IPC/UTS namespaces)
@@ -20,7 +20,7 @@ QEMU VM kernel (one kernel)
              +-- /sbin/openrc sysinit / boot / default
                   +-- test-only OpenRC service increments persistent boot-count
         +-- ordinary inner UID 1000 writes a home file
-        +-- inner sudo elevates to namespace UID 0, outer UID **100000**
+        +-- inner sudo elevates to namespace UID 0, outer UID **300000**
 ```
 
 **Important distinction:** Alpine's default PID 1 is **BusyBox init**, which
@@ -43,8 +43,9 @@ binary acting as the literal PID 1. The system still has its own init.
   exit, `PR_SET_PDEATHSIG` terminates the launcher; nested PID 1 also arms
   that signal against launcher exit. It creates separate
   user/mount/PID/network/IPC/UTS namespaces and maps inner IDs 0..65535 to
-  outer IDs 100000..165535. The unprivileged launcher creates its own user
-  namespace before the system-side process installs the UID/GID maps. The
+  outer IDs 300000..365535, matching the shared-root account provisioner. The
+  unprivileged launcher creates its own user namespace before the system-side
+  process installs the UID/GID maps. The
   manager socket is not mounted in the user rootfs.
 - scripts/veyra-stage1-qemu-init.sh — disposable VM initial init that mounts
   the test rootfs, starts the manager and drives its lifecycle checks.
@@ -61,7 +62,7 @@ binary acting as the literal PID 1. The system still has its own init.
   guest boot leave persistent counts 3 then 6.
 - .github/workflows/stage1-user-openrc-qemu.yml — builds a disposable Alpine
   3.22 rootfs on an ext4 raw file, assigns the ext4 root inode to mapped UID/GID
-  100000, then boots an Alpine LTS kernel and dedicated initramfs. No host disk
+  300000, then boots an Alpine LTS kernel and dedicated initramfs. No host disk
   partitions are modified.
 
 ## System-side lifecycle manager and rootfs checks
@@ -145,7 +146,7 @@ and [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/3931805
 - [x] Exercise matching and mismatching directory-identity results for the
       validated descriptor comparator; require a match before pivoting.
 - [x] Keep the existing inner UID 1000 and sudo proof mapped to outside UIDs
-      101000 and 100000 respectively.
+      301000 and 300000 respectively.
 - [x] Retain serial evidence for the manager and rootfs validation checks.
 - [x] QEMU verify that replacing the rootfs mount name after descriptor
       pinning cannot redirect the bind mount (actual source-name swap fixture
@@ -195,7 +196,7 @@ This prototype deliberately has the following gaps:
    a rootfs by another privileged writer. An unclean manager exit may leave
    the protected stage mount until the next start or VM reboot.
    Production storage policy and lifecycle still require review.
-5. **Normal interactive user login, password policy, vpkg and KDE** are *not* integrated. `sudo` is validated **only inside this controlled disposable guest**, with an explicit temporary NOPASSWD test rule. User-side sudo maps to outside UID 100000; it does not control the system-side manager. This does not prevent a shared-kernel exploit.
+5. **Normal interactive user login, password policy, vpkg and KDE** are *not* integrated. `sudo` is validated **only inside this controlled disposable guest**, with an explicit temporary NOPASSWD test rule. User-side sudo maps to outside UID 300000; it does not control the system-side manager. This does not prevent a shared-kernel exploit.
 6. System-owned Plasma/KWin and user-side plasmashell/KRunner, session bus,
    graphics access, VPN traffic and A/B integration are separate future
    milestones. This demonstration has no physical network, no user VPN and

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Validate Veyra's Calamares integration before risking a real disk."""
 from pathlib import Path
+from xml.etree import ElementTree
 import yaml
 
 root = Path(__file__).resolve().parents[1]
@@ -16,6 +17,20 @@ for file in configs:
 with (root / "calamares/settings.conf").open(encoding="utf-8") as stream:
     settings = yaml.safe_load(stream)
 assert settings["branding"] == "veyra"
+branding = yaml.safe_load((root / "calamares/branding/veyra/branding.desc").read_text())
+assert branding["slideshow"] == [
+    "/etc/calamares/branding/veyra/desktop-plasma.svg"
+]
+assert branding["images"]["productIcon"] == "veyra-logo.svg"
+assert branding["uploadServer"]["type"] == "none"
+slide_path = root / "calamares/branding/veyra/desktop-plasma.svg"
+assert slide_path.is_file()
+slide = ElementTree.parse(slide_path).getroot()
+svg_ns = "{http://www.w3.org/2000/svg}"
+assert [node.text for node in slide.findall(f"{svg_ns}text")] == ["Veyra Linux"]
+assert len(slide.findall(f"{svg_ns}g/{svg_ns}path")) == 3
+assert not slide.findall(f"{svg_ns}rect")
+assert (root / "branding/veyra-logo.svg").is_file()
 instances = {instance["id"]: instance for instance in settings["instances"]}
 assert "desktop" not in instances
 assert instances["desktop-install"]["module"] == "shellprocess"

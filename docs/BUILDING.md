@@ -4,7 +4,7 @@ Veyra's ISO is produced by Alpine's `aports/scripts/mkimage.sh`, with a custom p
 
 ## CI
 
-Pushes to main trigger the **Veyra ISO** workflow whenever the image or installer changes. Successful builds publish the ISO and its checksums as GitHub Actions artifacts, then boot the image under QEMU for a basic serial-console check.
+Pushes to main trigger the **Veyra ISO** workflow whenever the image or installer changes. It builds and checksums the ISO, boots the Live system in QEMU, then installs to a blank virtual disk and boots the installed system. Graphical Calamares clicks and first Plasma login still need separate qualification.
 
 ## Local build
 
@@ -13,11 +13,15 @@ Use a disposable Alpine 3.22 x86_64 environment with network access, sufficient 
 ```sh
 git clone https://github.com/angyedz/Veyra-Linux.git
 cd Veyra-Linux
-sh scripts/build-calamares.sh
+git clone https://github.com/angyedz/veyra-pkgrepo.git ../veyra-pkgrepo
+git -C ../veyra-pkgrepo checkout --detach 97dbd8b8df28e0e4fad66397473bfa2ff62d5532
+VEYRA_APPCENTER_SOURCE="$PWD/../veyra-pkgrepo" sh scripts/build-calamares.sh
 sh scripts/build-iso.sh
 ```
 
-Output is written to `dist/`.
+Output is written to `dist/`. The build also writes `veyra-linux-*.manifest.txt` from the APK index embedded in the exact ISO. It records source revisions, Alpine release, every package name/version, and the ISO's SHA-256/SHA-512 hashes.
+
+The live ISO identifies itself as an alpha build. CI appends the full source commit to `0.1.0-alpha.1`; local builds default to `0.1.0-alpha.1+local`. The overlay takes its version from `VEYRA_VERSION`, so a release build must set it to the tag version and then pass the complete build/boot/install gate.
 
 The ISO is a graphical KDE Plasma/Wayland live system. Its root is loaded into RAM on boot, while the read-only installation medium supplies the APK cache and kernel modules. See [Live environment](LIVE.md).
 
@@ -28,10 +32,10 @@ sh tests/static.sh
 sh scripts/test-iso.sh dist/veyra-linux-*.iso
 ```
 
-The ISO is still a **development build**. The glenv upstream installer is available through `veyra-setup` but is not baked into this live ISO. The ISO build requires a successfully compiled native Calamares package in `dist/calamares/`; Calamares is bundled from the local signed APK repository. A full QEMU install/reboot test **passed** on October 19, 2026 ([workflow run 39202330852](https://github.com/angyedz/Veyra-Linux/actions/runs/39202330852)). This test invokes Veyra's actual installer shell scripts inside a disposable virtual machine and boots the installed disk; it is not a GUI automation test of clicking through Calamares. Real hardware and all supported desktops still need validation.
+The ISO is still a **development build**. The glenv upstream installer is available through `veyra-setup` but is not baked into this live ISO. The ISO build requires Calamares and Veyra AppCenter APKs in `dist/calamares/`; both are bundled from a local signed APK repository, and AppCenter source is pinned to the commit shown above. A blank-disk QEMU install/reboot passed on the installer PR head ([workflow run 39574207601](https://github.com/angyedz/Veyra-Linux/actions/runs/39574207601)); the current hardware/AppCenter candidate must pass its own build and install run. This test invokes Veyra's installer shell scripts inside a disposable VM; it is not a GUI test of Calamares. Real hardware and graphics acceleration still need validation.
 
 ## GitHub Actions image verification
 
-The ISO workflow now checks the SHA-256 checksum and ISO9660 primary volume descriptor before uploading the image, before boot testing, and again before the blank-disk install test. The check is implemented in `scripts/verify-iso-artifact.sh` and fails if the image does not match its checksum. Successful Actions builds upload the ISO and checksums as an artifact named `veyra-linux-iso` (current retention: 7 days). Boot and installation logs are uploaded separately for investigation of failures.
+The ISO workflow checks the SHA-256 checksum and ISO9660 primary volume descriptor before uploading the image, before boot testing, and again before the blank-disk install test. It also regenerates and verifies the package manifest from the ISO itself. Successful Actions builds upload the ISO, checksums and manifest as an artifact named `veyra-linux-iso` (current retention: 7 days). Boot and installation logs are uploaded separately for investigation of failures.
 
 To start a build manually, open [Veyra ISO workflow](https://github.com/angyedz/Veyra-Linux/actions/workflows/iso.yml) and choose **Run workflow** on the main branch. A pushed change to ISO-related scripts also triggers the build. The presence of a workflow or uploaded artifact alone does **not** prove an ISO boots successfully; check the `boot` and `install-e2e` job conclusions before promoting a build.

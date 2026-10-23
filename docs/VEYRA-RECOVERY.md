@@ -1,6 +1,6 @@
 # Veyra Recovery Environment (VRE) — design v0
 
-Status: **independent Alpine LTS recovery kernel + initramfs successfully boot-tested in diskless QEMU** (`scripts/veyra-recovery-init.sh`, `scripts/build-veyra-recovery.sh`, `tests/test-recovery-qemu.py`, `.github/workflows/recovery-e2e.yml`). Serial diagnostics work. This is not yet integrated into GRUB or security reviewed; no graphical UI or automated update application exists.
+Status: **independent Alpine LTS recovery kernel + initramfs, including an optional signed-updater runtime, boot-tested in diskless QEMU** (`scripts/veyra-recovery-init.sh`, `scripts/build-veyra-recovery.sh`, `tests/test-recovery-qemu.py`, `.github/workflows/recovery-e2e.yml`). CI confirms the updater menu appears and rejects an invalid device path. This does not apply a signed release. Recovery is not connected to GRUB or the installer, and no signed update plus automatic rollback has passed in QEMU.
 
 ## Android-inspired design, not an Android port
 
@@ -51,7 +51,7 @@ No GRUB-only graphical animation should be mistaken for actual progress. VRE sho
 1. Make existing QEMU A -> B -> A pass with real Alpine (still pending confirmation).
 2. Add read-only VRE boot artifact, serial-mode diagnostics, and a manual GRUB entry; test independent boot.
 3. Implement verified transaction metadata and limited trial boots with forced-failure QEMU coverage.
-4. Add update worker for inactive generation and signed manifest verification.
+4. Package the signed paired updater into Recovery; prove signed update, staged trial and rollback in QEMU before installing a Recovery boot entry.
 5. Add framebuffer/DRM progress UI backed by real operation events.
 6. Add recovery repair flows and destructive-action confirmations.
 7. Test power interruption at every state transition and each supported filesystem.

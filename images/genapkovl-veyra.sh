@@ -3,20 +3,29 @@
 set -eu
 host="${1:-veyra}"
 root=$(CDPATH='' cd "$(dirname "$0")/.." && pwd)
+veyra_release_version="${VEYRA_VERSION:-0.1.0-alpha.1+local}"
 
-mkdir -p etc/apk etc/sddm.conf.d etc/skel/Desktop etc/sudoers.d etc/polkit-1/rules.d \
+mkdir -p etc/apk etc/veyra etc/sddm.conf.d etc/skel/Desktop etc/sudoers.d etc/polkit-1/rules.d \
     etc/init.d etc/runlevels/sysinit etc/runlevels/boot etc/runlevels/default \
     etc/calamares/modules etc/calamares/branding/veyra \
     usr/local/bin usr/local/lib/veyra usr/share/applications \
-    usr/share/veyra/fastfetch usr/share/pixmaps etc/fastfetch \
+    usr/share/veyra/fastfetch usr/share/pixmaps usr/share/flatpak/remotes.d etc/fastfetch \
     etc/skel/.config/fastfetch etc/skel/.config/neofetch
 printf '%s\n' veyra > etc/hostname
 printf '%s\n' 'Veyra Linux — Lightweight by design. Compatible by nature.' > etc/motd
 printf '%s\n' 'Veyra Linux' > etc/issue
-printf '%s\n' 'Veyra Linux development live image' > etc/veyra-release
-cp "$root/branding/os-release" etc/os-release
+printf 'Veyra Linux %s (Glacier) development live image\n' "$veyra_release_version" > etc/veyra-release
+sed "s/@VEYRA_VERSION@/$veyra_release_version/g" "$root/branding/os-release" > etc/os-release
+cp "$root/images/flathub.flatpakrepo" usr/share/flatpak/remotes.d/flathub.flatpakrepo
+if [ -n "${VEYRA_TEMP_APK_KEYS_MANIFEST:-}" ]; then
+    [ -f "$VEYRA_TEMP_APK_KEYS_MANIFEST" ] || {
+        echo 'Temporary APK key manifest is missing.' >&2
+        exit 1
+    }
+    install -m 0644 "$VEYRA_TEMP_APK_KEYS_MANIFEST" etc/veyra/temporary-apk-keys
+fi
 # Compatibility metadata for fetch utilities that still read LSB fields.
-printf '%s\n' 'DISTRIB_ID=Veyra' 'DISTRIB_RELEASE=1.0' 'DISTRIB_CODENAME=glacier' 'DISTRIB_DESCRIPTION="Veyra Linux 1.0 (Glacier)"' > etc/lsb-release
+printf '%s\n' 'DISTRIB_ID=Veyra' "DISTRIB_RELEASE=$veyra_release_version" 'DISTRIB_CODENAME=glacier' "DISTRIB_DESCRIPTION=\"Veyra Linux $veyra_release_version (Glacier)\"" > etc/lsb-release
 cp "$root/branding/fastfetch/config.jsonc" etc/fastfetch/config.jsonc
 cp "$root/branding/fastfetch/config.jsonc" etc/skel/.config/fastfetch/config.jsonc
 cp "$root/branding/fastfetch/logo.txt" usr/share/veyra/fastfetch/logo.txt
@@ -39,6 +48,9 @@ cp "$root/scripts/bootstrap.sh" usr/local/lib/veyra/bootstrap.sh
 cp "$root/scripts/setup-pkgrepo.sh" usr/local/lib/veyra/setup-pkgrepo.sh
 cp "$root/scripts/compat.sh" usr/local/lib/veyra/compat.sh
 cp "$root/scripts/smoke.sh" usr/local/lib/veyra/smoke.sh
+# Reserve tty1 for SDDM before PID 1 reads inittab. BusyBox init may keep
+# already-parsed respawn entries even after telinit asks it to reread inittab.
+cp "$root/images/inittab-veyra" etc/inittab
 # Development-only Go manager is kept separate from the original glenv
 # executable and installer. Neither boot helper is enabled automatically.
 cp "$root/scripts/glenv-boot-pin.sh" usr/local/lib/veyra/glenv-boot-pin.sh
@@ -59,12 +71,27 @@ cp "$root/images/veyra-tui-install.sh" usr/local/lib/veyra/tui-install.sh
 cp "$root/images/veyra-live-user.sh" usr/local/lib/veyra/live-user.sh
 cp "$root/images/veyra-install.sh" usr/local/bin/veyra-install
 cp "$root/images/veyra-install-tui.sh" usr/local/bin/veyra-install-tui
+if [ "${VEYRA_TEST_CALAMARES_AUTOSTART:-0}" = 1 ]; then
+    # Diagnostic-only ISO path to isolate GUI launch failures from desktop input.
+    cp "$root/images/calamares-autostart-diagnostic.sh" \
+        usr/local/lib/veyra/calamares-autostart-diagnostic.sh
+    chmod 755 usr/local/lib/veyra/calamares-autostart-diagnostic.sh
+    mkdir -p etc/xdg/autostart
+    cat > etc/xdg/autostart/veyra-calamares-diagnostic.desktop <<'DIAGNOSTIC'
+[Desktop Entry]
+Type=Application
+Name=Veyra Calamares diagnostic launch
+Exec=/usr/local/lib/veyra/calamares-autostart-diagnostic.sh
+Terminal=false
+DIAGNOSTIC
+fi
 cp "$root/scripts/installer-copy.sh" usr/local/lib/veyra/installer-copy.sh
 cp "$root/scripts/installer-prepare.sh" usr/local/lib/veyra/installer-prepare.sh
 cp "$root/scripts/installer-desktop.sh" usr/local/lib/veyra/installer-desktop.sh
 cp "$root/scripts/installer-hardware.sh" usr/local/lib/veyra/installer-hardware.sh
 cp "$root/scripts/hardware-detect.sh" usr/local/lib/veyra/hardware-detect.sh
 cp "$root/calamares/branding/veyra/"*.svg etc/calamares/branding/veyra/
+cp "$root/branding/veyra-logo.svg" etc/calamares/branding/veyra/veyra-logo.svg
 cp "$root/calamares/settings.conf" etc/calamares/settings.conf
 cp "$root/calamares/modules/"*.conf etc/calamares/modules/
 cp "$root/calamares/branding/veyra/branding.desc" etc/calamares/branding/veyra/branding.desc
@@ -83,7 +110,7 @@ exec sh /usr/local/lib/veyra/bootstrap.sh "$@"
 SETUP
 chmod 755 usr/local/bin/veyra-setup
 
-cat > etc/sddm.conf.d/10-veyra-live.conf <<'SDDM'
+cat > etc/sddm.conf.d/zz-veyra-live.conf <<'SDDM'
 [General]
 DisplayServer=x11
 
@@ -115,7 +142,7 @@ cat > usr/share/applications/veyra-install.desktop <<'DESKTOP'
 Type=Application
 Name=Install Veyra Linux
 Comment=Install Veyra Linux onto your computer
-Exec=veyra-install
+Exec=/usr/local/bin/veyra-install
 Icon=drive-harddisk
 Terminal=false
 Categories=System;
@@ -185,7 +212,7 @@ ln -s /etc/init.d/udev-postmount etc/runlevels/default/udev-postmount
 # Live-specific services never get enabled on an installed target.
 ln -s /etc/init.d/veyra-live etc/runlevels/boot/veyra-live
 ln -s /etc/init.d/veyra-live-mode etc/runlevels/boot/veyra-live-mode
-for service in dbus elogind networkmanager sddm; do
+for service in dbus elogind networkmanager openrc-settingsd sddm; do
     ln -s "/etc/init.d/$service" "etc/runlevels/default/$service"
 done
 

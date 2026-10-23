@@ -15,7 +15,7 @@ for d in dev proc sys run tmp media mnt boot/efi; do
 done
 
 # Avoid live-user autologin and boot initialization on the installed system.
-rm -f "$target/etc/sddm.conf.d/10-veyra-live.conf"
+rm -f "$target/etc/sddm.conf.d/zz-veyra-live.conf" "$target/etc/sddm.conf.d/zz-veyra.conf"
 rm -f "$target/etc/sudoers.d/veyra-live"
 rm -f "$target/etc/polkit-1/rules.d/49-veyra-live.rules"
 rm -f "$target/etc/runlevels/boot/veyra-live"
@@ -52,23 +52,79 @@ if [ -r /etc/resolv.conf ]; then
     cp -L /etc/resolv.conf "$target/etc/resolv.conf"
 fi
 
-# Calamares runs only on live media; installed systems must not retain
-# the build-specific Calamares package or its temporary local repository.
-if chroot "$target" apk info -e veyra-calamares >/dev/null 2>&1; then
-    chroot "$target" apk del veyra-calamares
+# installer-copy.sh deliberately omits /var/cache/apk, so the target has no
+# repository indexes yet. Refresh its signed repositories before changing the
+# installed package set; otherwise apk del cannot resolve the remaining world
+# entries (including packages from Veyra's repository).
+echo 'Refreshing signed repositories for the installed system...'
+chroot "$target" apk update
+
+# The Live ISO installs Veyra AppCenter from its temporary local APK
+# repository, so its world entry has no repository tag. Bind that entry to
+# Veyra's signed repository before removing other live-only packages; otherwise
+# apk del sees the installed package as masked once the temporary repo is gone.
+world_file="$target/etc/apk/world"
+if grep -Fqx 'veyra-appcenter' "$world_file"; then
+    world_tmp=$(mktemp "$target/etc/apk/world.XXXXXX")
+    awk '
+        $0 == "veyra-appcenter" { print "veyra-appcenter@veyra"; next }
+        { print }
+    ' "$world_file" > "$world_tmp"
+    chmod 0644 "$world_tmp"
+    mv -f "$world_tmp" "$world_file"
+elif ! grep -Eq '^veyra-appcenter@veyra([<>=~].*)?$' "$world_file"; then
+    echo 'Installed APK world is missing the Veyra AppCenter constraint.' >&2
+    exit 1
 fi
 
-# Install the signed Veyra desktop essentials from our separate APK repository.
-# This runs only on the installed system, not on the RAM-backed live image.
+# Calamares and the experimental updater are built into the internal Live ISO
+# from its temporary APK repository. This installer still creates a
+# conventional single-root system, so neither package belongs in its installed
+# world: veyra-update requires an initialized A/B store and a configured,
+# trusted signed-release channel. Remove both before dropping the ISO keys.
+set --
+for package in veyra-calamares veyra-update; do
+    if chroot "$target" apk info -e "$package" >/dev/null 2>&1; then
+        set -- "$@" "$package"
+    fi
+done
+if [ "$#" -gt 0 ]; then
+    chroot "$target" apk del "$@"
+fi
+
+# Install the signed Veyra desktop essentials from the stable repository. The
+# AppCenter world entry now follows the same tagged source on future solves.
 echo 'Installing Veyra desktop applications from the signed repository...'
-chroot "$target" apk update
-chroot "$target" apk add --no-cache veyra-meta veyra-appcenter
+chroot "$target" apk add --no-cache veyra-meta@veyra linux-firmware
+for package in veyra-meta veyra-appcenter flatpak telegram-desktop linux-firmware; do
+    chroot "$target" apk info -e "$package" >/dev/null || {
+        echo "Required Veyra desktop package missing after install: $package" >&2
+        exit 1
+    }
+done
 
 # GRUB cannot generate a proper configuration on the RAM-backed live root.
 # Install and configure its BIOS/UEFI packages only AFTER the disk filesystem
 # has been mounted. This avoids a failed live grub.trigger poisoning APK state.
 echo 'Installing GRUB for the disk-backed system...'
 chroot "$target" apk add --no-cache grub grub-bios grub-efi
+
+# The Live ISO uses short-lived signing keys for its pinned local APKs and
+# temporary package index. Those keys must not become trust anchors on disk.
+temporary_keys=/etc/veyra/temporary-apk-keys
+if [ -r "$temporary_keys" ]; then
+    while IFS= read -r key || [ -n "$key" ]; do
+        [ -n "$key" ] || continue
+        case "$key" in
+            *[!A-Za-z0-9_.@+-]*|.*|*/*)
+                echo "Invalid temporary APK key filename: $key" >&2
+                exit 1
+                ;;
+        esac
+        rm -f "$target/etc/apk/keys/$key"
+    done < "$temporary_keys"
+    rm -f "$target/etc/veyra/temporary-apk-keys"
+fi
 
 # Alpine live media mounts the kernel modules in a separate squashfs
 # modloop, which rsync deliberately does not copy to disk. Restore the

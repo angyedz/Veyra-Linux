@@ -22,11 +22,28 @@ case "$version" in
     * ) echo 'Invalid VEYRA_ALPINE_VERSION' >&2; exit 1 ;;
 esac
 
+veyra_release_version="${VEYRA_VERSION:-0.1.0-alpha.1+local}"
+case "$veyra_release_version" in
+    ''|*[!A-Za-z0-9.+-]*)
+        echo 'Invalid VEYRA_VERSION; use only letters, digits, dots, plus and hyphens.' >&2
+        exit 1
+        ;;
+esac
+export VEYRA_VERSION="$veyra_release_version"
+export VEYRA_ALPINE_VERSION="$version"
+if [ -z "${VEYRA_SOURCE_COMMIT:-}" ]; then
+    VEYRA_SOURCE_COMMIT=$(git -C "$root" rev-parse HEAD 2>/dev/null || printf 'unknown')
+fi
+export VEYRA_SOURCE_COMMIT
+export VEYRA_APPCENTER_REVISION="${VEYRA_APPCENTER_REVISION:-97dbd8b8df28e0e4fad66397473bfa2ff62d5532}"
+export VEYRA_UPDATE_REVISION="${VEYRA_UPDATE_REVISION:-51e87aad60c24fc48d45223a9ef4278c9e2d2fd4}"
+
 outdir="${VEYRA_OUTDIR:-$root/dist}"
 buildroot="${VEYRA_BUILDROOT:-$root/.build}"
+mkdir -p "$outdir" "$buildroot"
+buildroot=$(CDPATH='' cd "$buildroot" && pwd)
 aports="$buildroot/aports"
 workdir="$buildroot/mkimage"
-mkdir -p "$outdir" "$buildroot"
 
 apk add --no-cache abuild alpine-conf git fakeroot syslinux xorriso \
     squashfs-tools grub grub-efi mtools coreutils findutils
@@ -44,29 +61,59 @@ cp "${PACKAGER_PRIVKEY}.pub" /etc/apk/keys/
 # Build a signed, local APK repository from the Calamares build artifact.
 extra_dir="${VEYRA_EXTRA_APK_DIR:-$root/dist/calamares}"
 repo_base="$buildroot/veyra-repository"
-repo_arch="$repo_base/x86_64"
-mkdir -p "$repo_arch"
-if [ ! -d "$extra_dir" ] || [ -z "$(find "$extra_dir" -maxdepth 1 -name '*.apk' -print -quit)" ]; then
-    echo 'Missing Calamares APK. Run scripts/build-calamares.sh first.' >&2
+temporary_apk_keys="$buildroot/temporary-apk-keys.txt"
+mkdir -p "$repo_base"
+if [ ! -d "$extra_dir" ] || \
+    [ -z "$(find "$extra_dir" -maxdepth 1 -name 'veyra-calamares-*.apk' -print -quit)" ] || \
+    [ -z "$(find "$extra_dir" -maxdepth 1 -name 'veyra-appcenter-*.apk' -print -quit)" ] || \
+    [ -z "$(find "$extra_dir" -maxdepth 1 -name 'veyra-update-*.apk' -print -quit)" ]; then
+    echo 'Missing Calamares, Veyra AppCenter or Veyra updater APK. Run scripts/build-calamares.sh first.' >&2
     exit 1
 fi
-cp "$extra_dir"/*.apk "$repo_arch/"
+for package_dir in "$repo_base"/*; do
+    [ -d "$package_dir" ] || continue
+    rm -f "$package_dir"/*.apk "$package_dir"/APKINDEX.tar.gz
+done
+for package in "$extra_dir"/*.apk; do
+    package_arch=$(tar -xOf "$package" .PKGINFO | sed -n 's/^arch = //p' | head -n 1)
+    case "$package_arch" in
+        x86_64|noarch) ;;
+        *)
+            echo "Unsupported architecture in local APK: $package ($package_arch)" >&2
+            exit 1
+            ;;
+    esac
+    mkdir -p "$repo_base/$package_arch"
+    cp "$package" "$repo_base/$package_arch/"
+done
+: > "$temporary_apk_keys"
 for key in "$extra_dir"/*.pub; do
     [ -f "$key" ] || continue
     cp "$key" /etc/apk/keys/
+    basename "$key" >> "$temporary_apk_keys"
 done
-apk index -o "$repo_arch/APKINDEX.tar.gz" "$repo_arch"/*.apk
-abuild-sign "$repo_arch/APKINDEX.tar.gz"
+[ -s "$temporary_apk_keys" ] || {
+    echo 'Missing public key for the temporary desktop APK repository.' >&2
+    exit 1
+}
+basename "${PACKAGER_PRIVKEY}.pub" >> "$temporary_apk_keys"
+LC_ALL=C sort -u "$temporary_apk_keys" > "$temporary_apk_keys.sorted"
+mv "$temporary_apk_keys.sorted" "$temporary_apk_keys"
+set -- "$repo_base/x86_64"/*.apk "$repo_base/noarch"/*.apk
+apk index -o "$repo_base/x86_64/APKINDEX.tar.gz" "$@"
+abuild-sign "$repo_base/x86_64/APKINDEX.tar.gz"
 
 if [ ! -f "$aports/scripts/mkimage.sh" ]; then
     git clone --depth 1 --branch "$version-stable" \
         https://github.com/alpinelinux/aports.git "$aports"
 fi
+export VEYRA_APORTS_REVISION="${VEYRA_APORTS_REVISION:-$(git -C "$aports" rev-parse HEAD)}"
 cp "$root/images/mkimg.veyra.sh" "$aports/scripts/mkimg.veyra.sh"
 
 # mkimage locates the apkovl generator relative to the current working dir.
 chmod +x "$root/images/genapkovl-veyra.sh"
 cd "$root"
+export VEYRA_TEMP_APK_KEYS_MANIFEST="$temporary_apk_keys"
 sh "$aports/scripts/mkimage.sh" \
     --tag "$version-dev" \
     --profile veyra \
@@ -79,4 +126,8 @@ sh "$aports/scripts/mkimage.sh" \
     --repository "https://dl-cdn.alpinelinux.org/alpine/v$version/main" \
     --repository "https://dl-cdn.alpinelinux.org/alpine/v$version/community"
 
-echo "Experimental ISO and checksums: $outdir"
+iso="$outdir/veyra-linux-$version-dev-x86_64.iso"
+manifest="$outdir/veyra-linux-$version-dev-x86_64.manifest.txt"
+[ -f "$iso" ] || { echo "Expected ISO output is missing: $iso" >&2; exit 1; }
+sh "$root/scripts/write-iso-manifest.sh" "$iso" "$manifest"
+echo "Experimental ISO, checksums and source/package manifest: $outdir"

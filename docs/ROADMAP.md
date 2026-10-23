@@ -1,7 +1,8 @@
 # Veyra Linux development roadmap
 
-**Last reviewed:** 2026-10-20  
-**Status:** engineering plan, not a claim that any unfinished component ships.  
+**Last reviewed:** 2026-10-23
+
+**Status:** engineering plan, not a claim that any unfinished component ships. The first public release target is **Veyra Linux Pre-Alpha**; choose its version and tag only after the release candidate passes its gates. The conventional single-root installer is an internal validation path, not a public release milestone.
 **Target:** an installed KDE-only, filesystem-neutral, atomic Veyra with **two independently administered Linux environments on one kernel**, plus separately bootable Recovery.
 
 This plan is ordered by **dependencies and acceptance gates**, not by calendar estimates.
@@ -10,7 +11,7 @@ Parallel tracks are intentional; avoid turning prototypes on in the normal boot 
 ## Immutable design rules
 
 1. **System environment:** Alpine/musl/OpenRC owns boot, the Linux kernel, physical devices/network, KDE Plasma **packages and matched versions**, system services, the A/B generations and hardware controls.
-2. **Persistent user environment:** its own rootfs, packaging state, OpenRC and PID 1 **inside a separate PID namespace**, mount/user/network/IPC namespaces, normal user account, isolated root via `sudo`, services and applications. Default login is directly in this environment, never a manual container entry or `--user` flag. Both environments share one kernel.
+2. **Persistent user environment:** one shared user rootfs, package database, OpenRC and PID 1 **inside a separate PID namespace** serves all ordinary Linux accounts. Each account has its own UID/GID, credentials, session and private `/home/LOGIN`; accounts do not get separate rootfs/package databases. The environment also has mount/user/network/IPC namespaces, services and applications; inner `sudo` grants root only there. Default login for every account starts directly in this environment, never through a manual container-entry command or `--user` flag. Both environments share one kernel.
 3. **KDE-only desktop:** KDE, KWin, Frameworks, Qt, `plasmashell`, KRunner and plugins are a **version-coherent system-owned deployment**. `plasmashell` and KRunner processes execute in the **user environment** from a read-only system-paired KDE runtime; Alt+F2 and all user app launch paths stay user-side.
 4. **No arbitrary package bans:** a user may install another kernel or DE package inside their environment without replacing the active system kernel or supported KDE session. Enforce this at privilege/mount/device/namespace boundaries, not by matching package names, `sudo` rules, or command exceptions.
 5. **VPN only for user traffic:** user VPN, routing, DNS and kill switches operate in the user network namespace. System updates and system services continue using the independent host network.
@@ -25,22 +26,57 @@ Parallel tracks are intentional; avoid turning prototypes on in the normal boot 
 | Area | Baseline in main / PR | Still missing |
 | --- | --- | --- |
 | Alpine 3.22, OpenRC, KDE Live ISO | Existing conventional image and installer tests | Final dual-environment installed runtime |
-| Desktop installer | Experimental shell/QEMU install/reboot path | KDE-only Calamares install into separate system/user roots and real graphical click-through |
-| Atomic boot | Offline FS-neutral staging, GRUB/initramfs selectors and QEMU automation | Passing and reviewed full A -> B -> A; authenticated, power-loss-safe updates |
-| Dual environments | PRs #8–13 **merged into `main`**: namespace probes; Alpine user-root/OpenRC PID 1; multi-ID mapping and inner `sudo`; QEMU lifecycle manager, rootfs staging, descriptor checks, pidfd safety | Installed manager and login, real host privilege-boundary audit, production user storage/KDE/network integration |
+| Desktop installer | Blank-disk console install/reboot passed in Actions on 2026-10-23. Local branch adds an installed SDDM runtime-directory service and enables OpenRC settings D-Bus support | Latest GUI Actions run showed only the background, not the Live Plasma shell. Diagnostics found the `org.freedesktop.locale1` service missing; the SDDM runtime fix and settings service still need a fresh CI run. Installed graphical login remains unverified |
+| Atomic boot | Offline FS-neutral staging, GRUB/initramfs selectors, a local disposable ext4 QEMU run through confirmed B, failed trial C, automatic fallback to B, explicit rollback to A; experimental signed paired-updater source with offline-only apply checks | Latest Actions QEMU run reached deployment B but did not confirm it because SDDM was stopped. Diagnostic logging is being added. Usable VRE provisioning, installed updater integration, signed paired system/user QEMU update/fallback, production rollback guarantees, and power-loss-safe transactions also remain open |
+| Dual environments | PRs #8–13 **merged into `main`**: namespace probes; Alpine user-root/OpenRC PID 1; multi-ID mapping and inner `sudo`; QEMU lifecycle manager, rootfs staging, descriptor checks, pidfd safety. PR #30 is a separate shared-root multi-account authentication proof | Installed manager and login, real host privilege-boundary audit, production user storage/KDE/network integration |
 | VPN isolation | Design | veth/network policy, DNS, user VPN and kill-switch tests |
 | KDE cross-boundary launch | Design and experimental KRunner preflight in PR #8 | System-selected read-only KDE runtime, user session, safe Alt+F2, D-Bus/Wayland integration |
-| vpkg | APK-derived prototype plus early Go frontend | Final installed-engine replacement, user root integration, inactive-generation updater |
+| vpkg | APK-derived prototype; Go CLI now has ordered Alpine APK → Veyra APK → Nix install resolution | Behavioral validation in the user root, installed-engine packaging, full user-root integration and inactive-generation updater |
 | glenv/Nix | Signed runtime pairing and Nix prototypes | Full lifecycle/integration in user root and system generations |
 | VRE | Separate console Recovery boot in diskless QEMU | Manual GRUB entry, authenticated artifacts, shared dual-scope restore backend, real repair UI and automatic recovery |
 | SnapCore user snapshots | **Design only**: [block-level CoW engine](VEYRA-SNAPCORE.md), no directory-copy snapshots or required Btrfs | On-disk engine, kernel block interface, crash-consistent snapshots, preservation/rollback QEMU proofs |
 | Guardian / Resilience | **Design only**: [independent health, UI and recovery policy](VEYRA-RESILIENCE.md) | System OpenRC monitor, trusted graphics/TTY, shared transaction engine and end-to-end disaster recovery |
 
-**Last verified `main` baseline (2026-10-20):** commit [`1754933`](https://github.com/angyedz/Veyra-Linux/commit/1754933123564d621081788f7a6ca41a29dd5dd3), PRs [#8](https://github.com/angyedz/Veyra-Linux/pull/8), [#9](https://github.com/angyedz/Veyra-Linux/pull/9), [#10](https://github.com/angyedz/Veyra-Linux/pull/10), [#11](https://github.com/angyedz/Veyra-Linux/pull/11), [#12](https://github.com/angyedz/Veyra-Linux/pull/12), [#13](https://github.com/angyedz/Veyra-Linux/pull/13) merged. [Integration CI passed](https://github.com/angyedz/Veyra-Linux/actions/runs/39452117275); [Stage 1 QEMU lifecycle passed](https://github.com/angyedz/Veyra-Linux/actions/runs/39452117206). These prove the **test-only** implementation's stated assertions, not an installed dual-environment system or a general host-escape security review. Continue recording failures and guest serial logs for future gates.
+**Last verified `main` baseline:** commit [`1754933`](https://github.com/angyedz/Veyra-Linux/commit/1754933123564d621081788f7a6ca41a29dd5dd3) from 2026-10-20 passed integration and Stage 1 QEMU ([CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39452117275), [QEMU](https://github.com/angyedz/Veyra-Linux/actions/runs/39452117206)); PRs [#8–13](https://github.com/angyedz/Veyra-Linux/pull/13) are merged. PR [#15](https://github.com/angyedz/Veyra-Linux/pull/15) merged on 2026-10-22 at [`877e456`](https://github.com/angyedz/Veyra-Linux/commit/877e45616e583c6e85eaa1a3764bea2a855e3daf) after integration and ISO/QEMU install checks passed on its head ([integration](https://github.com/angyedz/Veyra-Linux/actions/runs/39574207595), [ISO/install](https://github.com/angyedz/Veyra-Linux/actions/runs/39574207601)). Fresh checks on the merge commit are pending. Neither result proves Calamares GUI clicks, the installed dual-environment system or a general host-escape security review.
+
+## Release levels and publication gates
+
+The first public ISO is **Veyra Linux Pre-Alpha**. It may have unfinished features and known bugs, but SDDM login, the package workflow, basic user environments, and a working A/B update/rollback path on the first supported target must be demonstrated. Choose a version/tag after the candidate is verified; the current conventional single-root ISO is only an internal installer/driver validation image and must not be described as the Pre-Alpha release.
+
+### Internal installer validation (not a release)
+
+Keep the current conventional Alpine/KDE image available for development and for isolating installer, SDDM and package-repository defects. Continue to require a clean graphical install and first Plasma login before using it as the base for the dual-environment installer. Do not publish it as the Veyra Linux Pre-Alpha or imply it contains the two-environment architecture.
+
+**QEMU Live smoke check (2026-10-23):** the latest ISO boots, but GUI automation captured only the desktop background. Guest logs show SDDM selects `startplasma-wayland`; the Plasma session reports that `org.freedesktop.locale1` is unavailable. The first follow-up probe restarted SDDM without capturing enough post-restart process state. The updated probe checks `openrc-settingsd` and records the session process/log state on the next CI run.
+
+**Latest GitHub Actions run (2026-10-23):** ISO packaging, headless Live boot and blank-disk install/reboot passed. The GUI job timed out before it detected Plasma; a diagnostic screenshot shows only the background. The serial A/B test booted generation B but refused confirmation because SDDM was stopped. Guest logs tie that SDDM failure to the absent `/run/user/108`; the local fix prepares this directory before SDDM. These desktop changes have not yet passed CI.
+
+**Clean ext4 install smoke check (2026-10-23):** `tests/test-installed-qemu.py` installed the ISO into a fresh 20 GiB qcow2 disk, verified the installed SDDM configuration and absence of the Live autologin fragment, then booted the installed system successfully. This uses the shell-driven installer path and serial console; graphical Calamares interaction and the installed SDDM greeter/session remain unverified.
+
+**A/B and updater integration (2026-10-23):** the current ext4 A/B QEMU scenario passed on a cached ISO, proving A → confirmed B → forced-failure fallback to B → explicit rollback to A; it exercises the boot-selection prototype, not `veyra-atomic-update`. The paired updater package build and Go tests passed. Recovery now has a CI-boot-tested optional updater runtime and menu, but the CI test rejects an invalid device and does not stage a release. A signed update through Recovery, followed by a failed-trial rollback, remains the A/B release gate. [A/B QEMU](https://github.com/angyedz/Veyra-Linux/actions/runs/39985576753), [Recovery QEMU](https://github.com/angyedz/Veyra-Linux/actions/runs/39995414655), [updater package build](https://github.com/angyedz/veyra-pkgrepo/actions/runs/39994910990).
+
+### Veyra Linux Pre-Alpha
+
+The Pre-Alpha target is a working, updateable x86_64 system validated on ext4 in QEMU. It may have rough edges and defer VPN isolation, SnapCore, Guardian, graphical recovery, other filesystems and physical-hardware qualification. It must provide these core behaviors:
+
+- [ ] Clean Calamares install boots through SDDM and reaches a usable KDE session.
+- [ ] Normal authenticated login starts in the persistent shared user Linux environment by default. Accounts keep separate Linux identities and private `/home/LOGIN`; the user environment has its own rootfs, package database and init. Inner `sudo` cannot administer the system environment.
+- [ ] `vpkg` operates only in the user environment and resolves each install in order: configured Alpine APK repositories, signed `veyra-pkgrepo` (also APK format), then Nix if the package is absent from both APK sources. The Veyra repository contains both system and user packages; system packages are applied only by the trusted updater or, after entering the password-gated system shell, with ordinary system `apk`. `vpkg` has no system-root target mode.
+- [ ] A signed release manifest identifies the compatible system and user-environment APK package sets for the Pre-Alpha channel.
+- [ ] The updater stages system changes into an inactive A/B generation and stages a matching user-environment generation whenever the release changes that environment or its compatibility contract. It verifies repository/package signatures and release metadata before activation.
+- [ ] A trial boot confirms health of both environments. Missing confirmation or a forced boot failure returns to the previous confirmed system/user generation pair. The QEMU test proves A → updated B → forced failure → restored A.
+- [ ] `/home`, user Nix/Flatpak state and other declared personal data stay outside both update generations and survive successful updates and system/user generation rollback. Compatible package selections and configuration are migrated explicitly; an unsafe migration blocks activation.
+- [ ] The release includes the exact tested ISO, SHA-256/SHA-512, source and package manifest, update instructions and a clear list of unfinished features.
+
+**Gate:** all items above pass on a fresh x86_64/ext4 QEMU install, including SDDM, default user-environment login, package operations, a signed update delivered through the configured repository, and automatic rollback after an intentionally failed trial boot. Release notes must say that other filesystems and physical hardware remain unqualified. No public Pre-Alpha is published from the current single-root image.
+
+### Stable Veyra
+
+Stable release additionally requires Stage 11 security/reliability and Stage 12 release-readiness gates, including supported hardware/filesystem qualification, signed reproducible updates, independent recovery, and a reviewed support/upgrade policy. Unfinished SnapCore or recovery behavior must never be advertised as available.
 
 ### Stage progress at a glance
 
-| Stage | State as of 2026-10-20 | Evidence / next boundary |
+| Stage | State as of 2026-10-22 | Evidence / next boundary |
 | --- | --- | --- |
 | **0 — Experimental audit/CI** | **Merged QEMU/static baseline** | PR #8; threat model still incomplete |
 | **1 — Persistent user environment** | **QEMU prototype milestones passed**, not deployed | PRs #9–13; production OpenRC service, default login and A/B-independent storage pending |
@@ -49,9 +85,9 @@ Parallel tracks are intentional; avoid turning prototypes on in the normal boot 
 | **3 — User network/VPN** | Not integrated | Virtual link, independent routing/DNS/TUN and VPN tests pending |
 | **4–5 — KDE/launch paths** | Architecture and early launcher preflight | Version-locked system KDE with user-executed Plasma/KRunner still pending |
 | **6 — vpkg/glenv/Nix** | Existing component prototypes | User-root and A/B integration pending |
-| **7 — Filesystem-neutral A/B** | Independent experimental staging/boot track | Installed A → B → A with fault injection still pending |
+| **7 — Filesystem-neutral A/B** | System-only experimental ext4 QEMU cycle passed locally; fixture user roots were synthetic | Signed paired update and broader fault-injection/recovery gates remain pending |
 | **8 — Coherent KDE A/B** | Planned | Matched runtime activation/rollback pending |
-| **9 — Recovery** | Independent console VRE QEMU proof; **Guardian/Resilience design recorded** | Shared online/VRE repair engine, system A/B + user SnapCore restore, independent TTY and trusted graphical UI pending |
+| **9 — Recovery** | Diskless console VRE and optional updater-runtime QEMU proofs; **Guardian/Resilience design recorded** | Installed Recovery boot entry, signed update transaction, shared online/VRE repair engine, user SnapCore restore, independent TTY and trusted graphical UI pending |
 | **10–12 — Installer, QA, release** | Not release-ready | Dual-root installed path and qualification pending |
 
 ## Stage 0 — Audit experimental PR #8 and establish gates
@@ -76,6 +112,8 @@ Parallel tracks are intentional; avoid turning prototypes on in the normal boot 
 
 **QEMU baseline milestone (PR #9):** a disposable Alpine 3.22 user rootfs booted through its own BusyBox PID 1 and OpenRC on the same guest kernel, with separate user/PID/mount/network/IPC/UTS namespaces, mapped inner root/normal UIDs, namespace-local sudo and persistent state over two VM boots. [QEMU evidence](https://github.com/angyedz/Veyra-Linux/actions/runs/39308988112).
 
+**Account model:** the rootfs and package database are shared by all ordinary accounts in the user environment. Each account authenticates as a distinct Linux UID/GID and receives a private home directory and session. [PR #30](https://github.com/angyedz/Veyra-Linux/pull/30) is a disposable QEMU authentication proof for this model; even if its test passes, production SDDM/PAM integration, account provisioning, system service supervision and security review remain open.
+
 **QEMU lifecycle milestone (PR #10):** the system-side test manager passed start/status/stop, restart and nested PID 1 crash detection; rootfs checks rejected entries outside mapped ownership, an unapproved setuid file, a nested mount and a block device. Two guest boots reused one disk and finished with counts 2 then 4. [QEMU evidence](https://github.com/angyedz/Veyra-Linux/actions/runs/39312323358) · [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39312323395) · [Stage 1 prototype details](STAGE1-USER-ROOTFS.md). This remains a disposable prototype, not a production login path or security sign-off.
 
 **Manager-exit cleanup milestone (PR #11):** QEMU killed the system-side manager while the user environment was running, verified that launcher death terminated nested PID 1, then restarted the manager and confirmed STOPPED plus stale-socket recovery. The same persistent disk passed two guest boots with counts 3 then 6. [QEMU evidence](https://github.com/angyedz/Veyra-Linux/actions/runs/39318056661) · [integration CI](https://github.com/angyedz/Veyra-Linux/actions/runs/39318056566). This is still a prototype lifecycle check, not production crash recovery or a host security sign-off.
@@ -87,7 +125,7 @@ Parallel tracks are intentional; avoid turning prototypes on in the normal boot 
 ### Verified Stage 1 QEMU milestones
 
 - [x] Prepare a separate persistent Alpine 3.22 ext4 test rootfs and boot a **distinct BusyBox PID 1** that invokes user-environment OpenRC runlevels; system init remains independent.
-- [x] Use system-authorized **multi-ID user/group mappings** (inner IDs 0–65535 → guest outer IDs 100000–165535); verify ordinary inner UID 1000 and real inner `sudo` mapping to **outer UID 100000**, not system UID 0.
+- [x] Use system-authorized **multi-ID user/group mappings** (inner IDs 0–65535 → guest outer IDs 300000–365535, matching the shared-root account provisioner); verify ordinary inner UID 1000 and real inner `sudo` mapping to **outer UID 300000**, not system UID 0.
 - [x] Demonstrate user rootfs persistence across two actual guest boots, with a test OpenRC service's counter reaching 3 then 6 after start/restart/manager-death scenarios.
 - [x] Test system-side `start`, `status`, `stop`, restart, forced PID 1 crash reporting, manager-death cleanup, and stale-socket recovery in QEMU.
 - [x] Reject hostile rootfs structure in QEMU (outside-mapped owners, nested mounts, block devices, unexpected setuid files, and escaping init symlinks).
@@ -136,8 +174,10 @@ Parallel tracks are intentional; avoid turning prototypes on in the normal boot 
 - [ ] Audit inherited file descriptors, proc/sysfs interfaces, mount propagation, device nodes, namespace transitions and seccomp/LSM/cgroups where applicable.
 - [ ] Resource quotas/limits protect system services from user process floods, memory exhaustion and fork bombs.
 - [ ] Explicit threat model for kernel vulnerabilities and shared-kernel attacks.
+- [ ] Add a system-owned, password-authenticated bridge for entering the host root maintenance environment. Validate credentials against system-side PAM; inner `sudo` or a user-root identity alone must never authorize it.
+- [ ] Deliver the authenticated session through a system-controlled TTY first, with rate limiting, logout/timeout cleanup and no password or reusable root capability exposed to user-side processes. Add a trusted graphical entry point only after the KDE bridge gates pass.
 
-**Gate:** under inner `sudo`, attempts to modify host kernel state, mounts, packages, boot, devices, host processes and privileged IPC fail; normal inner administration still succeeds.
+**Gate:** under inner `sudo`, attempts to modify host kernel state, mounts, packages, boot, devices, host processes and privileged IPC fail; normal inner administration still succeeds. The system root bridge opens only after host-side password verification and closes cleanly without leaving authority in the user environment.
 
 ## Stage 3 — User networking and VPN
 
@@ -177,7 +217,7 @@ Parallel tracks are intentional; avoid turning prototypes on in the normal boot 
 **Depends on:** Stage 1; integrates with Stage 7.
 
 - [ ] Finish the independent source-derived `vpkg` engine, preserving APK dependency solver, format, signatures and licenses, without requiring the installed `apk` executable.
-- [ ] Make normal `vpkg install/remove/upgrade` affect only the persistent **user** rootfs by default, with no environment-selection flags.
+- [ ] Integrate and behaviorally validate the CLI's Alpine APK → signed `veyra-pkgrepo` APK → Nix install resolution inside the persistent **user** rootfs. Make `vpkg install/remove/upgrade` affect only that root, with no system-root selection flag.
 - [ ] Implement separate privileged host A/B transactions for system packages; no in-place change to active deployment.
 - [ ] Integrate signed glenv runtime pairing and Nix profiles without opening host privilege boundaries.
 - [ ] Preserve package database integrity across failures and reboots.
@@ -188,7 +228,8 @@ Parallel tracks are intentional; avoid turning prototypes on in the normal boot 
 
 **Can proceed in parallel with Stages 1–6.**
 
-- [ ] Prove full installed QEMU A -> stage B -> boot B -> rollback A -> boot A on ext4 (then XFS/F2FS/Btrfs compatibility).
+- [x] System-only disposable ext4 QEMU prototype: boot confirmed A, activate and confirm B, fail trial C, automatically fall back to B, then explicitly roll back and boot A. User roots in this test are synthetic fixtures; this does not qualify the paired updater.
+- [ ] Prove the signed, installed system/user update pair on ext4 (then XFS/F2FS/Btrfs compatibility).
 - [ ] Implement verified inactive-generation package staging with an independent package database; never mutate active A.
 - [ ] Authenticate generation metadata, kernel/initramfs and update artifacts. Add limited trial boots and durable boot-success confirmation.
 - [ ] Guarantee fallback across interrupted writes, kernel panic, missing root, hangs and power loss; test actual bad deployments.
@@ -266,7 +307,7 @@ Parallel tracks are intentional; avoid turning prototypes on in the normal boot 
 
 **Gate:** release-blocking failures addressed and independent tests reproducible in CI.
 
-## Stage 12 — Integration, delivery and release readiness
+## Stage 12 — Integration, delivery and stable release readiness
 
 **Depends on:** all release-blocking gates.
 
@@ -276,28 +317,21 @@ Parallel tracks are intentional; avoid turning prototypes on in the normal boot 
 - [ ] Publish user/admin troubleshooting, limitations, recovery and upgrade instructions.
 - [ ] Run full clean-install, normal boot, broken-boot and rollback release qualification.
 
-**Gate:** reviewed release candidate with evidenced boot, isolation, update, rollback and recovery behavior on supported setups.
+**Gate:** reviewed stable release candidate with evidenced boot, isolation, update, rollback and recovery behavior on supported setups. Passing the Pre-Alpha gate does not close this stage.
 
 ## Immediate execution order
 
-1. **Stage 0 prototype complete and merged**: PR #8 QEMU/static gates verified; continue its unfinished threat-model work under Stage 2.
-2. **Stage 1 QEMU milestone complete and merged**: PRs #9–13; **next** productionize the tested system manager as a real OpenRC service, finalize persistent rootfs outside A/B, add normal login/auth and trusted cleanup.
-3. **In parallel Stage 1S:** prototype SnapCore genuine block-level CoW with crash-consistent mapping roots, power-cut tests and independent root vs `/home` recovery; preserve system A/B's snapshot-free contract.
-4. Stage 2: adversarially prove the production inner `sudo` cannot escape or control host kernel/devices/boot/network/services; extend inherited-FD/cgroup/LSM audits.
-5. Stage 3: controlled user internet and VPN while host network stays independent.
-6. In parallel, Stage 7: complete the real A -> B -> A QEMU cycle.
-7. Stages 4–5: pair KDE runtime and route all application launch paths.
-8. Stages 6 and 8: stabilize user package management and paired system KDE upgrades.
-9. Stages 9–12: build system-side Guardian, trusted TTY/graphics fallback and a **shared Recovery Engine** for user SnapCore and system A/B in VRE; then installer, destruction/recovery tests and release qualification.
+1. Finish qualifying SDDM/desktop boot and clean graphical installation in the internal ISO workflow.
+2. Install the shared user-environment runtime as the default SDDM login, reusing the merged namespace/lifecycle prototypes and authenticating multiple system accounts into one package root with private homes.
+3. Turn the system-only A/B QEMU prototype into a signed update transaction, then add matching user-root generations for the x86_64/ext4 alpha target.
+4. Replace the current in-place `apk upgrade` utility with a signed, paired-release updater that stages inactive generations, performs a health-confirmed trial boot and rolls back the pair on failure.
+5. Run a clean QEMU install → SDDM login → signed update → successful confirmation → injected failed update → automatic rollback cycle while checking user data and package selections.
+6. Choose the release version, then publish Veyra Linux Pre-Alpha only from the exact ISO and repository state that passed this cycle; document unfinished VPN, recovery, other-filesystem and physical-hardware support.
+7. Continue Stages 2–12: adversarial isolation review; VPN; coherent KDE launch/runtime; full package-manager lifecycle; SnapCore; Guardian/VRE; broader filesystem and hardware coverage.
 
-## First integrated alpha acceptance gate
+## First integrated Pre-Alpha acceptance gate
 
-A **Dual Environment Alpha** is eligible only when a clean QEMU install:
-boots system + user init, starts system-owned KDE with user-side
-`plasmashell` and KRunner, confines `sudo`, installs normal user packages,
-runs a user VPN without touching host networking, persists user rootfs across
-reboot and successfully rolls back system A/B independently. A broken user
-environment must not prevent the system's maintenance/recovery path. Before advertising snapshots or automatic recovery, a later end-to-end gate must also prove that destroying the disposable user environment triggers **independent Guardian/TTY or VRE**, restores a verified user-root snapshot without rolling back newer separate `/home` data, and that VRE independently repairs a failed system A/B generation. These are **future tasks**, not current alpha claims.
+**Veyra Linux Pre-Alpha** is eligible only when a clean x86_64/ext4 QEMU install reaches a working SDDM session inside the default user environment, keeps host root privileged to the system environment, supports the unified APK/Nix package workflow, updates signed system and user package sets into inactive generations, confirms a healthy paired boot, and automatically restores the previously confirmed pair after an injected boot failure. Separate account homes and declared persistent user state must survive both paths. VPN isolation, KDE runtime version-pairing, SnapCore, Guardian and offline VRE remain later release gates unless separately qualified; the Pre-Alpha notes must state those limits plainly.
 
 No checklist item may be marked complete solely because a script or a
 GitHub Actions workflow exists; attach actual test evidence.

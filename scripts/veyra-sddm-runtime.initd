@@ -1,0 +1,31 @@
+#!/sbin/openrc-run
+# Prepare the runtime directory expected by Alpine's sddm-openrc start hook.
+description="Prepare SDDM's elogind runtime directory"
+
+depend() {
+	need localmount elogind
+	before sddm
+}
+
+start() {
+	ebegin "Preparing SDDM logind runtime directory"
+	if ! id sddm >/dev/null 2>&1; then
+		eend 1 "SDDM account is missing"
+		return 1
+	fi
+	uid=$(id -u sddm) || {
+		eend 1 "cannot read SDDM account UID"
+		return 1
+	}
+	group=$(id -gn sddm) || {
+		eend 1 "cannot read SDDM account group"
+		return 1
+	}
+	runtime_dir="/run/user/$uid"
+	if ! mkdir -p "$runtime_dir" || ! chown "sddm:$group" "$runtime_dir" ||
+		! chmod 0700 "$runtime_dir"; then
+		eend 1 "cannot prepare $runtime_dir"
+		return 1
+	fi
+	eend 0
+}

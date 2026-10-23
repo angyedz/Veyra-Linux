@@ -4,6 +4,6 @@ command="/usr/local/lib/veyra/live-user.sh"
 command_background="no"
 
 depend() {
-    need localmount
+    need localmount elogind
     before sddm
 }

@@ -3,6 +3,8 @@
 # Names must exist in Alpine's main/community repositories for the pinned release.
 plasma-desktop
 linux-lts
+# Install Alpine's full signed firmware set for network, storage, audio and GPUs.
+linux-firmware
 veyra-calamares
 # Timezone database and open-source disk/file recovery tools.
 tzdata
@@ -32,11 +34,16 @@ font-noto-emoji
 dbus
 dbus-openrc
 elogind
+openrc-settingsd
+openrc-settingsd-openrc
 polkit
 networkmanager
 networkmanager-wifi
 eudev
 eudev-openrc
+# Keep PCI/USB driver inventory tools available for install diagnostics.
+pciutils
+usbutils
 udisks2
 upower
 pipewire
@@ -49,6 +56,16 @@ konsole
 fastfetch
 dolphin
 firefox
+# Flatpak runtime and the pinned Veyra AppCenter build from the local APK repo.
+flatpak
+flatpak-polkit
+xdg-document-portal
+py3-qt6
+qt6-qtdeclarative
+veyra-appcenter
+veyra-update
+# Native Telegram Desktop package from Alpine community.
+telegram-desktop
 nix
 nix-openrc
 bash
