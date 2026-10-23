@@ -125,6 +125,65 @@ func TestMergeUserWorldRejectsInvalidOrDuplicateEntries(t *testing.T) {
 	}
 }
 
+func TestPlanPairedUpdateBuildsSafePairedGenerationPlan(t *testing.T) {
+	document, signature, key := signedFixture(t, nil)
+	release, err := VerifyRelease(document, signature, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	current := ConfirmedPair{
+		SystemID: "S-2026-09-01", UserID: "U-2026-09-01", Sequence: 0,
+		UserWorld: []string{"alpine-base=3.21.4-r0", "firefox", "vpkg=0.0.9-r0"},
+	}
+	plan, err := PlanPairedUpdate(release, current, func(string) bool { return false })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Source.SystemID != current.SystemID || plan.Source.UserID != current.UserID ||
+		plan.Target.SystemID != "S-2026-10-23" || plan.Target.UserID != "U-2026-10-23" ||
+		plan.Target.Sequence != 1 {
+		t.Fatalf("unexpected source/target plan: %+v", plan)
+	}
+	wantWorld := []string{"alpine-base=3.22.0-r1", "vpkg=0.1.0-r1", "firefox"}
+	if strings.Join(plan.Target.UserWorld, "\n") != strings.Join(wantWorld, "\n") {
+		t.Fatalf("target user world = %v, want %v", plan.Target.UserWorld, wantWorld)
+	}
+}
+
+func TestPlanPairedUpdateRejectsReplayReuseAndIncompleteState(t *testing.T) {
+	document, signature, key := signedFixture(t, nil)
+	release, err := VerifyRelease(document, signature, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := ConfirmedPair{
+		SystemID: "S-2026-09-01", UserID: "U-2026-09-01", Sequence: 0,
+		UserWorld: []string{"alpine-base"},
+	}
+	cases := []struct {
+		name    string
+		current ConfirmedPair
+		exists  func(string) bool
+		noCheck bool
+	}{
+		{name: "replay", current: ConfirmedPair{SystemID: base.SystemID, UserID: base.UserID, Sequence: 1, UserWorld: base.UserWorld}, exists: func(string) bool { return false }},
+		{name: "target exists", current: base, exists: func(id string) bool { return id == "U-2026-10-23" }},
+		{name: "empty user world", current: ConfirmedPair{SystemID: base.SystemID, UserID: base.UserID}, exists: func(string) bool { return false }},
+		{name: "missing existence check", current: base, noCheck: true},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			exists := test.exists
+			if test.noCheck {
+				exists = nil
+			}
+			if _, err := PlanPairedUpdate(release, test.current, exists); err == nil {
+				t.Fatal("unsafe update plan was accepted")
+			}
+		})
+	}
+}
+
 func TestVerifyRejectsTamperingAndWrongKey(t *testing.T) {
 	document, signature, key := signedFixture(t, nil)
 	changed := append(append([]byte(nil), document...), ' ')
@@ -151,7 +210,12 @@ func TestVerifyRejectsIncompatibleOrUnsafeManifest(t *testing.T) {
 		{"system-user API mismatch", func(m *Manifest) { m.User.RequiresOther = "old-system-api" }, "does not accept"},
 		{"HTTP repository", func(m *Manifest) { m.System.Repositories[0].URL = "http://packages.veyra.example/system" }, "HTTPS URL"},
 		{"unsafe repository tag", func(m *Manifest) { m.User.Repositories[0].Tag = "../escape" }, "tag is invalid"},
-		{"duplicate package", func(m *Manifest) { m.User.World = append(m.User.World, m.User.World[0]) }, "repeats APK world"},
+		{"duplicate package", func(m *Manifest) { m.User.World = append(m.User.World, m.User.World[0]) }, "repeats APK package"},
+		{"duplicate package through another tag", func(m *Manifest) { m.User.World = append(m.User.World, "vpkg@veyra") }, "repeats APK package"},
+		{"required package omitted from world", func(m *Manifest) {
+			delete(m.User.RequiredPackages, "vpkg")
+			m.User.RequiredPackages["missing"] = "1.0-r0"
+		}, "absent from its world"},
 		{"unsafe package constraint", func(m *Manifest) { m.System.World[0] = "alpine-base;touch /tmp/pwned" }, "invalid APK world"},
 		{"unsupported architecture", func(m *Manifest) { m.Architecture = "aarch64" }, "unsupported release architecture"},
 		{"zero sequence", func(m *Manifest) { m.Sequence = 0 }, "sequence must be greater than zero"},

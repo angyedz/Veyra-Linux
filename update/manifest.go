@@ -222,13 +222,14 @@ func (e Environment) validate(label string) error {
 	}
 	seenWorld := make(map[string]struct{}, len(e.World))
 	for _, constraint := range e.World {
-		if !packageSpec.MatchString(constraint) {
+		name, err := worldPackageName(constraint)
+		if err != nil {
 			return fmt.Errorf("%s environment has invalid APK world constraint %q", label, constraint)
 		}
-		if _, ok := seenWorld[constraint]; ok {
-			return fmt.Errorf("%s environment repeats APK world constraint %q", label, constraint)
+		if _, ok := seenWorld[name]; ok {
+			return fmt.Errorf("%s environment repeats APK package %q in its world", label, name)
 		}
-		seenWorld[constraint] = struct{}{}
+		seenWorld[name] = struct{}{}
 	}
 	if len(e.RequiredPackages) == 0 || len(e.RequiredPackages) > maxPackages {
 		return fmt.Errorf("%s environment must define between 1 and %d required APK packages", label, maxPackages)
@@ -236,6 +237,9 @@ func (e Environment) validate(label string) error {
 	for name, version := range e.RequiredPackages {
 		if !packageName.MatchString(name) || !packageVer.MatchString(version) {
 			return fmt.Errorf("%s environment has invalid required APK package %q", label, name)
+		}
+		if _, selected := seenWorld[name]; !selected {
+			return fmt.Errorf("%s required APK package %q is absent from its world", label, name)
 		}
 	}
 	return nil
