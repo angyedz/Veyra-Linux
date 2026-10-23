@@ -30,14 +30,17 @@ test -f images/veyra-tui-install.sh
 test -f images/veyra-live-mode.sh
 grep -q 'need localmount elogind' images/veyra-live.initd
 grep -q "sed -i '/\^tty1::respawn:/d' /etc/inittab" images/veyra-live-mode.sh
-! grep -q '^tty1::respawn:' images/inittab-veyra
+if grep -q '^tty1::respawn:' images/inittab-veyra; then
+    echo 'The live image must not start a tty1 autologin from inittab' >&2
+    exit 1
+fi
 grep -q 'tty1::respawn:/sbin/agetty --autologin veyra' images/veyra-live-mode.sh
 grep -q 'inittab-veyra.*etc/inittab' images/genapkovl-veyra.sh
 grep -q 'sed -i.*tty1::respawn' scripts/installer-desktop.sh
 grep -q 'DisplayServer=x11' scripts/installer-desktop.sh
 grep -q 'zz-veyra-live.conf' scripts/installer-copy.sh
 grep -q '/tmp/.X11-unix' images/veyra-live-user.sh
-grep -q 'sddm_uid=$(id -u sddm)' images/veyra-live-user.sh
+grep -q "sddm_uid=\$(id -u sddm)" images/veyra-live-user.sh
 grep -q 'find images branding scripts calamares -type f' images/mkimg.veyra.sh
 grep -q 'VEYRA_TEST_CALAMARES_AUTOSTART=' images/mkimg.veyra.sh
 grep -q 'veyra-live-mode' images/genapkovl-veyra.sh
