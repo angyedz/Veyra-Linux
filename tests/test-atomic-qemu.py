@@ -33,6 +33,19 @@ def guest_cycle(qemu, disk, logdir, expected, expected_user_environment, command
                                   f'test "$(cat /etc/veyra/deployment-id)" = "{expected}"', 30)
             installed.run_command(child,
                                   'test "$(cat /etc/veyra/deployment-mode)" = atomic-v1', 30)
+            installed.run_command(
+                child,
+                "printf '\\nVEYRA_DESKTOP_DIAGNOSTICS\\n'; "
+                "rc-service sddm status || true; "
+                "ps -ef | grep -E 'sddm|Xorg|kwin|plasmashell' || true; "
+                "for file in /var/log/sddm.log /var/log/Xorg.0.log "
+                "/home/sddm/.local/share/sddm/xorg-session.log "
+                "/var/log/messages; do "
+                "[ ! -f \"$file\" ] || { echo \"===== $file\"; tail -n 100 \"$file\"; }; "
+                "done; "
+                "cat /etc/init.d/sddm /etc/conf.d/sddm 2>/dev/null || true",
+                30,
+            )
             installed.run_command(child,
                                   'mountpoint -q /var/lib/veyra/store && '
                                   'mountpoint -q /home && mountpoint -q /nix', 30)
