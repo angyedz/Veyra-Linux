@@ -25,10 +25,10 @@ chroot "$target" rc-update add openrc-settingsd default
 # systems need a small service to prepare it after elogind starts.
 scriptdir=$(CDPATH='' cd "$(dirname "$0")" && pwd)
 runtime_service="$scriptdir/veyra-sddm-runtime.initd"
-[ -f "$runtime_service" ] && [ ! -L "$runtime_service" ] || {
+if [ ! -f "$runtime_service" ] || [ -L "$runtime_service" ]; then
     echo 'Missing safe SDDM runtime service.' >&2
     exit 1
-}
+fi
 install -m 0755 "$runtime_service" "$target/etc/init.d/veyra-sddm-runtime"
 chroot "$target" rc-update add veyra-sddm-runtime default
 
