@@ -18,7 +18,8 @@ increasing channel number; the initial supported `architecture` is `x86_64`.
 - `id`: the generation identifier to stage;
 - `provides`: the compatibility ID this root exports;
 - `requires_other`: the compatibility ID required from the paired root;
-- `repositories`: one or more HTTPS APK repository URLs;
+- `repositories`: one or more objects with an HTTPS `url` and an optional APK
+  repository `tag` (written as `@tag URL` in the staged root's repositories file);
 - `world`: the APK package constraints that define the root's explicit package
   selection;
 - `required_packages`: package name to exact version pairs that every staged
@@ -30,6 +31,11 @@ and rejects unknown fields, malformed package specs and non-HTTPS repositories.
 Signatures cover the exact JSON bytes; release tooling must not reformat the
 document after signing. The public key is 32 raw Ed25519 bytes or base64 of
 those bytes. The detached signature is 64 raw bytes or base64 of those bytes.
+
+The update library also provides the user-world merge policy for the future
+stager: signed release constraints take precedence for packages owned by the
+release, while additional APK packages already selected by the user remain in
+their existing order. This policy is not yet connected to an installed updater.
 
 Example shape (the values are illustrative and unsigned):
 
@@ -43,7 +49,7 @@ Example shape (the values are illustrative and unsigned):
     "id": "S-2026-10-23",
     "provides": "system-api-v1",
     "requires_other": "user-api-v1",
-    "repositories": ["https://packages.example.invalid/stable/system"],
+    "repositories": [{"url": "https://packages.example.invalid/stable/system"}],
     "world": ["alpine-base=3.22.0-r1", "linux-lts=6.12.20-r0"],
     "required_packages": {"alpine-base": "3.22.0-r1", "linux-lts": "6.12.20-r0"}
   },
@@ -51,7 +57,7 @@ Example shape (the values are illustrative and unsigned):
     "id": "U-2026-10-23",
     "provides": "user-api-v1",
     "requires_other": "system-api-v1",
-    "repositories": ["https://packages.example.invalid/stable/user"],
+    "repositories": [{"url": "https://packages.example.invalid/stable/user", "tag": "veyra"}],
     "world": ["alpine-base=3.22.0-r1", "vpkg=0.1.0-r1"],
     "required_packages": {"alpine-base": "3.22.0-r1", "vpkg": "0.1.0-r1"}
   }

@@ -36,9 +36,35 @@ type Environment struct {
 	ID               string            `json:"id"`
 	Provides         string            `json:"provides"`
 	RequiresOther    string            `json:"requires_other"`
-	Repositories     []string          `json:"repositories"`
+	Repositories     []Repository      `json:"repositories"`
 	World            []string          `json:"world"`
 	RequiredPackages map[string]string `json:"required_packages"`
+}
+
+// Repository selects an APK repository and optional APK repository tag.
+type Repository struct {
+	URL string `json:"url"`
+	Tag string `json:"tag,omitempty"`
+}
+
+func (r Repository) line() string {
+	if r.Tag == "" {
+		return r.URL
+	}
+	return "@" + r.Tag + " " + r.URL
+}
+
+// APKRepositoryLines returns repository entries in the syntax expected by
+// /etc/apk/repositories without changing manifest order.
+func (e Environment) APKRepositoryLines() ([]string, error) {
+	lines := make([]string, len(e.Repositories))
+	for i, repository := range e.Repositories {
+		if err := repository.validate(); err != nil {
+			return nil, fmt.Errorf("environment repository: %w", err)
+		}
+		lines[i] = repository.line()
+	}
+	return lines, nil
 }
 
 // Manifest is the signed release description used to select a compatible
@@ -52,44 +78,90 @@ type Manifest struct {
 	User         Environment `json:"user"`
 }
 
+// VerifiedRelease carries the exact signed bytes with their validated manifest.
+// Its fields are private so callers cannot construct a trusted release by
+// filling in parsed metadata alone.
+type VerifiedRelease struct {
+	manifest  Manifest
+	document  []byte
+	signature []byte
+}
+
+func (r VerifiedRelease) Manifest() Manifest {
+	manifest := r.manifest
+	manifest.System = cloneEnvironment(r.manifest.System)
+	manifest.User = cloneEnvironment(r.manifest.User)
+	return manifest
+}
+
+func (r VerifiedRelease) Document() []byte { return append([]byte(nil), r.document...) }
+
+func (r VerifiedRelease) Signature() []byte { return append([]byte(nil), r.signature...) }
+
+func cloneEnvironment(environment Environment) Environment {
+	cloned := environment
+	cloned.Repositories = append([]Repository(nil), environment.Repositories...)
+	cloned.World = append([]string(nil), environment.World...)
+	if environment.RequiredPackages != nil {
+		cloned.RequiredPackages = make(map[string]string, len(environment.RequiredPackages))
+		for name, version := range environment.RequiredPackages {
+			cloned.RequiredPackages[name] = version
+		}
+	}
+	return cloned
+}
+
 // VerifySignedManifest checks a raw or base64-encoded Ed25519 public key and
 // signature, verifies the exact manifest bytes, and rejects malformed or
 // incompatible release metadata.
 func VerifySignedManifest(document, signatureData, publicKeyData []byte) (Manifest, error) {
+	release, err := VerifyRelease(document, signatureData, publicKeyData)
+	if err != nil {
+		return Manifest{}, err
+	}
+	return release.Manifest(), nil
+}
+
+// VerifyRelease validates the signature and schema while retaining the exact
+// signed bytes for storage alongside the staged deployment pair.
+func VerifyRelease(document, signatureData, publicKeyData []byte) (VerifiedRelease, error) {
 	if len(document) == 0 || len(document) > maxManifest {
-		return Manifest{}, fmt.Errorf("manifest size must be between 1 and %d bytes", maxManifest)
+		return VerifiedRelease{}, fmt.Errorf("manifest size must be between 1 and %d bytes", maxManifest)
 	}
 	publicKey, err := decodeKeyMaterial(publicKeyData, ed25519.PublicKeySize, "public key")
 	if err != nil {
-		return Manifest{}, err
+		return VerifiedRelease{}, err
 	}
 	signature, err := decodeKeyMaterial(signatureData, ed25519.SignatureSize, "signature")
 	if err != nil {
-		return Manifest{}, err
+		return VerifiedRelease{}, err
 	}
 	if !ed25519.Verify(ed25519.PublicKey(publicKey), document, signature) {
-		return Manifest{}, errors.New("release manifest signature verification failed")
+		return VerifiedRelease{}, errors.New("release manifest signature verification failed")
 	}
 	if err := rejectDuplicateJSONKeys(document); err != nil {
-		return Manifest{}, fmt.Errorf("invalid signed release manifest: %w", err)
+		return VerifiedRelease{}, fmt.Errorf("invalid signed release manifest: %w", err)
 	}
 
 	decoder := json.NewDecoder(bytes.NewReader(document))
 	decoder.DisallowUnknownFields()
 	var manifest Manifest
 	if err := decoder.Decode(&manifest); err != nil {
-		return Manifest{}, fmt.Errorf("decode signed release manifest: %w", err)
+		return VerifiedRelease{}, fmt.Errorf("decode signed release manifest: %w", err)
 	}
 	if err := decoder.Decode(new(any)); !errors.Is(err, io.EOF) {
 		if err == nil {
-			return Manifest{}, errors.New("manifest contains trailing JSON data")
+			return VerifiedRelease{}, errors.New("manifest contains trailing JSON data")
 		}
-		return Manifest{}, fmt.Errorf("decode trailing manifest data: %w", err)
+		return VerifiedRelease{}, fmt.Errorf("decode trailing manifest data: %w", err)
 	}
 	if err := manifest.Validate(); err != nil {
-		return Manifest{}, err
+		return VerifiedRelease{}, err
 	}
-	return manifest, nil
+	return VerifiedRelease{
+		manifest: manifest, document: append([]byte(nil), document...),
+		signature: append([]byte(nil), signatureData...),
+	}, nil
 }
 
 // Validate checks all fields that can influence release or package selection.
@@ -136,13 +208,14 @@ func (e Environment) validate(label string) error {
 	}
 	seenRepositories := make(map[string]struct{}, len(e.Repositories))
 	for _, repository := range e.Repositories {
-		if err := validateRepository(repository); err != nil {
+		if err := repository.validate(); err != nil {
 			return fmt.Errorf("%s environment repository: %w", label, err)
 		}
-		if _, ok := seenRepositories[repository]; ok {
-			return fmt.Errorf("%s environment repeats repository %q", label, repository)
+		line := repository.line()
+		if _, ok := seenRepositories[line]; ok {
+			return fmt.Errorf("%s environment repeats repository %q", label, line)
 		}
-		seenRepositories[repository] = struct{}{}
+		seenRepositories[line] = struct{}{}
 	}
 	if len(e.World) == 0 || len(e.World) > maxPackages {
 		return fmt.Errorf("%s environment must define between 1 and %d APK world entries", label, maxPackages)
@@ -168,12 +241,15 @@ func (e Environment) validate(label string) error {
 	return nil
 }
 
-func validateRepository(value string) error {
-	parsed, err := url.Parse(value)
+func (r Repository) validate() error {
+	parsed, err := url.Parse(r.URL)
 	if err != nil || parsed.Scheme != "https" || parsed.Hostname() == "" ||
 		parsed.Opaque != "" || parsed.User != nil || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" ||
-		strings.ContainsAny(value, "\r\n\t ") {
-		return fmt.Errorf("repository must be an HTTPS URL without credentials, query, or fragment: %q", value)
+		strings.ContainsAny(r.URL, "\r\n\t ") {
+		return fmt.Errorf("repository must be an HTTPS URL without credentials, query, or fragment: %q", r.URL)
+	}
+	if r.Tag != "" && !idPattern.MatchString(r.Tag) {
+		return fmt.Errorf("repository tag is invalid: %q", r.Tag)
 	}
 	return nil
 }
