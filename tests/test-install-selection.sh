@@ -4,8 +4,10 @@ set -eu
 root=$(CDPATH='' cd "$(dirname "$0")/.." && pwd)
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT HUP INT TERM
+sh -n "$root/scripts/veyra-sddm-runtime.initd"
 target="$tmp/target"
-mkdir -p "$tmp/bin" "$target/etc/apk" "$target/lib/modules/6.12.0-test" "$tmp/pci/0000:01:00.0"
+mkdir -p "$tmp/bin" "$target/etc/apk" "$target/etc/init.d" \
+    "$target/lib/modules/6.12.0-test" "$tmp/pci/0000:01:00.0"
 printf '%s\n' alpine-base > "$target/etc/apk/world"
 
 cat > "$tmp/bin/mountpoint" <<'STUB'
@@ -29,6 +31,8 @@ export VEYRA_TEST_LOG="$tmp/operations"
 sh "$root/scripts/installer-desktop.sh" "$target" plasma
 grep -qx plasma "$target/etc/veyra/desktop"
 grep -q 'rc-update add sddm default' "$VEYRA_TEST_LOG"
+grep -q 'rc-update add veyra-sddm-runtime default' "$VEYRA_TEST_LOG"
+cmp "$root/scripts/veyra-sddm-runtime.initd" "$target/etc/init.d/veyra-sddm-runtime"
 if grep -Eq 'apk (add|del).* (gnome|xfce|lxqt)' "$VEYRA_TEST_LOG"; then
     echo 'KDE-only install must not mutate other desktop packages' >&2
     exit 1

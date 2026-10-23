@@ -90,6 +90,9 @@ grep -q 'ext4 virtio nvme' "$target/etc/mkinitfs/mkinitfs.conf"
 test "$(cat "$target/etc/veyra/desktop")" = DESKTOP
 # Check the supported Plasma display manager is enabled.
 test -e "$target/etc/runlevels/default/sddm"
+test -e "$target/etc/runlevels/default/veyra-sddm-runtime"
+grep -Fq 'need localmount elogind' "$target/etc/init.d/veyra-sddm-runtime"
+grep -Fq 'before sddm' "$target/etc/init.d/veyra-sddm-runtime"
 grep -Fqx 'DisplayServer=x11' "$target/etc/sddm.conf.d/zz-veyra.conf"
 test ! -e "$target/etc/sddm.conf.d/zz-veyra-live.conf"
 ! grep -q '^tty1::respawn:' "$target/etc/inittab"
@@ -159,6 +162,7 @@ def upload_script(child, content, remote_path):
         remote_path == "/tmp/e2e-install.sh"
         or remote_path.startswith("/usr/local/lib/veyra/installer-")
         or remote_path == "/usr/local/lib/veyra/setup-pkgrepo.sh"
+        or remote_path == "/usr/local/lib/veyra/veyra-sddm-runtime.initd"
         or remote_path in {
             "/usr/local/lib/veyra/veyra-atomic-convert.sh",
             "/usr/local/lib/veyra/veyra-deployment.sh",
@@ -260,6 +264,7 @@ exit 1
                 for script in (
                     "installer-copy.sh", "installer-prepare.sh",
                     "installer-desktop.sh", "installer-hardware.sh",
+                    "veyra-sddm-runtime.initd",
                     "setup-pkgrepo.sh",
                 ):
                     upload_script(

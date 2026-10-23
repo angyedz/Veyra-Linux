@@ -19,6 +19,18 @@ if [ -f "$target/etc/inittab" ]; then
 fi
 chroot "$target" rc-update add sddm default
 
+# Alpine's sddm-openrc start hook waits briefly for /run/user/<sddm-uid>.
+# The Live image creates it in its ephemeral veyra-live service; installed
+# systems need a small service to prepare it after elogind starts.
+scriptdir=$(CDPATH='' cd "$(dirname "$0")" && pwd)
+runtime_service="$scriptdir/veyra-sddm-runtime.initd"
+[ -f "$runtime_service" ] && [ ! -L "$runtime_service" ] || {
+    echo 'Missing safe SDDM runtime service.' >&2
+    exit 1
+}
+install -m 0755 "$runtime_service" "$target/etc/init.d/veyra-sddm-runtime"
+chroot "$target" rc-update add veyra-sddm-runtime default
+
 mkdir -p "$target/etc/veyra"
 mkdir -p "$target/etc/sddm.conf.d"
 cat > "$target/etc/sddm.conf.d/zz-veyra.conf" <<'SDDM'

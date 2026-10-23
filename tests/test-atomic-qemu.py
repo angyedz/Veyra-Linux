@@ -112,6 +112,7 @@ def main():
                 for name in (
                     "installer-copy.sh", "installer-prepare.sh",
                     "installer-desktop.sh", "installer-hardware.sh",
+                    "veyra-sddm-runtime.initd",
                     "setup-pkgrepo.sh",
                     "veyra-deployment.sh", "veyra-initramfs-select.sh",
                     "build-veyra-init.sh", "veyra-atomic-convert.sh",
