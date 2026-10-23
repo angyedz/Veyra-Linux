@@ -37,7 +37,7 @@ su veyra-builder -s /bin/sh -c '
 # Its helper source comes from this Veyra-Linux checkout, keeping the binary,
 # boot scripts and release manifest provenance in one ISO build.
 update_source="${VEYRA_UPDATE_SOURCE:-}"
-update_expected_revision=51e87aad60c24fc48d45223a9ef4278c9e2d2fd4
+update_expected_revision=e8c5cf68325283eefe28bffb722a649995acd75b
 if [ -z "$update_source" ] || [ ! -f "$update_source/src/veyra-update/APKBUILD" ]; then
     echo 'Missing checked-out Veyra updater package source.' >&2
     exit 1

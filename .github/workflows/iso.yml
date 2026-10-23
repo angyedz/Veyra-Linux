@@ -100,7 +100,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: angyedz/veyra-pkgrepo
-          ref: 51e87aad60c24fc48d45223a9ef4278c9e2d2fd4
+          ref: e8c5cf68325283eefe28bffb722a649995acd75b
           path: veyra-update-source
           persist-credentials: false
       - name: Build signed Alpine Calamares APK
@@ -108,7 +108,7 @@ jobs:
           VEYRA_APPCENTER_SOURCE: ${{ github.workspace }}/veyra-pkgrepo
           VEYRA_APPCENTER_REVISION: 97dbd8b8df28e0e4fad66397473bfa2ff62d5532
           VEYRA_UPDATE_SOURCE: ${{ github.workspace }}/veyra-update-source
-          VEYRA_UPDATE_REVISION: 51e87aad60c24fc48d45223a9ef4278c9e2d2fd4
+          VEYRA_UPDATE_REVISION: e8c5cf68325283eefe28bffb722a649995acd75b
         run: sh scripts/build-calamares.sh
       - uses: actions/upload-artifact@v4
         with:
@@ -184,7 +184,7 @@ jobs:
           VEYRA_VERSION: 0.1.0-alpha.1+${{ github.sha }}
           VEYRA_SOURCE_COMMIT: ${{ github.sha }}
           VEYRA_APPCENTER_REVISION: 97dbd8b8df28e0e4fad66397473bfa2ff62d5532
-          VEYRA_UPDATE_REVISION: 51e87aad60c24fc48d45223a9ef4278c9e2d2fd4
+          VEYRA_UPDATE_REVISION: e8c5cf68325283eefe28bffb722a649995acd75b
           VEYRA_GLENV_REVISION: bdcc0980553a2bc86fd6d62faee26002fea07999
         run: sh scripts/build-iso.sh
       - name: Verify ISO source and package manifest
