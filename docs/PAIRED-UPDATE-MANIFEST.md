@@ -1,7 +1,11 @@
 # Signed paired-update manifest
 
-**Status:** verifier prototype. This format does not yet download packages,
-stage roots, activate GRUB or replace the current in-place `veyra-update`.
+**Status:** experimental signed paired-updater source exists, but it is not
+packaged or usable in the current ISO. Applying requires the independent Veyra
+Recovery Environment (VRE); the current VRE contains only diagnostics and does
+not bundle this updater, its channel configuration or its trusted update key.
+The installed `veyra-update` package still performs in-place APK upgrades.
+Do not describe this prototype as a working update path.
 
 The exact release JSON bytes are authenticated by a detached Ed25519 signature.
 The JSON identifies both root generations, their explicit APK package worlds,
@@ -32,10 +36,17 @@ Signatures cover the exact JSON bytes; release tooling must not reformat the
 document after signing. The public key is 32 raw Ed25519 bytes or base64 of
 those bytes. The detached signature is 64 raw bytes or base64 of those bytes.
 
-The update library also provides the user-world merge policy for the future
-stager: signed release constraints take precedence for packages owned by the
-release, while additional APK packages already selected by the user remain in
-their existing order. This policy is not yet connected to an installed updater.
+The update library provides the user-world merge policy used by the experimental
+paired stager: signed release constraints take precedence for packages owned by
+the release, while additional APK packages already selected by the user remain
+in their existing order. The stager and its policy are not integrated into the
+installed package or recovery image.
+
+`veyra-atomic-update --check` verifies the configured HTTPS release online.
+Applying requires root, `--offline`, and the exact VRE marker under `/run`; it
+also refuses targets that share the recovery root filesystem or contain any
+mounted filesystem. These checks are fail-closed groundwork, not proof of a
+secure or end-to-end usable VRE update flow.
 
 Example shape (the values are illustrative and unsigned):
 
@@ -66,7 +77,8 @@ Example shape (the values are illustrative and unsigned):
 
 ## Verification
 
-Build with `go build ./cmd/veyra-update-verify` from `update/`, then run:
+Build with `go build ./cmd/veyra-update-verify` and
+`go build ./cmd/veyra-atomic-update` from `update/`, then run the verifier:
 
 ```sh
 veyra-update-verify \
@@ -75,11 +87,11 @@ veyra-update-verify \
   --public-key /etc/veyra/trust/update-ed25519.pub
 ```
 
-The command prints a compact JSON summary only after signature and schema checks
-pass. The current tool accepts an explicit public-key path for CI and release
-inspection. An installed updater must instead use a root-owned trust key fixed
-by system configuration, verify package signatures, verify staged package
-databases and boot artifacts, persist the highest confirmed sequence to reject
-replayed older releases, and stage only inactive roots before it may arm a
-trial. Those transaction and trust-store checks are still required before
-Pre-Alpha.
+The verifier prints a compact JSON summary only after signature and schema
+checks pass. It accepts an explicit public-key path for CI and release
+inspection. The updater CLI reads a root-owned key and channel URL from system
+configuration, but that configuration is not provisioned in the current VRE.
+Package signatures, staged package databases, boot artifacts, independent
+highest-confirmed-sequence storage, durable transactions, VRE provisioning and
+the signed pair's QEMU trial/fallback path still require end-to-end validation
+before Pre-Alpha.
