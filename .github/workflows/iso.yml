@@ -28,6 +28,17 @@ on:
       - 'tests/test-iso.sh'
       - 'tests/test-iso-manifest.sh'
       - 'tests/static.sh'
+      - 'scripts/build-veyra-init.sh'
+      - 'scripts/setup-pkgrepo.sh'
+      - 'scripts/veyra-atomic-convert.sh'
+      - 'scripts/veyra-boot-confirm.initd'
+      - 'scripts/veyra-bootctl.py'
+      - 'scripts/veyra-deployment.sh'
+      - 'scripts/veyra-initramfs-select.sh'
+      - 'scripts/veyra-sddm-runtime.initd'
+      - 'tests/test-atomic-qemu.py'
+      - 'tests/veyra-trial-failure.initd'
+      - 'update/**'
       - '.github/workflows/iso.yml'
   pull_request:
     paths:
@@ -53,6 +64,17 @@ on:
       - 'tests/test-iso.sh'
       - 'tests/test-iso-manifest.sh'
       - 'tests/static.sh'
+      - 'scripts/build-veyra-init.sh'
+      - 'scripts/setup-pkgrepo.sh'
+      - 'scripts/veyra-atomic-convert.sh'
+      - 'scripts/veyra-boot-confirm.initd'
+      - 'scripts/veyra-bootctl.py'
+      - 'scripts/veyra-deployment.sh'
+      - 'scripts/veyra-initramfs-select.sh'
+      - 'scripts/veyra-sddm-runtime.initd'
+      - 'tests/test-atomic-qemu.py'
+      - 'tests/veyra-trial-failure.initd'
+      - 'update/**'
       - '.github/workflows/iso.yml'
   workflow_dispatch:
 jobs:
@@ -245,6 +267,54 @@ jobs:
         with:
           name: veyra-installed-qemu-console
           path: e2e-logs/*.log
+          if-no-files-found: ignore
+          retention-days: 7
+  atomic-e2e:
+    name: Real ext4 paired-generation trial and rollback in QEMU
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: veyra-linux-iso
+          path: dist
+      - name: Install QEMU serial and installer test tools
+        timeout-minutes: 20
+        run: |
+          sudo apt-get -o Acquire::Retries=3 update -qq
+          sudo apt-get -o Acquire::Retries=3 install -y -qq qemu-system-x86 qemu-utils python3-pexpect
+      - name: Validate boot automation and current-run ISO checksums
+        run: |
+          set -eu
+          python3 -m py_compile tests/test-atomic-qemu.py tests/test-installed-qemu.py
+          iso=$(find dist -maxdepth 1 -name 'veyra-linux-*.iso' -print -quit)
+          test -n "$iso"
+          sh scripts/verify-iso-artifact.sh "$iso"
+          sh scripts/verify-iso-manifest.sh "$iso" "${iso%.iso}.manifest.txt"
+      - name: Real Alpine+Plasma A/B boot and rollback
+        shell: bash
+        run: |
+          set -euo pipefail
+          iso=$(find dist -maxdepth 1 -name 'veyra-linux-*.iso' -print -quit)
+          python3 tests/test-atomic-qemu.py "$iso" --log-dir atomic-qemu-logs
+      - name: Print guest serial diagnostics when A/B test fails
+        if: failure()
+        shell: bash
+        run: |
+          for log in atomic-qemu-logs/*.log; do
+            [ -f "$log" ] || continue
+            echo "::group::$log (last 220 lines)"
+            tail -n 220 "$log"
+            echo "::endgroup::"
+          done
+      - name: Preserve A/B GRUB, initramfs and serial diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: veyra-atomic-qemu-ext4-logs
+          path: atomic-qemu-logs/*.log
           if-no-files-found: ignore
           retention-days: 7
   calamares-gui-e2e:
