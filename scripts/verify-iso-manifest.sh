@@ -26,6 +26,7 @@ expected="$tmpdir/expected.manifest"
 VEYRA_SOURCE_COMMIT="$(field veyra_source_commit)" \
 VEYRA_APORTS_REVISION="$(field alpine_aports_commit)" \
 VEYRA_APPCENTER_REVISION="$(field appcenter_source_commit)" \
+VEYRA_UPDATE_REVISION="$(field veyra_update_source_commit)" \
 VEYRA_GLENV_REVISION="$(field glenv_source_commit)" \
 VEYRA_VERSION="$(field veyra_version)" \
 VEYRA_ALPINE_VERSION="$(field alpine_release)" \

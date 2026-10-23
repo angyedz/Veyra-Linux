@@ -31,6 +31,7 @@ test -b "$disk"
 test "$(cat /sys/block/vda/removable)" = 0
 test -e /dev/sr0
 apk info -e veyra-calamares
+apk info -e veyra-update
 parted -s "$disk" mklabel msdos
 parted -s "$disk" mkpart primary ext4 1MiB 100%
 parted -s "$disk" set 1 boot on

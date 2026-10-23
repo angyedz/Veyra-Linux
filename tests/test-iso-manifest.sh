@@ -15,6 +15,11 @@ C:Q2example
 P:veyra-calamares
 V:1.0.0-r2
 A:x86_64
+
+C:Q3example
+P:veyra-update
+V:0.1.0-r2
+A:x86_64
 INDEX
 tar -czf "$tmp/APKINDEX.tar.gz" -C "$tmp/index" APKINDEX
 cat > "$tmp/bin/xorriso" <<'XORRISO'
@@ -41,24 +46,28 @@ source_commit=0123456789abcdef0123456789abcdef01234567
 aports_commit=123456789abcdef0123456789abcdef012345678
 appcenter_commit=23456789abcdef0123456789abcdef0123456789
 glenv_commit=3456789abcdef0123456789abcdef01234567890
+update_commit=456789abcdef0123456789abcdef0123456789ab
 PATH="$tmp/bin:$PATH" \
 VEYRA_TEST_APKINDEX="$tmp/APKINDEX.tar.gz" \
 VEYRA_SOURCE_COMMIT="$source_commit" \
 VEYRA_APORTS_REVISION="$aports_commit" \
 VEYRA_APPCENTER_REVISION="$appcenter_commit" \
+VEYRA_UPDATE_REVISION="$update_commit" \
 VEYRA_GLENV_REVISION="$glenv_commit" \
 VEYRA_VERSION=0.1.0-alpha.1+test \
 VEYRA_ALPINE_VERSION=3.22 \
 sh "$root/scripts/write-iso-manifest.sh" "$tmp/veyra-linux-test.iso" "$tmp/manifest.txt"
 
-grep -qx 'format=veyra-iso-manifest-v1' "$tmp/manifest.txt"
+grep -qx 'format=veyra-iso-manifest-v2' "$tmp/manifest.txt"
 grep -qx "veyra_source_commit=$source_commit" "$tmp/manifest.txt"
 grep -qx "alpine_aports_commit=$aports_commit" "$tmp/manifest.txt"
 grep -qx "appcenter_source_commit=$appcenter_commit" "$tmp/manifest.txt"
+grep -qx "veyra_update_source_commit=$update_commit" "$tmp/manifest.txt"
 grep -qx "glenv_source_commit=$glenv_commit" "$tmp/manifest.txt"
-grep -qx 'package_count=2' "$tmp/manifest.txt"
+grep -qx 'package_count=3' "$tmp/manifest.txt"
 grep -Fqx "$(printf 'alpine-base\t3.22.0-r0')" "$tmp/manifest.txt"
 grep -Fqx "$(printf 'veyra-calamares\t1.0.0-r2')" "$tmp/manifest.txt"
+grep -Fqx "$(printf 'veyra-update\t0.1.0-r2')" "$tmp/manifest.txt"
 PATH="$tmp/bin:$PATH" VEYRA_TEST_APKINDEX="$tmp/APKINDEX.tar.gz" \
     VEYRA_SOURCE_COMMIT="$source_commit" \
     VEYRA_APORTS_REVISION="$aports_commit" \

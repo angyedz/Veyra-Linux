@@ -27,7 +27,9 @@ on:
       - 'tests/test-calamares-config.py'
       - 'tests/test-iso.sh'
       - 'tests/test-iso-manifest.sh'
+      - 'tests/test-system-packages.sh'
       - 'tests/static.sh'
+      - 'deployment/**'
       - 'scripts/build-veyra-init.sh'
       - 'scripts/setup-pkgrepo.sh'
       - 'scripts/veyra-atomic-convert.sh'
@@ -63,7 +65,9 @@ on:
       - 'tests/test-calamares-config.py'
       - 'tests/test-iso.sh'
       - 'tests/test-iso-manifest.sh'
+      - 'tests/test-system-packages.sh'
       - 'tests/static.sh'
+      - 'deployment/**'
       - 'scripts/build-veyra-init.sh'
       - 'scripts/setup-pkgrepo.sh'
       - 'scripts/veyra-atomic-convert.sh'
@@ -92,10 +96,19 @@ jobs:
           ref: 97dbd8b8df28e0e4fad66397473bfa2ff62d5532
           path: veyra-pkgrepo
           persist-credentials: false
+      - name: Check out pinned Veyra updater package source
+        uses: actions/checkout@v4
+        with:
+          repository: angyedz/veyra-pkgrepo
+          ref: 51e87aad60c24fc48d45223a9ef4278c9e2d2fd4
+          path: veyra-update-source
+          persist-credentials: false
       - name: Build signed Alpine Calamares APK
         env:
           VEYRA_APPCENTER_SOURCE: ${{ github.workspace }}/veyra-pkgrepo
           VEYRA_APPCENTER_REVISION: 97dbd8b8df28e0e4fad66397473bfa2ff62d5532
+          VEYRA_UPDATE_SOURCE: ${{ github.workspace }}/veyra-update-source
+          VEYRA_UPDATE_REVISION: 51e87aad60c24fc48d45223a9ef4278c9e2d2fd4
         run: sh scripts/build-calamares.sh
       - uses: actions/upload-artifact@v4
         with:
@@ -164,13 +177,14 @@ jobs:
       - name: Preflight desktop dependencies
         run: |
           apk update
-          grep -vE '^[[:space:]]*(#|$)' images/packages-desktop.txt | grep -vxE 'veyra-calamares|veyra-appcenter' | xargs apk add --simulate
+          grep -vE '^[[:space:]]*(#|$)' images/packages-desktop.txt | grep -vxE 'veyra-calamares|veyra-appcenter|veyra-update' | xargs apk add --simulate
       - name: Build ISO with Alpine mkimage
         env:
           VEYRA_REQUIRE_GLENV_MANAGER: '1'
           VEYRA_VERSION: 0.1.0-alpha.1+${{ github.sha }}
           VEYRA_SOURCE_COMMIT: ${{ github.sha }}
           VEYRA_APPCENTER_REVISION: 97dbd8b8df28e0e4fad66397473bfa2ff62d5532
+          VEYRA_UPDATE_REVISION: 51e87aad60c24fc48d45223a9ef4278c9e2d2fd4
           VEYRA_GLENV_REVISION: bdcc0980553a2bc86fd6d62faee26002fea07999
         run: sh scripts/build-iso.sh
       - name: Verify ISO source and package manifest

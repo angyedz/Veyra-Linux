@@ -36,6 +36,7 @@ if [ -z "${VEYRA_SOURCE_COMMIT:-}" ]; then
 fi
 export VEYRA_SOURCE_COMMIT
 export VEYRA_APPCENTER_REVISION="${VEYRA_APPCENTER_REVISION:-97dbd8b8df28e0e4fad66397473bfa2ff62d5532}"
+export VEYRA_UPDATE_REVISION="${VEYRA_UPDATE_REVISION:-51e87aad60c24fc48d45223a9ef4278c9e2d2fd4}"
 
 outdir="${VEYRA_OUTDIR:-$root/dist}"
 buildroot="${VEYRA_BUILDROOT:-$root/.build}"
@@ -64,8 +65,9 @@ temporary_apk_keys="$buildroot/temporary-apk-keys.txt"
 mkdir -p "$repo_base"
 if [ ! -d "$extra_dir" ] || \
     [ -z "$(find "$extra_dir" -maxdepth 1 -name 'veyra-calamares-*.apk' -print -quit)" ] || \
-    [ -z "$(find "$extra_dir" -maxdepth 1 -name 'veyra-appcenter-*.apk' -print -quit)" ]; then
-    echo 'Missing Calamares or Veyra AppCenter APK. Run scripts/build-calamares.sh first.' >&2
+    [ -z "$(find "$extra_dir" -maxdepth 1 -name 'veyra-appcenter-*.apk' -print -quit)" ] || \
+    [ -z "$(find "$extra_dir" -maxdepth 1 -name 'veyra-update-*.apk' -print -quit)" ]; then
+    echo 'Missing Calamares, Veyra AppCenter or Veyra updater APK. Run scripts/build-calamares.sh first.' >&2
     exit 1
 fi
 for package_dir in "$repo_base"/*; do

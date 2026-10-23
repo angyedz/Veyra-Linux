@@ -63,6 +63,7 @@ xdg-document-portal
 py3-qt6
 qt6-qtdeclarative
 veyra-appcenter
+veyra-update
 # Native Telegram Desktop package from Alpine community.
 telegram-desktop
 nix

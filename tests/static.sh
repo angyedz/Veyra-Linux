@@ -67,7 +67,7 @@ prepare_line=$(grep -n '^    sh "$lib/installer-prepare.sh"' images/veyra-tui-in
 [ -n "$dev_mount_line" ] && [ -n "$prepare_line" ] && [ "$dev_mount_line" -lt "$prepare_line" ]
 grep -q 'setup-pkgrepo.sh' tests/test-installed-qemu.py
 grep -qx plasma-workspace images/packages-desktop.txt
-for app in firefox konsole dolphin veyra-calamares testdisk tzdata btrfs-progs xfsprogs f2fs-tools; do
+for app in firefox konsole dolphin veyra-calamares veyra-update testdisk tzdata btrfs-progs xfsprogs f2fs-tools; do
     grep -qx "$app" images/packages-desktop.txt || { echo "Missing live app: $app" >&2; exit 1; }
 done
 for app in systemsettings kscreen kde-cli-tools plasma-systemmonitor plasma-workspace-wallpapers ark kate spectacle kcalc; do

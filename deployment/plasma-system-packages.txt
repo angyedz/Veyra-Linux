@@ -3,6 +3,7 @@
 # does not affect the conventional Veyra Live ISO or current Calamares path.
 # Exact versions are resolved together from signed Alpine/Veyra repositories.
 alpine-base
+veyra-update
 linux-lts
 plasma-desktop
 plasma-workspace

@@ -9,6 +9,7 @@ output=${2:?usage: sh scripts/write-iso-manifest.sh ISO OUTPUT}
 source_commit=${VEYRA_SOURCE_COMMIT:-unknown}
 aports_commit=${VEYRA_APORTS_REVISION:-unknown}
 appcenter_commit=${VEYRA_APPCENTER_REVISION:-unknown}
+update_commit=${VEYRA_UPDATE_REVISION:-unknown}
 glenv_commit=${VEYRA_GLENV_REVISION:-unknown}
 veyra_version=${VEYRA_VERSION:-0.1.0-alpha.1+local}
 alpine_version=${VEYRA_ALPINE_VERSION:-3.22}
@@ -26,6 +27,7 @@ validate_revision() {
 validate_revision "$source_commit" 'Veyra source'
 validate_revision "$aports_commit" 'Alpine aports'
 validate_revision "$appcenter_commit" 'Veyra AppCenter'
+validate_revision "$update_commit" 'Veyra updater package'
 validate_revision "$glenv_commit" 'glenv'
 case "$veyra_version" in ''|*[!A-Za-z0-9.+-]*) echo 'Invalid Veyra version' >&2; exit 1 ;; esac
 case "$alpine_version" in 3.[0-9]*) ;; *) echo 'Invalid Alpine version' >&2; exit 1 ;; esac
@@ -63,7 +65,7 @@ sha512=$(sha512sum "$iso" | awk '{print $1}')
 package_count=$(wc -l < "$awk_packages" | tr -d '[:space:]')
 manifest_tmp="$tmpdir/manifest"
 {
-    printf 'format=veyra-iso-manifest-v1\n'
+    printf 'format=veyra-iso-manifest-v2\n'
     printf 'iso_file=%s\n' "$iso_name"
     printf 'iso_sha256=%s\n' "$sha256"
     printf 'iso_sha512=%s\n' "$sha512"
@@ -73,6 +75,7 @@ manifest_tmp="$tmpdir/manifest"
     printf 'alpine_aports_commit=%s\n' "$aports_commit"
     printf 'architecture=%s\n' "$arch"
     printf 'appcenter_source_commit=%s\n' "$appcenter_commit"
+    printf 'veyra_update_source_commit=%s\n' "$update_commit"
     printf 'glenv_source_commit=%s\n' "$glenv_commit"
     printf 'package_count=%s\n' "$package_count"
     printf '\npackage\tversion\n'
