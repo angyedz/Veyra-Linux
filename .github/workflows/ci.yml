@@ -12,6 +12,8 @@ jobs:
         run: sh tests/static.sh
       - name: Test Calamares Xauthority, diagnostics and no-password fallback
         run: sh tests/test-installer-launch.sh
+      - name: Route detected hardware support into the installed target
+        run: sh tests/test-installer-hardware.sh
       - name: Audit rootless user-environment preflight and negative paths
         run: sh tests/test-user-env-prototype.sh
       - name: Test ISO artifact integrity verifier
