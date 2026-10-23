@@ -1,6 +1,6 @@
 # Veyra Recovery Environment (VRE) — design v0
 
-Status: **independent Alpine LTS recovery kernel + initramfs successfully boot-tested in diskless QEMU** (`scripts/veyra-recovery-init.sh`, `scripts/build-veyra-recovery.sh`, `tests/test-recovery-qemu.py`, `.github/workflows/recovery-e2e.yml`). Serial diagnostics work. The signed updater and paired transaction engine exist as experimental components; this branch is adding their runtime to Recovery and a CI boot check. That integration has not passed yet. Recovery is not connected to GRUB or the installer, and no signed update plus automatic rollback has passed in QEMU.
+Status: **independent Alpine LTS recovery kernel + initramfs, including an optional signed-updater runtime, boot-tested in diskless QEMU** (`scripts/veyra-recovery-init.sh`, `scripts/build-veyra-recovery.sh`, `tests/test-recovery-qemu.py`, `.github/workflows/recovery-e2e.yml`). CI confirms the updater menu appears and rejects an invalid device path. This does not apply a signed release. Recovery is not connected to GRUB or the installer, and no signed update plus automatic rollback has passed in QEMU.
 
 ## Android-inspired design, not an Android port
 

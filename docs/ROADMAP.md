@@ -53,6 +53,8 @@ Keep the current conventional Alpine/KDE image available for development and for
 
 **Clean ext4 install smoke check (2026-10-23):** `tests/test-installed-qemu.py` installed the ISO into a fresh 20 GiB qcow2 disk, verified the installed SDDM configuration and absence of the Live autologin fragment, then booted the installed system successfully. This uses the shell-driven installer path and serial console; graphical Calamares interaction and the installed SDDM greeter/session remain unverified.
 
+**A/B and updater integration (2026-10-23):** the current ext4 A/B QEMU scenario passed on a cached ISO, proving A → confirmed B → forced-failure fallback to B → explicit rollback to A; it exercises the boot-selection prototype, not `veyra-atomic-update`. The paired updater package build and Go tests passed. Recovery now has a CI-boot-tested optional updater runtime and menu, but the CI test rejects an invalid device and does not stage a release. A signed update through Recovery, followed by a failed-trial rollback, remains the A/B release gate. [A/B QEMU](https://github.com/angyedz/Veyra-Linux/actions/runs/39985576753), [Recovery QEMU](https://github.com/angyedz/Veyra-Linux/actions/runs/39995414655), [updater package build](https://github.com/angyedz/veyra-pkgrepo/actions/runs/39994910990).
+
 ### Veyra Linux Pre-Alpha
 
 The Pre-Alpha target is a working, updateable x86_64 system validated on ext4 in QEMU. It may have rough edges and defer VPN isolation, SnapCore, Guardian, graphical recovery, other filesystems and physical-hardware qualification. It must provide these core behaviors:
@@ -85,7 +87,7 @@ Stable release additionally requires Stage 11 security/reliability and Stage 12 
 | **6 — vpkg/glenv/Nix** | Existing component prototypes | User-root and A/B integration pending |
 | **7 — Filesystem-neutral A/B** | System-only experimental ext4 QEMU cycle passed locally; fixture user roots were synthetic | Signed paired update and broader fault-injection/recovery gates remain pending |
 | **8 — Coherent KDE A/B** | Planned | Matched runtime activation/rollback pending |
-| **9 — Recovery** | Independent console VRE QEMU proof; **Guardian/Resilience design recorded** | Shared online/VRE repair engine, system A/B + user SnapCore restore, independent TTY and trusted graphical UI pending |
+| **9 — Recovery** | Diskless console VRE and optional updater-runtime QEMU proofs; **Guardian/Resilience design recorded** | Installed Recovery boot entry, signed update transaction, shared online/VRE repair engine, user SnapCore restore, independent TTY and trusted graphical UI pending |
 | **10–12 — Installer, QA, release** | Not release-ready | Dual-root installed path and qualification pending |
 
 ## Stage 0 — Audit experimental PR #8 and establish gates
