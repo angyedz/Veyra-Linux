@@ -77,10 +77,19 @@ elif ! grep -Eq '^veyra-appcenter@veyra([<>=~].*)?$' "$world_file"; then
     exit 1
 fi
 
-# Calamares runs only on live media; installed systems must not retain
-# the build-specific Calamares package or its temporary local repository.
-if chroot "$target" apk info -e veyra-calamares >/dev/null 2>&1; then
-    chroot "$target" apk del veyra-calamares
+# Calamares and the experimental updater are built into the internal Live ISO
+# from its temporary APK repository. This installer still creates a
+# conventional single-root system, so neither package belongs in its installed
+# world: veyra-update requires an initialized A/B store and a configured,
+# trusted signed-release channel. Remove both before dropping the ISO keys.
+set --
+for package in veyra-calamares veyra-update; do
+    if chroot "$target" apk info -e "$package" >/dev/null 2>&1; then
+        set -- "$@" "$package"
+    fi
+done
+if [ "$#" -gt 0 ]; then
+    chroot "$target" apk del "$@"
 fi
 
 # Install the signed Veyra desktop essentials from the stable repository. The

@@ -50,6 +50,10 @@ mount --rbind /sys "$target/sys"
 mount --make-rslave "$target/sys"
 mount -t tmpfs tmpfs "$target/run"
 /usr/local/lib/veyra/installer-prepare.sh "$target"
+if chroot "$target" apk info -e veyra-update >/dev/null 2>&1; then
+    echo 'Conventional installed system retained the unconfigured atomic updater' >&2
+    exit 1
+fi
 # Temporary ISO package/index keys are removed after desktop packages install.
 if [ -r /etc/veyra/temporary-apk-keys ]; then
     while IFS= read -r key || [ -n "$key" ]; do
