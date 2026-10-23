@@ -428,6 +428,23 @@ jobs:
           go test -count=1 ./...
           go vet ./...
 
+  paired-update-manifest:
+    name: Signed paired-update manifest verification
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: false
+      - name: Verify signed release metadata parser and compatibility gates
+        working-directory: update
+        run: |
+          go test -count=1 ./...
+          go vet ./...
+          go build ./cmd/veyra-update-verify
+
   veyra-initramfs:
     name: Build filesystem-neutral Alpine A/B initramfs selector
     runs-on: ubuntu-24.04
