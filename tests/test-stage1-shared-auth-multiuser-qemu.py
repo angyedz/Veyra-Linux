@@ -18,7 +18,7 @@ LOGIN_PROMPT = re.compile(rb"login:\s*")
 
 def identity_pattern(account, uid, count):
     # pexpect scans a stream, not a completed line. Without an explicit
-    # newline it may match '655' before the remaining '36' arrives.
+    # delimiter it may match '655' before the remaining '36' arrives.
     return re.compile(
         rb"VEYRA_STAGE1_SHARED_AUTH_LOGIN_PASS account="
         + account
@@ -26,7 +26,7 @@ def identity_pattern(account, uid, count):
         + uid
         + rb" count="
         + count
-        + rb" root=([^ ]+) apkdb=([^ ]+) mountns=([^ ]+) uidmap=([^\r\n ]+)\r?\n"
+        + rb" root=([^ ]+) apkdb=([^ ]+) mountns=([^ ]+) uidmap=([^\r\n ]+) END"
     )
 
 
@@ -37,7 +37,7 @@ def parser_selftest():
                b"mountns=mnt:[4026532158] uidmap=0:100000:655")
     if marker.search(partial) is not None:
         raise RuntimeError("streaming UID mapping prefix was accepted")
-    complete = partial + b"36\r\n"
+    complete = partial + b"36 END\r\n"
     matched = marker.search(complete)
     if matched is None or matched.groups()[-1] != b"0:100000:65536":
         raise RuntimeError("completed UID mapping line was not matched")
