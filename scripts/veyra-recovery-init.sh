@@ -32,10 +32,51 @@ update_available() {
         [ -f /etc/veyra/trust/update-ed25519.pub ]
 }
 
+# Search only kernel-identified partitions. Probe read-only; never guess when
+# multiple deployment stores exist, and never mount the installed root rw.
+find_unique_store() {
+    probe=/mnt/veyra-probe
+    /bin/busybox mkdir -p "$probe"
+    count=0
+    selected=
+    for partition in /sys/class/block/*/partition; do
+        [ -f "$partition" ] || continue
+        name=${partition%/partition}
+        name=${name##*/}
+        case "$name" in
+            ''|*[!A-Za-z0-9._-]*) continue ;;
+        esac
+        candidate=/dev/$name
+        [ -b "$candidate" ] || continue
+        if ! /bin/busybox mount -o ro "$candidate" "$probe" 2>/dev/null; then
+            continue
+        fi
+        if [ ! -L "$probe/.veyra-deployment-store" ] &&
+           [ "$(/bin/busybox cat "$probe/.veyra-deployment-store" 2>/dev/null)" = VEYRA-DEPLOYMENT-STORE-v2 ] &&
+           /usr/libexec/veyra/bootctl --store "$probe" status >/dev/null 2>&1; then
+            count=$((count + 1))
+            selected=$candidate
+        fi
+        if ! /bin/busybox umount "$probe"; then
+            echo 'Could not unmount partition probe. No update will be attempted.' >&2
+            return 1
+        fi
+    done
+    if [ "$count" -ne 1 ]; then
+        echo "Automatic detection found $count verified Veyra stores; enter the partition manually." >&2
+        return 1
+    fi
+    printf '%s\n' "$selected"
+}
+
 apply_signed_update() {
     store=/mnt/veyra-store
-    printf 'Offline Veyra store partition (for example /dev/vda1): '
+    printf 'Veyra store partition (Enter = find automatically, or /dev/vda1): '
     IFS= read -r device || return 1
+    if [ -z "$device" ]; then
+        device=$(find_unique_store) || return 1
+        echo "Found verified Veyra deployment store: $device"
+    fi
     case "$device" in
         /dev/*) ;;
         *) echo 'Enter a direct block-device path under /dev.'; return 1 ;;
