@@ -1,0 +1,18 @@
+#!/sbin/openrc-run
+# Disposable QEMU QA runner; not installed by Veyra.
+description="Veyra Stage 1 disk-backed system-root QEMU assertions"
+
+depend() {
+    need veyra-stage1-system-manager
+}
+
+start() {
+    ebegin "Running disk-backed dual-root assertions"
+    if /usr/local/sbin/veyra-stage1-qemu-qa --qa; then
+        eend 0
+    else
+        result=$?
+        eend "$result"
+        return "$result"
+    fi
+}
