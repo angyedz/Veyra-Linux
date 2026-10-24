@@ -22,8 +22,17 @@ download for automatic execution.
 
 ## One-time setup
 
-On a **trusted maintainer machine**, provision an Ed25519 private key in
-PKCS#8 PEM format and a base64-encoded raw (32-byte) matching public key.
+On a **trusted maintainer machine**, generate a new Ed25519 signing identity
+with a single command from the `update` directory:
+
+```sh
+go run ./cmd/veyra-ota-keygen --out /absolute/private/veyra-keys
+```
+
+The generated files are `veyra-update-private.pem` (PKCS#8, mode 0600)
+and `veyra-update-public.pub` (base64-encoded 32-byte Ed25519 public key).
+The new directory is created with mode 0700. Never reuse or overwrite an
+existing signing key directory.
 The private key must be a regular file with mode 0600. Keep it off the
 repository, CI artifacts, ISO, and public release; back it up securely.
 Configure installed Veyra and independent Recovery with the **same
