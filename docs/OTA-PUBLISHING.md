@@ -14,7 +14,7 @@ remain bootable until the trial passes. Treating a new ISO as an in-place
 filesystem update would bypass the required isolation, package database,
 persistence and rollback rules.
 
-The bundle generator makes the maintainer side less error-prone: it
+The bundle generator and independent verifier make the maintainer side less error-prone: they
 authenticates the paired manifest with the exact trusted Ed25519 public key,
 hashes the installer ISO, and writes upload-ready files. It never modifies
 `main`, installs an update, pushes to the network, or signs an arbitrary
@@ -75,7 +75,20 @@ appropriately designed atomic object-store publication.
    `release-info.json`, `release-info.json.sig`, `iso.sha256`, `iso.sha512` and
    `README.txt`. The private key is never copied to the bundle.
    It refuses existing output directories and mismatched/invalid keys.
-5. **Only after release qualification**, publish the installer ISO as an
+5. Verify the complete upload bundle **without access to the private key**:
+
+   ```sh
+   go run ./cmd/veyra-ota-bundle \
+      --verify-bundle /absolute/path/veyra-release-bundle \
+      --iso /absolute/path/veyra-linux-pre-alpha.iso \
+      --public-key /secure/path/veyra-update-public.pub
+   ```
+
+   The verifier checks **both detached signatures**, paired system/user
+   compatibility, signed ISO SHA-256/SHA-512, and the published checksum
+   files. This is suitable for a future CI publication gate.
+
+6. **Only after release qualification**, publish the installer ISO as an
    immutable download for fresh installs and expose the verified
    `manifest.json` and `manifest.json.sig` on the configured
    authenticated HTTPS channel. Publication of the manifest must happen
