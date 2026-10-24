@@ -128,7 +128,11 @@ def run_command(child, command, timeout=300):
         raise RuntimeError("Guest shell timed out while executing a command")
     code = int(child.match.group(1))
     if code:
-        raise RuntimeError(f"Guest command returned {code}: {command[:100]}")
+        output = getattr(child, "before", "")[-1200:].replace("\r", "")
+        raise RuntimeError(
+            f"Guest command returned {code}: {command[:100]}; "
+            f"guest output tail: {output!r}"
+        )
 
 
 
@@ -145,6 +149,7 @@ def upload_script(child, content, remote_path):
             "/usr/local/lib/veyra/veyra-initramfs-select.sh",
             "/usr/local/lib/veyra/build-veyra-init.sh",
             "/usr/local/lib/veyra/veyra-bootctl.py",
+            "/usr/local/lib/veyra/veyra-boot-confirm.initd",
         }
     ):
         raise ValueError("Unexpected remote script path")

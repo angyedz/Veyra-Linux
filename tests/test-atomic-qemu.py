@@ -14,6 +14,8 @@ import subprocess
 import sys
 import tempfile
 
+import pexpect
+
 HERE = pathlib.Path(__file__).resolve().parent
 PROJECT = HERE.parent
 spec = importlib.util.spec_from_file_location("veyra_installer_e2e",
@@ -40,13 +42,27 @@ def guest_cycle(qemu, disk, logdir, expected, commands):
             for command in commands:
                 installed.run_command(child, command, 60)
             installed.run_command(child, "sync", 30)
-            # Installed QEMU will be forcibly stopped after durable sync.
-            # A real shutdown is also requested to exercise OpenRC cleanly.
+            # Shut the disposable guest down after its writes are durable so
+            # QEMU exits on its own instead of leaving a live emulator for
+            # pexpect's forced-termination path.
             child.sendline("poweroff")
             try:
-                child.expect("POWERED_OFF_TEST_SENTINEL_UNREACHABLE", timeout=25)
-            except Exception:
+                child.expect(installed.pexpect.EOF, timeout=90)
+            except installed.pexpect.EOF:
                 pass
+        finally:
+            child.close(force=child.isalive())
+
+
+def failed_candidate_boot(qemu, disk, logdir):
+    """Fail B after initramfs arms A as the next GRUB default."""
+    with (logdir / "veyra-atomic-boot-failed-B.log").open("w") as stream:
+        child = installed.boot(qemu, str(disk), None, stream, 240, installed=True)
+        try:
+            child.expect("Veyra: fallback to A armed for next reboot", timeout=240)
+            child.expect("VEYRA_TEST_CANDIDATE_INIT_FAILURE", timeout=60)
+            child.expect("Kernel panic", timeout=60)
+            print("Candidate B failed after rollback fallback was durably armed", flush=True)
         finally:
             child.close(force=True)
 
@@ -74,7 +90,7 @@ def main():
                     "setup-pkgrepo.sh",
                     "veyra-deployment.sh", "veyra-initramfs-select.sh",
                     "build-veyra-init.sh", "veyra-atomic-convert.sh",
-                    "veyra-bootctl.py",
+                    "veyra-bootctl.py", "veyra-boot-confirm.initd",
                 ):
                     installed.upload_script(
                         child, (PROJECT / "scripts" / name).read_bytes(),
@@ -111,19 +127,48 @@ def main():
                     "! grep -q 'veyra_deployment=B' /mnt/veyra-e2e/boot/grub/grub.cfg",
                     timeout=45)
                 installed.run_command(child, "sync", 30)
+                # The live guest is still running here. Request shutdown and
+                # wait for QEMU to exit before closing the PTY and disk.
+                child.sendline("poweroff")
+                try:
+                    child.expect(installed.pexpect.EOF, timeout=90)
+                except installed.pexpect.EOF:
+                    pass
             finally:
-                child.close(force=True)
+                child.close(force=child.isalive())
 
         print("Atomically prepared A/B on disposable installed ext4 disk; booting A",
               flush=True)
         guest_cycle(qemu, disk, args.log_dir, "A", [
             "echo 'data created in A' > /home/e2euser/atomic-data.txt",
+            "rm -f /var/lib/veyra/store/deployments/B/sbin/init",
+            "printf '#!/bin/sh\\necho VEYRA_TEST_CANDIDATE_INIT_FAILURE\\nexit 1\\n' "
+            "> /var/lib/veyra/store/deployments/B/sbin/init",
+            "chmod 0755 /var/lib/veyra/store/deployments/B/sbin/init",
             "/usr/local/sbin/veyra-bootctl "
             "--store /var/lib/veyra/store activate B",
         ])
-        print("Booting B from its own Alpine+Plasma system tree", flush=True)
+        print("Booting a deliberately broken B candidate", flush=True)
+        failed_candidate_boot(qemu, disk, args.log_dir)
+        print("Checking fallback to A and retrying a repaired B candidate", flush=True)
+        guest_cycle(qemu, disk, args.log_dir, "A", [
+            "grep -q '# VEYRA_DEFAULT=A' /var/lib/veyra/store/boot/grub/grub.cfg",
+            """test "$(cat /var/lib/veyra/store/boot-state/pending)" = 'B A'""",
+            """test "$(cat /home/e2euser/atomic-data.txt)" = 'data created in A'""",
+            "/usr/local/sbin/veyra-bootctl "
+            "--store /var/lib/veyra/store rollback A",
+            "rm -f /var/lib/veyra/store/deployments/B/sbin/init",
+            "cp -a /var/lib/veyra/store/deployments/A/sbin/init "
+            "/var/lib/veyra/store/deployments/B/sbin/init",
+            "sync",
+            "/usr/local/sbin/veyra-bootctl "
+            "--store /var/lib/veyra/store activate B",
+        ])
+        print("Booting repaired B from its own Alpine+Plasma system tree", flush=True)
         guest_cycle(qemu, disk, args.log_dir, "B", [
             """test "$(cat /home/e2euser/atomic-data.txt)" = 'data created in A'""",
+            "grep -q '# VEYRA_DEFAULT=B' /var/lib/veyra/store/boot/grub/grub.cfg",
+            "test ! -e /var/lib/veyra/store/boot-state/pending",
             "echo 'data updated in B' > /home/e2euser/atomic-data.txt",
             "printf 'only-B\\n' > /etc/veyra/slot-specific.txt",
             "test ! -e /var/lib/veyra/store/deployments/A/etc/veyra/slot-specific.txt",
@@ -136,7 +181,7 @@ def main():
             "test ! -e /etc/veyra/slot-specific.txt",
             "/usr/local/sbin/veyra-bootctl --store /var/lib/veyra/store status",
         ])
-        print("VEYRA_ATOMIC_QEMU_SUCCESS: A -> B -> A, persistent data survived",
+        print("VEYRA_ATOMIC_QEMU_SUCCESS: A -> failed B -> A fallback -> confirmed B -> A rollback, data survived",
               flush=True)
 
 
