@@ -96,6 +96,48 @@ appropriately designed atomic object-store publication.
    should not expose a partial release. Archive the exact bytes and
    checksums. Do not replace previously published generation artifacts.
 
+## GitHub automatic channel promotion (opt-in, NOT enabled)
+
+The repository also contains \`.github/workflows/ota-channel.yml\`.
+Once the real Pre-Alpha is qualified, a maintainer can configure a
+protected GitHub Actions environment named \`veyra-prealpha-ota\`
+(reviewer approval recommended), add the **public** Ed25519 trust key at
+\`.github/trust/veyra-ota-ed25519.pub\`, and set repository variable
+\`VEYRA_OTA_PUBLISH_ENABLED=true\`. **Do not enable this now.** A
+manually enabled variable is not a substitute for the release gates.
+
+The intended final maintainer workflow will then be:
+
+1. Produce the ISO and signed metadata using the offline bundle command,
+   and independently verify them.
+2. Create a GitHub **Draft Release** whose tag exactly equals the signed
+   manifest \`release\` field and points to the qualified \`main\` commit.
+   Upload the installer \`.iso\` and the **six** release bundle files:
+   \`manifest.json\`, \`manifest.json.sig\`, \`release-info.json\`,
+   \`release-info.json.sig\`, \`iso.sha256\`, \`iso.sha512\`. Never upload
+   the signing private key.
+3. After human review of every Pre-Alpha gate, publish the draft Release.
+   GitHub Actions requires successful integration, ISO and independent
+   Recovery workflows **for that exact commit**, downloads the release
+   assets, verifies both Ed25519 signatures, ISO hashes and release tag,
+   and rejects a repeated or lower signed sequence.
+4. Only then does the workflow commit the matching manifest and signature
+   **together** to the \`ota-channel\` Git branch. Its public HTTPS
+   \`pre-alpha/manifest.json\` path is the channel pointer used by
+   \`veyra-atomic-update\`. Git ref promotion is atomic; caches may
+   temporarily serve a mismatched pair, which the signature verifier must
+   reject rather than install. The ISO stays as a GitHub Release download.
+
+Example update-channel URL **after configuration**:
+
+\`https://raw.githubusercontent.com/angyedz/Veyra-Linux/ota-channel/pre-alpha/manifest.json\`
+
+A pinned public trust key, qualified dual environment, installed channel
+configuration, trustworthy updater/Recovery and signed APK availability
+remain mandatory. The publish workflow does not automatically invent
+versions or build an ISO from its manifest and does not grant a pass on
+unverified release behavior.
+
 ## What users will do
 
 The intended user experience is: see "Veyra update available",
