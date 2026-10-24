@@ -72,7 +72,7 @@ appropriately designed atomic object-store publication.
    ```
 
 4. The tool creates `manifest.json`, `manifest.json.sig`,
-   `release-info.json`, `iso.sha256`, `iso.sha512` and
+   `release-info.json`, `release-info.json.sig`, `iso.sha256`, `iso.sha512` and
    `README.txt`. The private key is never copied to the bundle.
    It refuses existing output directories and mismatched/invalid keys.
 5. **Only after release qualification**, publish the installer ISO as an
@@ -98,9 +98,10 @@ service before completing and testing those pieces.
 
 ## Security/reliability rules
 
-- The **ISO checksum in release-info.json is informational** and does
-  not authenticate an A/B package update. Only the signed paired manifest
-  and repository APK signatures authorize actual update contents.
+- The ISO checksum in `release-info.json` is **signed** by the release key,
+  binding the ISO bytes to the maintainer metadata. It does **not** authorize
+  an A/B package update: only the signed paired manifest and APK repository
+  signatures authorize the installed update contents.
 - The `manifest.json.sig` is a detached Ed25519 signature of the **exact**
   manifest bytes. Do not pretty-print, normalize or rewrite the JSON after
   signing.
