@@ -48,7 +48,7 @@ find_unique_store() {
         esac
         candidate=/dev/$name
         [ -b "$candidate" ] || continue
-        if ! /bin/busybox mount -o ro "$candidate" "$probe" 2>/dev/null; then
+        if ! /bin/busybox mount -t ext4 -o ro,noload "$candidate" "$probe" 2>/dev/null; then
             continue
         fi
         if [ ! -L "$probe/.veyra-deployment-store" ] &&
