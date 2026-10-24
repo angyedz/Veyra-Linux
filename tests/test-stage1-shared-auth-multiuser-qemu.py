@@ -28,7 +28,7 @@ def login(child, account, password, count):
         + count[0]
         + rb" count="
         + count[1]
-        + rb" root=([^ ]+) apkdb=([^ ]+) mountns=([^ ]+) uidmap=([^\r\n ]+)"
+        + rb" root=([^ ]+) apkdb=([^ ]+) mountns=([^ ]+) uidmap=([^\r\n ]+)\r?\n"
     )
     child.expect(marker, timeout=45)
     fields = child.match.groups()
