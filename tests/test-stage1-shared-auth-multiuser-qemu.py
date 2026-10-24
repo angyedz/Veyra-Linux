@@ -16,20 +16,42 @@ ACCOUNTS = (
 LOGIN_PROMPT = re.compile(rb"login:\s*")
 
 
+def identity_pattern(account, uid, count):
+    # pexpect scans a stream, not a completed line. Without an explicit
+    # newline it may match '655' before the remaining '36' arrives.
+    return re.compile(
+        rb"VEYRA_STAGE1_SHARED_AUTH_LOGIN_PASS account="
+        + account
+        + rb" uid="
+        + uid
+        + rb" count="
+        + count
+        + rb" root=([^ ]+) apkdb=([^ ]+) mountns=([^ ]+) uidmap=([^\r\n ]+)\r?\n"
+    )
+
+
+def parser_selftest():
+    marker = identity_pattern(b"veyrauser", b"1000", b"2")
+    partial = (b"VEYRA_STAGE1_SHARED_AUTH_LOGIN_PASS account=veyrauser "
+               b"uid=1000 count=2 root=64768:2 apkdb=64768:301 "
+               b"mountns=mnt:[4026532158] uidmap=0:100000:655")
+    if marker.search(partial) is not None:
+        raise RuntimeError("streaming UID mapping prefix was accepted")
+    complete = partial + b"36\r\n"
+    matched = marker.search(complete)
+    if matched is None or matched.groups()[-1] != b"0:100000:65536":
+        raise RuntimeError("completed UID mapping line was not matched")
+    if marker.search(complete.replace(b"uid=1000", b"uid=1001")) is not None:
+        raise RuntimeError("wrong account identity matched")
+    print("VEYRA_STAGE1_AUTH_SERIAL_PARSER_PASS", flush=True)
+
+
 def login(child, account, password, count):
     child.expect(LOGIN_PROMPT, timeout=120)
     child.sendline(account)
     child.expect(b"Password:", timeout=30)
     child.sendline(password)
-    marker = re.compile(
-        rb"VEYRA_STAGE1_SHARED_AUTH_LOGIN_PASS account="
-        + account
-        + rb" uid="
-        + count[0]
-        + rb" count="
-        + count[1]
-        + rb" root=([^ ]+) apkdb=([^ ]+) mountns=([^ ]+) uidmap=([^\r\n ]+)\r?\n"
-    )
+    marker = identity_pattern(account, count[0], count[1])
     child.expect(marker, timeout=45)
     fields = child.match.groups()
     return fields
@@ -108,6 +130,9 @@ def guest_boot(qemu, kernel, initramfs, user_disk, boot, logfile):
 
 
 def main():
+    if sys.argv[1:] == ["--check-parser"]:
+        parser_selftest()
+        return
     parser = argparse.ArgumentParser()
     parser.add_argument("kernel", type=pathlib.Path)
     parser.add_argument("initramfs", type=pathlib.Path)
