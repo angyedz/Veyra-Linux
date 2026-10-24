@@ -11,9 +11,10 @@ Calamares/TUI installation or A/B boot process.
 
 1. **System environment:** system OpenRC PID 1, kernel, hardware, physical
    networking, GRUB, boot coordinator and protected A/B deployments.
-2. **Persistent user environment:** separate root filesystem, user namespace,
-   mount namespace, PID namespace with its own PID 1 and OpenRC, network and
-   IPC namespaces, package database, services and ordinary user accounts.
+2. **Persistent user environment:** one **shared** root filesystem and
+   package database for ordinary Linux accounts, with its own OpenRC/PID 1
+   inside separate user, mount, PID, network and IPC namespaces. Each account
+   retains its own UID/GID, authenticated session and private `/home/LOGIN`.
    Users log directly into this environment, with no explicit enter command.
 3. **Recovery:** independently booted minimal OS; not a third simultaneously
    running PID 1 during ordinary operation.
@@ -22,6 +23,15 @@ The system and user environments share one Linux kernel. A/B changes the
 system deployment, not the persistent user environment.
 
 **Resilience design (2026-10-20, not implemented):** a system OpenRC-owned [Veyra Guardian](VEYRA-RESILIENCE.md) must detect user-init/Plasma failures without depending on the user rootfs. A system-owned TTY and independently bootable [VRE](VEYRA-RECOVERY.md) provide fallback. [SnapCore](VEYRA-SNAPCORE.md) is a proposed block-level CoW user snapshot layer below ext4/XFS/F2FS, **not** directory copies or a Btrfs/LVM requirement. User-root and `/home` must be separately restorable; system A/B rollback must not implicitly touch them.
+
+## System-root access boundary
+
+A password-gated initial-system root console is a **separately authenticated**
+system operation, not a shortcut through inner `sudo`. See
+[System-root access bridge](VEYRA-ROOT-ACCESS.md) for the intended trusted
+TTY/PAM flow and adversarial acceptance tests. No production host-root
+broker is integrated into the normal Veyra session yet; the currently
+available package prototype uses an obsolete per-account-root fixture.
 
 ## Privileges
 
