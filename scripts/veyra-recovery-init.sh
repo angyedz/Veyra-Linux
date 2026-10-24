@@ -15,6 +15,13 @@ export PATH=/sbin:/bin:/usr/sbin:/usr/bin
 /bin/busybox mkdir -p /run/veyra
 /bin/busybox printf 'VEYRA-RECOVERY-v1\n' > /run/veyra/recovery-environment
 /bin/busybox chmod 0444 /run/veyra/recovery-environment
+# The stock Alpine /init normally installs BusyBox applet symlinks.
+# Our independent PID 1 replaces it; install common commands explicitly so
+# expert Recovery Shell can use cat, ls, mount, blkid etc. without prefixes.
+# Never rely on the damaged installed root's binaries.
+if ! /bin/busybox --install -s /bin; then
+    echo 'Warning: BusyBox applet aliases could not be initialized.' >&2
+fi
 [ -e /dev/console ] || /bin/busybox mknod /dev/console c 5 1
 exec </dev/console >/dev/console 2>&1
 
