@@ -52,9 +52,14 @@ def main():
             guest.expect(b"Choice:", timeout=30)
             if args.expect_update_menu:
                 guest.sendline(b"4")
-                guest.expect(b"Offline Veyra store partition", timeout=30)
+                guest.expect(b"Veyra store partition", timeout=30)
                 guest.sendline(b"/dev/veyra-invalid-test-device")
                 guest.expect(b"not a block device", timeout=30)
+                guest.expect(b"Choice:", timeout=30)
+                guest.sendline(b"4")
+                guest.expect(b"Veyra store partition", timeout=30)
+                guest.sendline(b"")
+                guest.expect(b"Automatic detection found 0 verified Veyra stores", timeout=30)
                 guest.expect(b"Choice:", timeout=30)
                 print("VEYRA_RECOVERY_UPDATE_MENU_QEMU_SUCCESS: updater runtime detected and invalid disk rejected",
                       flush=True)
