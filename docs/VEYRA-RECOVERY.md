@@ -2,6 +2,21 @@
 
 Status: **independent Alpine LTS recovery kernel + initramfs, including an optional signed-updater runtime, boot-tested in diskless QEMU** (`scripts/veyra-recovery-init.sh`, `scripts/build-veyra-recovery.sh`, `tests/test-recovery-qemu.py`, `.github/workflows/recovery-e2e.yml`). CI confirms the updater menu appears and rejects an invalid device path. This does not apply a signed release. Recovery is not connected to GRUB or the installer, and no signed update plus automatic rollback has passed in QEMU.
 
+## Expert Recovery Shell (experimental)
+
+The independent BusyBox recovery menu has an **expert-only Recovery Shell**
+choice. Entering it requires typing `SHELL` after a warning. It starts an
+interactive BusyBox shell in the Recovery initramfs, **not** in the installed
+system, and `exit` returns to the menu instead of exiting PID 1. No deployed
+root, user root or storage partition is mounted automatically. This shell
+runs as Recovery root: an operator can manually mount and modify disks, so
+the menu warning is essential. It is not an automatic system repair method.
+
+The diskless QEMU acceptance test covers rejecting an unconfirmed shell,
+opening it on explicit confirmation, reading the independent Recovery
+marker and returning to the menu. An installed Recovery GRUB entry and
+physical-hardware qualification remain unverified.
+
 ## Android-inspired design, not an Android port
 
 Borrow the **A/B boot state machine**, **post-install verification**, **boot-success acknowledgement** and a **minimal recovery interface**, rather than importing Android's block-level update_engine or partition assumptions. Veyra generations are directory trees on a user-selected Linux filesystem, **not mandatory A/B partitions**. Btrfs, snapshots, reflinks and LVM must never be required.
