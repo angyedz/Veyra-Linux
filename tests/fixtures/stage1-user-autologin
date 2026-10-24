@@ -1,0 +1,31 @@
+#!/bin/sh
+# Test-only serial autologin into the isolated user rootfs.
+exec /bin/busybox su -l -s /bin/sh -c '
+    [ "$(/bin/busybox id -u)" = 1000 ] || exit 1
+    run_boundary=/run/.veyra-stage1-run-boundary
+    manager_socket=/run/veyra-user-manager/control.sock
+    [ ! -e "$run_boundary" ] || exit 1
+    [ ! -e "$manager_socket" ] || exit 1
+    /usr/bin/sudo -n /bin/busybox test ! -e "$run_boundary" || exit 1
+    /usr/bin/sudo -n /bin/busybox test ! -e "$manager_socket" || exit 1
+    /usr/bin/sudo -n /bin/busybox sh -c "printf %s user-only > $run_boundary" || exit 1
+    [ "$(/bin/busybox cat "$run_boundary")" = "user-only" ] || exit 1
+    proof="$HOME/.veyra-stage1-autologin"
+    isolation_proof="$HOME/.veyra-stage1-isolation"
+    previous=0
+    if [ -r "$proof" ]; then
+        saved=$(/bin/busybox cat "$proof")
+        case "$saved" in
+            "uid=1000 count="*) previous=${saved##*count=} ;;
+            *) exit 1 ;;
+        esac
+    fi
+    case "$previous" in
+        ""|*[!0-9]*) exit 1 ;;
+    esac
+    count=$((previous + 1))
+    /bin/busybox printf "uid=1000 count=%s host-run-isolated=1 manager-socket-isolated=1\n" "$count" > "$isolation_proof"
+    /bin/busybox printf "uid=1000 count=%s\n" "$count" > "$proof"
+    /bin/busybox sync
+    exec /bin/sh -l
+' veyrauser

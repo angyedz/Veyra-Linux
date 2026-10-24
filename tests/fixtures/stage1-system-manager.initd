@@ -1,0 +1,58 @@
+#!/sbin/openrc-run
+# Disposable QEMU fixture: production Veyra does not install this service yet.
+description="Veyra Stage 1 test user-environment manager"
+command="/host-supervisor"
+command_args="serve /mnt/veyra-user"
+command_background=true
+pidfile="/run/veyra-user-manager.pid"
+
+start_pre() {
+    [ -d /mnt/veyra-user ] &&
+        [ ! -L /mnt/veyra-user ] &&
+        [ -f /mnt/veyra-user/.veyra-stage1-rootfs ]
+}
+
+start_post() {
+    local attempt=0 start_result count actual manager_status
+    while [ "$attempt" -lt 15 ]; do
+        manager_status=$(/host-supervisor status 2>/dev/null || :)
+        if [ "$manager_status" = "STOPPED" ]; then
+            break
+        fi
+        attempt=$((attempt + 1))
+        sleep 1
+    done
+    if [ "$manager_status" != "STOPPED" ]; then
+        eerror "system-side manager did not enter STOPPED state"
+        return 1
+    fi
+    echo "VEYRA_STAGE1_SYSTEM_OPENRC_MANAGER_READY"
+    start_result=$(/host-supervisor start) || {
+        eerror "system-side manager could not start the user environment"
+        return 1
+    }
+    case "$start_result" in
+        RUNNING\ pid=*\ count=*) ;;
+        *) eerror "unexpected user-environment start result: $start_result"; return 1 ;;
+    esac
+    count=${start_result##*count=}
+    case "$count" in
+        ''|*[!0-9]*) eerror "invalid user-environment boot count: $count"; return 1 ;;
+    esac
+    attempt=0
+    while [ "$attempt" -lt 15 ]; do
+        actual=$(cat /mnt/veyra-user/home/veyrauser/.veyra-stage1-autologin 2>/dev/null || :)
+        if [ "$actual" = "uid=1000 count=$count" ]; then
+            echo "VEYRA_STAGE1_SYSTEM_OPENRC_AUTOLOGIN_READY uid=1000 count=$count"
+            return 0
+        fi
+        attempt=$((attempt + 1))
+        sleep 1
+    done
+    eerror "user environment did not autologin as UID 1000"
+    return 1
+}
+
+stop_pre() {
+    /host-supervisor stop >/dev/null 2>&1 || :
+}

@@ -663,6 +663,22 @@ static void inner_pid_one(int root_fd, int ready_fd) {
         die("system-side manager socket leaked into user rootfs");
     if (mount("proc", "/proc", "proc", MS_NODEV | MS_NOSUID | MS_NOEXEC, "") < 0)
         die("mount user procfs");
+    struct stat devpts_target;
+    if (lstat("/dev/pts", &devpts_target) < 0 ||
+        !S_ISDIR(devpts_target.st_mode))
+        die("user /dev/pts must be a real directory");
+    char ptmx_target[32] = {0};
+    ssize_t ptmx_length = readlink("/dev/ptmx", ptmx_target,
+                                   sizeof(ptmx_target) - 1);
+    if (ptmx_length < 0 ||
+        (size_t)ptmx_length != strlen("pts/ptmx"))
+        die("user /dev/ptmx must point to isolated devpts");
+    ptmx_target[ptmx_length] = '\0';
+    if (strcmp(ptmx_target, "pts/ptmx"))
+        die("user /dev/ptmx must point to isolated devpts");
+    if (mount("devpts", "/dev/pts", "devpts", MS_NOSUID | MS_NOEXEC,
+              "newinstance,ptmxmode=0666,mode=0620") < 0)
+        die("mount isolated user devpts");
     if (mount("tmpfs", "/run", "tmpfs", MS_NODEV | MS_NOSUID, "mode=0755") < 0)
         die("mount user /run");
     if (mount("tmpfs", "/tmp", "tmpfs", MS_NODEV | MS_NOSUID, "mode=1777") < 0)
