@@ -1,6 +1,12 @@
 name: Veyra Recovery independent boot
 
 on:
+  pull_request:
+    paths:
+      - 'scripts/veyra-recovery-init.sh'
+      - 'scripts/build-veyra-recovery.sh'
+      - 'tests/test-recovery-qemu.py'
+      - '.github/workflows/recovery-e2e.yml'
   push:
     branches: [main]
     paths:
