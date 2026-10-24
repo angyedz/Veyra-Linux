@@ -98,6 +98,8 @@ func run(args []string) error {
         OTAContract:"signed-paired-apk-generations; ISO-is-installer-only",
     }, "", "  ")
     if err != nil { return err }
+    signedInfo := append(info, '\n')
+    infoSignature := []byte(base64.StdEncoding.EncodeToString(ed25519.Sign(priv, signedInfo)) + "\n")
     if !filepath.IsAbs(*output) { return errors.New("--out must be an absolute path") }
     if _, err := os.Lstat(*output); err == nil {
         return errors.New("output already exists; refusing to overwrite a previous release")
@@ -109,7 +111,8 @@ func run(args []string) error {
     files := map[string][]byte{
         "manifest.json":doc,
         "manifest.json.sig":sig,
-        "release-info.json":append(info, '\n'),
+        "release-info.json":signedInfo,
+        "release-info.json.sig":infoSignature,
         "iso.sha256":[]byte(digest256+"  "+filepath.Base(*iso)+"\n"),
         "iso.sha512":[]byte(digest512+"  "+filepath.Base(*iso)+"\n"),
         "README.txt":[]byte("VEYRA OTA RELEASE BUNDLE\n\nAttach the ISO separately for fresh installs.\nPublish manifest.json and manifest.json.sig unchanged at the configured HTTPS channel URL.\nThe signed manifest selects repository APKs for inactive system/user generations.\nDo not flash the ISO onto an installed filesystem.\nNever publish private signing keys.\nThis bundle is NOT a Pre-Alpha qualification result.\n"),
