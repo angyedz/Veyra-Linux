@@ -445,6 +445,8 @@ jobs:
           go vet ./...
           go build ./cmd/veyra-update-verify
           go build ./cmd/veyra-atomic-update
+          go build ./cmd/veyra-ota-bundle
+          go build ./cmd/veyra-ota-keygen
 
   veyra-initramfs:
     name: Build filesystem-neutral Alpine A/B initramfs selector
