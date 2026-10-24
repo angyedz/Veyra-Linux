@@ -13,8 +13,30 @@ export PATH=/sbin:/bin:/usr/sbin:/usr/bin
 /bin/busybox mount -t devpts devpts /dev/pts || true
 /bin/busybox mount -t tmpfs tmpfs /run || true
 /bin/busybox mount -t tmpfs tmpfs /tmp || true
+# Custom PID 1 replaces Alpine's init, so create BusyBox applet aliases
+# for an independent root shell that does not rely on installed binaries.
+if ! /bin/busybox --install -s /bin; then
+    echo 'Warning: BusyBox command aliases could not be created.' >&2
+fi
 [ -e /dev/console ] || /bin/busybox mknod /dev/console c 5 1
 exec </dev/console >/dev/console 2>&1
+recovery_shell() {
+    echo
+    echo 'EXPERT MODE: independent Recovery root shell.'
+    echo 'Commands can modify disks and bypass the normal menu.'
+    echo 'No installed disk is mounted automatically.'
+    echo 'Use exit to return to the Recovery menu.'
+    printf 'Type SHELL to enter, or anything else to cancel: '
+    IFS= read -r confirmation || confirmation=
+    if [ "$confirmation" != SHELL ]; then
+        echo 'Recovery shell cancelled.'
+        return 0
+    fi
+    # Shell is a child of PID 1; exit must return to the menu, not kill init.
+    /bin/busybox sh -i </dev/console >/dev/console 2>&1 || :
+    echo 'Returned to Veyra Recovery.'
+}
+
 printf '\033[2J\033[H'
 echo '======================================================'
 echo '              VEYRA RECOVERY ENVIRONMENT'
@@ -27,6 +49,7 @@ while :; do
     echo '2) Show kernel boot command line'
     echo '3) Reboot'
     echo '4) Power off'
+    echo '5) Recovery shell (expert mode)'
     printf 'Choice: '
     IFS= read -r choice || choice=3
     case "$choice" in
@@ -34,6 +57,7 @@ while :; do
         2) /bin/busybox cat /proc/cmdline ;;
         3) /bin/busybox sync; /bin/busybox reboot -f ;;
         4) /bin/busybox sync; /bin/busybox poweroff -f ;;
+        5) recovery_shell ;;
         *) echo 'Unknown choice' ;;
     esac
 done
