@@ -166,6 +166,7 @@ jobs:
       - name: Reject incorrect passwords and authenticate both accounts across two shared-root boots
         run: |
           python3 -m py_compile tests/test-stage1-shared-auth-multiuser-qemu.py
+          python3 tests/test-stage1-shared-auth-multiuser-qemu.py --check-parser
           python3 tests/test-stage1-shared-auth-multiuser-qemu.py \
             /tmp/veyra-stage1-shared-auth/veyra-stage1-kernel \
             /tmp/veyra-stage1-shared-auth/veyra-stage1-shared-auth-initramfs \
