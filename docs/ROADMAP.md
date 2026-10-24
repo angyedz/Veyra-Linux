@@ -1,3 +1,5 @@
+> **LEGACY ROADMAP (2026-10-24):** The milestones below refer to the Alpine/musl/Dual Environment experiment, not the new product target. Existing test evidence and PR references are preserved as history. For current direction see [ADR-0001](ADR-0001-ARCHITECTURE-RESET.md), [Next plan](VEYRA-NEXT-PLAN.md), and [migration matrix](VEYRA-MIGRATION-MATRIX.md).
+
 # Veyra Linux development roadmap
 
 **Last reviewed:** 2026-10-21  

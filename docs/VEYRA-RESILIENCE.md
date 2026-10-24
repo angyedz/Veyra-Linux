@@ -1,3 +1,5 @@
+> **MIGRATION NOTE (2026-10-24):** Guardian/recovery principles remain relevant, but nested user OpenRC/PID 1 assumptions are historical. Adapt only after reviewing the single-system architecture. See [ADR-0001](ADR-0001-ARCHITECTURE-RESET.md).
+
 # Veyra Resilience — Guardian and one Recovery Engine for two environments
 
 **Status (2026-10-20): ARCHITECTURE/UX PROPOSAL ONLY.** Guardian, shared Recovery Engine, SnapCore snapshots, online restore and dual-scope VRE menu are **not implemented**. [Stage 1 QEMU manager](STAGE1-USER-ROOTFS.md) and [independent console VRE](VEYRA-RECOVERY.md) are separate prior proofs, not this finished product. See [SnapCore](VEYRA-SNAPCORE.md), [Roadmap](ROADMAP.md).

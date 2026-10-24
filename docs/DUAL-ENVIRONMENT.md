@@ -1,3 +1,5 @@
+> **SUPERSEDED TARGET (2026-10-24):** This records the former two-root/nested-OpenRC plan and remains for provenance. Veyra Next aims for **one native-glibc system**, not a mandatory user distro or second PID 1. See [ADR-0001](ADR-0001-ARCHITECTURE-RESET.md) and [Next plan](VEYRA-NEXT-PLAN.md). Nothing was deleted or implemented by this banner.
+
 # Veyra dual-environment execution model
 
 **Status:** architecture contract and experimental probes only. The installed

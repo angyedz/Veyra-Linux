@@ -1,3 +1,5 @@
+> **MIGRATION NOTE (2026-10-24):** Independent Veyra Recovery and Expert Shell remain important. Old dual-root repair details require redesign for one native-glibc system; no new integration has shipped. See [ADR-0001](ADR-0001-ARCHITECTURE-RESET.md) and [Next plan](VEYRA-NEXT-PLAN.md).
+
 # Veyra Recovery Environment (VRE) — design v0
 
 Status: **independent Alpine LTS recovery kernel + initramfs successfully boot-tested in diskless QEMU** (`scripts/veyra-recovery-init.sh`, `scripts/build-veyra-recovery.sh`, `tests/test-recovery-qemu.py`, `.github/workflows/recovery-e2e.yml`). Serial diagnostics work. This is not yet integrated into GRUB or security reviewed; no graphical UI or automated update application exists.

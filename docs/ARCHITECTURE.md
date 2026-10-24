@@ -1,3 +1,5 @@
+> **ARCHITECTURE TRANSITION (2026-10-24):** This is the historical Alpine/musl + mandatory Dual Environment target. The new product direction is a **single native-glibc KDE desktop**, OpenRC preferred, with signed atomic deployments and independent Recovery. The base and updater are still unselected. See [ADR-0001](ADR-0001-ARCHITECTURE-RESET.md), [Next plan](VEYRA-NEXT-PLAN.md) and [component matrix](VEYRA-MIGRATION-MATRIX.md). This notice makes no claim that any migration shipped.
+
 # Veyra Linux architecture — decision record (2026-10-19)
 
 **Status: approved direction; incremental implementation. Not a claim that the current ISO or installed system is atomic.**

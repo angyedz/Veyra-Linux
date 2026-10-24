@@ -1,3 +1,5 @@
+> **MIGRATION NOTE (2026-10-24):** Preserve SnapCore as block-snapshot research for user data; it is **not** a mandatory or completed Veyra Next OTA backend. Historical design and prototypes follow. See [ADR-0001](ADR-0001-ARCHITECTURE-RESET.md) and [component matrix](VEYRA-MIGRATION-MATRIX.md).
+
 # Veyra SnapCore — protected block-level snapshots of the user environment
 
 **Status (2026-10-20): DESIGN PROPOSAL ONLY. No SnapCore engine, snapshot storage format, QEMU rollback or installed integration exists.** Related: [Veyra Resilience](VEYRA-RESILIENCE.md), [VRE](VEYRA-RECOVERY.md), [Roadmap](ROADMAP.md).
