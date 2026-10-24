@@ -57,6 +57,9 @@ func bundleArgs(iso,manifest,key,pub,out string) []string {
 func TestSignedBundleAndNoOverwrite(t *testing.T) {
     iso,manifest,key,pub,out := sampleInputs(t)
     if err := run(bundleArgs(iso,manifest,key,pub,out)); err != nil { t.Fatal(err) }
+    if err := run([]string{"--verify-bundle",out,"--iso",iso,"--public-key",pub}); err != nil {
+        t.Fatalf("release bundle verification: %v",err)
+    }
     doc,err := os.ReadFile(filepath.Join(out,"manifest.json"))
     if err != nil { t.Fatal(err) }
     sig,err := os.ReadFile(filepath.Join(out,"manifest.json.sig"))
@@ -128,4 +131,26 @@ func TestFailClosedOnInvalidInputs(t *testing.T) {
         if err := os.WriteFile(manifest,[]byte("not JSON"),0600); err != nil { t.Fatal(err) }
         if err := run(bundleArgs(iso,manifest,key,pub,out)); err == nil { t.Fatal("must reject malformed release") }
     })
+}
+
+func TestVerificationRejectsDamagedArtifacts(t *testing.T) {
+    for _,caseName := range []string{"ISO bytes", "release info", "manifest", "detached signature", "ISO checksum"} {
+        t.Run(caseName,func(t *testing.T) {
+            iso,manifest,key,pub,out := sampleInputs(t)
+            if err := run(bundleArgs(iso,manifest,key,pub,out)); err != nil { t.Fatal(err) }
+            switch caseName {
+            case "ISO bytes":
+                if err := os.WriteFile(iso,[]byte("tampered ISO"),0600); err != nil { t.Fatal(err) }
+            case "release info":
+                if err := os.WriteFile(filepath.Join(out,"release-info.json"),[]byte("{}"),0600); err != nil { t.Fatal(err) }
+            case "manifest":
+                if err := os.WriteFile(filepath.Join(out,"manifest.json"),[]byte("{}"),0600); err != nil { t.Fatal(err) }
+            case "detached signature":
+                if err := os.WriteFile(filepath.Join(out,"manifest.json.sig"),[]byte("bad"),0600); err != nil { t.Fatal(err) }
+            case "ISO checksum":
+                if err := os.WriteFile(filepath.Join(out,"iso.sha256"),[]byte("0000\n"),0600); err != nil { t.Fatal(err) }
+            }
+            if err := verifyBundle(out,iso,pub); err == nil { t.Fatal("tampered bundle accepted") }
+        })
+    }
 }
