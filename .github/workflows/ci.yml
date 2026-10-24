@@ -39,6 +39,8 @@ jobs:
           sh tests/test-boot-theme.sh
       - name: Validate shell and image overlay
         run: sh tests/static.sh
+      - name: Ensure automatic OTA publication remains opt-in and signature-gated
+        run: python3 tests/test-ota-channel-workflow.py
       - name: Test ISO artifact integrity verifier on Alpine
         run: sh tests/test-iso-artifact.sh
       - name: Validate Calamares settings and modules
@@ -412,6 +414,27 @@ jobs:
         run: |
           go test -count=1 ./...
           go vet ./...
+
+
+  paired-update-manifest:
+    name: Signed paired release, OTA bundle and key generator
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: false
+      - name: Validate signature, compatibility and publication contracts
+        working-directory: update
+        run: |
+          go test -count=1 ./...
+          go vet ./...
+          go build ./cmd/veyra-atomic-update
+          go build ./cmd/veyra-update-verify
+          go build ./cmd/veyra-ota-bundle
+          go build ./cmd/veyra-ota-keygen
 
   veyra-initramfs:
     name: Build filesystem-neutral Alpine A/B initramfs selector
