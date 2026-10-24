@@ -49,7 +49,15 @@ func run(args []string) error {
     signingKey := flags.String("signing-key", "", "offline Ed25519 PKCS#8 PEM private key")
     trustedKey := flags.String("public-key", "", "public key trusted by installed Veyra")
     output := flags.String("out", "", "new output bundle directory")
+    verification := flags.String("verify-bundle", "", "verify an existing release bundle (no private key)")
     if err := flags.Parse(args); err != nil { return err }
+    if *verification != "" {
+        if flags.NArg() != 0 || *iso == "" || *trustedKey == "" ||
+            *signingKey != "" || *manifest != "" || *output != "" {
+            return errors.New("usage: veyra-ota-bundle --verify-bundle DIRECTORY --iso IMAGE.iso --public-key TRUSTED.pub")
+        }
+        return verifyBundle(*verification,*iso,*trustedKey)
+    }
     if flags.NArg() != 0 || *iso == "" || *manifest == "" ||
         *signingKey == "" || *trustedKey == "" || *output == "" {
         return errors.New("usage: veyra-ota-bundle --iso IMAGE.iso --manifest release.json --signing-key PRIVATE.pem --public-key TRUSTED.pub --out NEW_DIRECTORY")
