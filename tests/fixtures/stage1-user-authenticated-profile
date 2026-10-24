@@ -1,0 +1,56 @@
+#!/bin/sh
+# Test-only login proof, sourced by BusyBox ash for each authenticated account.
+set -eu
+umask 077
+
+fail() {
+    echo "VEYRA_STAGE1_SHARED_AUTH_FAILURE: $*" >&2
+    exit 1
+}
+
+account=$(id -un)
+case "$account" in
+    veyrauser) uid=1000; other=veyrauser2 ;;
+    veyrauser2) uid=1001; other=veyrauser ;;
+    *) fail "unexpected authenticated account: $account" ;;
+esac
+[ "$(id -u)" = "$uid" ] || fail "login UID does not match $account"
+[ "$(id -g)" = "$uid" ] || fail "login GID does not match $account"
+[ "$HOME" = "/home/$account" ] || fail "login home does not match $account"
+[ -x /bin/busybox ] || fail "shared user root is missing BusyBox"
+[ -s /lib/apk/db/installed ] || fail "shared APK database is missing"
+[ ! -r "/home/$other/.veyra-stage1-auth-private" ] ||
+    fail "$account can read $other's private home file"
+
+root_identity=$(stat -c '%d:%i' /)
+apk_identity=$(stat -c '%d:%i' /lib/apk/db/installed)
+mount_namespace=$(readlink /proc/self/ns/mnt)
+uid_map=$(awk 'NF { print $1 ":" $2 ":" $3 }' /proc/self/uid_map)
+[ "$uid_map" = '0:100000:65536' ] ||
+    fail "shared user namespace map is unexpected: $uid_map"
+
+proof="$HOME/.veyra-stage1-authenticated-shared-root"
+previous=0
+if [ -e "$proof" ]; then
+    [ -f "$proof" ] && [ ! -L "$proof" ] || fail "prior proof is not a regular file"
+    saved=$(cat "$proof")
+    case "$saved" in
+        "account=$account uid=$uid count="*)
+            previous=${saved#* count=}
+            previous=${previous%% *}
+            ;;
+        *) fail "prior account proof has an unexpected identity" ;;
+    esac
+    case "$previous" in ''|*[!0-9]*) fail "prior login count is invalid" ;; esac
+    case "$saved" in *" root=$root_identity "*) ;; *) fail "user root changed across boots" ;; esac
+    case "$saved" in *" apkdb=$apk_identity "*) ;; *) fail "APK database changed across boots" ;; esac
+fi
+count=$((previous + 1))
+printf 'account=%s uid=%s count=%s root=%s apkdb=%s mountns=%s uidmap=%s\n' \
+    "$account" "$uid" "$count" "$root_identity" "$apk_identity" \
+    "$mount_namespace" "$uid_map" > "$proof"
+chmod 0600 "$proof"
+echo "VEYRA_STAGE1_SHARED_AUTH_LOGIN_PASS account=$account uid=$uid count=$count root=$root_identity apkdb=$apk_identity mountns=$mount_namespace uidmap=$uid_map"
+# The disposable getty test only needs one authenticated profile execution.
+# End the shell here so BusyBox getty respawns without terminal-size negotiation.
+exit

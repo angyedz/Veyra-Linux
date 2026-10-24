@@ -1,0 +1,186 @@
+name: Veyra shared-root authenticated multi-user QEMU
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/stage1-shared-auth-multiuser-qemu.yml'
+      - 'scripts/veyra-stage1-shared-auth-init.sh'
+      - 'tests/fixtures/stage1-user-authenticated-inittab'
+      - 'tests/fixtures/stage1-user-authenticated-profile'
+      - 'tests/stage1-user-supervisor.c'
+      - 'tests/test-stage1-shared-auth-multiuser-qemu.py'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/stage1-shared-auth-multiuser-qemu.yml'
+      - 'scripts/veyra-stage1-shared-auth-init.sh'
+      - 'tests/fixtures/stage1-user-authenticated-inittab'
+      - 'tests/fixtures/stage1-user-authenticated-profile'
+      - 'tests/stage1-user-supervisor.c'
+      - 'tests/test-stage1-shared-auth-multiuser-qemu.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  authenticated-shared-root:
+    name: Authenticate two accounts in one persistent shared user root
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install QEMU and serial assertion tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-system-x86 python3-pexpect
+      - name: Build shared Alpine user root, two ordinary accounts and QEMU initramfs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/veyra-stage1-shared-auth
+          docker run --rm -v "$PWD:/work:ro" \
+            -v /tmp/veyra-stage1-shared-auth:/out alpine:3.22 sh -ec '
+              apk add --no-cache alpine-base openrc linux-lts mkinitfs \
+                build-base linux-headers e2fsprogs cpio gzip
+              kernel=$(basename "$(find /lib/modules -mindepth 1 -maxdepth 1 -type d -print -quit)")
+              test -n "$kernel"
+              cc -static -Os -Wall -Wextra -Werror \
+                -o /out/host-supervisor /work/tests/stage1-user-supervisor.c
+
+              mkdir -p /out/userroot /out/overlay
+              apk --root /out/userroot --initdb \
+                --keys-dir /etc/apk/keys \
+                --repositories-file /etc/apk/repositories \
+                add alpine-base openrc sudo
+              test -x /out/userroot/sbin/init
+              test -x /out/userroot/bin/login
+              rm -rf /out/userroot/etc/runlevels
+              mkdir -p /out/userroot/etc/runlevels/sysinit \
+                /out/userroot/etc/runlevels/boot \
+                /out/userroot/etc/runlevels/default \
+                /out/userroot/etc/init.d \
+                /out/userroot/home/veyrauser \
+                /out/userroot/home/veyrauser2 \
+                /out/userroot/var/lib/veyra-user \
+                /out/userroot/usr/local/sbin \
+                /out/userroot/lost+found
+              cp /work/tests/fixtures/stage1-user-authenticated-inittab \
+                /out/userroot/etc/inittab
+              cp /work/tests/fixtures/stage1-user-openrc.initd \
+                /out/userroot/etc/init.d/veyra-stage1-user
+              chmod 0755 /out/userroot/etc/init.d/veyra-stage1-user
+              ln -s /etc/init.d/veyra-stage1-user \
+                /out/userroot/etc/runlevels/default/veyra-stage1-user
+              printf "format=stage1\n" > /out/userroot/.veyra-stage1-rootfs
+              mkdir -p /out/userroot/etc/sudoers.d
+
+              chroot /out/userroot addgroup -g 1000 veyrauser
+              chroot /out/userroot adduser -D -H -u 1000 \
+                -G veyrauser -s /bin/sh veyrauser
+              chroot /out/userroot addgroup -g 1001 veyrauser2
+              chroot /out/userroot adduser -D -H -u 1001 \
+                -G veyrauser2 -s /bin/sh veyrauser2
+              printf "veyrauser:Veyra-account-one-test-only!\nveyrauser2:Veyra-account-two-test-only!\n" \
+                | chroot /out/userroot chpasswd
+              printf "veyrauser ALL=(ALL) NOPASSWD: ALL\n" \
+                > /out/userroot/etc/sudoers.d/veyrauser
+              chmod 0440 /out/userroot/etc/sudoers.d/veyrauser
+              test -x /out/userroot/usr/bin/sudo
+              test -s /out/userroot/lib/apk/db/installed
+
+              for account in veyrauser veyrauser2; do
+                cp /work/tests/fixtures/stage1-user-authenticated-profile \
+                  "/out/userroot/home/$account/.profile"
+                printf "%s-private\n" "$account" \
+                  > "/out/userroot/home/$account/.veyra-stage1-auth-private"
+              done
+              for dev in console null zero tty random urandom; do
+                rm -f "/out/userroot/dev/$dev"
+              done
+              mknod -m 0600 /out/userroot/dev/console c 5 1
+              mknod -m 0666 /out/userroot/dev/null c 1 3
+              mknod -m 0666 /out/userroot/dev/zero c 1 5
+              mknod -m 0666 /out/userroot/dev/tty c 5 0
+              mknod -m 0666 /out/userroot/dev/random c 1 8
+              mknod -m 0666 /out/userroot/dev/urandom c 1 9
+              mkdir -p /out/userroot/dev/pts
+              rm -f /out/userroot/dev/ptmx
+              ln -s pts/ptmx /out/userroot/dev/ptmx
+
+              # Keep every inode, including the test-created device nodes,
+              # inside the mapped outer UID/GID range.
+              chown -R 100000:100000 /out/userroot
+              # chown clears setuid; restore it on the sudo executable installed in this root.
+              sudo_bin=$(chroot /out/userroot /bin/sh -c "command -v sudo") || {
+                chroot /out/userroot apk info -L sudo || true
+                find /out/userroot -name sudo -print
+                exit 1
+              }
+              [ -n "$sudo_bin" ] || {
+                chroot /out/userroot apk info -L sudo || true
+                find /out/userroot -name sudo -print
+                exit 1
+              }
+              sudo_path="/out/userroot$sudo_bin"
+              [ -x "$sudo_path" ] || {
+                echo "Installed sudo executable is missing: $sudo_path" >&2
+                chroot /out/userroot apk info -L sudo || true
+                find /out/userroot -name sudo -print
+                exit 1
+              }
+              chmod 4755 "$sudo_path"
+              chown -R 101000:101000 /out/userroot/home/veyrauser
+              chown -R 101001:101001 /out/userroot/home/veyrauser2
+              chmod 0700 /out/userroot/home/veyrauser /out/userroot/home/veyrauser2
+              chmod 0644 /out/userroot/home/veyrauser/.profile \
+                /out/userroot/home/veyrauser2/.profile
+              chmod 0600 /out/userroot/home/veyrauser/.veyra-stage1-auth-private \
+                /out/userroot/home/veyrauser2/.veyra-stage1-auth-private
+              shadow_owner=$(stat -c "%u:%g:%a" /out/userroot/etc/shadow)
+              case "$shadow_owner" in
+                100000:100000:600|100000:100000:640) ;;
+                *) echo "unexpected /etc/shadow owner or mode: $shadow_owner" >&2; exit 1 ;;
+              esac
+
+              cp /out/host-supervisor /out/overlay/host-supervisor
+              truncate -s 180M /out/veyra-user-root.raw
+              mkfs.ext4 -F -q -L VEYRA_USER_ROOT \
+                -E root_owner=100000:100000 \
+                -d /out/userroot /out/veyra-user-root.raw
+              chmod 0666 /out/veyra-user-root.raw
+              mkinitfs -F "base ext4 virtio" \
+                -i /work/scripts/veyra-stage1-shared-auth-init.sh \
+                -o /out/veyra-stage1-shared-auth-initramfs "$kernel"
+              (cd /out/overlay && find . -print | cpio --quiet -o -H newc | gzip -9) \
+                >> /out/veyra-stage1-shared-auth-initramfs
+              cp /boot/vmlinuz-lts /out/veyra-stage1-kernel
+              chmod 0644 /out/veyra-stage1-kernel \
+                /out/veyra-stage1-shared-auth-initramfs
+              test -s /out/veyra-user-root.raw
+              test -s /out/veyra-stage1-kernel
+              test -s /out/veyra-stage1-shared-auth-initramfs
+            '
+      - name: Reject incorrect passwords and authenticate both accounts across two shared-root boots
+        run: |
+          python3 -m py_compile tests/test-stage1-shared-auth-multiuser-qemu.py
+          python3 tests/test-stage1-shared-auth-multiuser-qemu.py \
+            /tmp/veyra-stage1-shared-auth/veyra-stage1-kernel \
+            /tmp/veyra-stage1-shared-auth/veyra-stage1-shared-auth-initramfs \
+            /tmp/veyra-stage1-shared-auth/veyra-user-root.raw \
+            --log /tmp/veyra-stage1-shared-auth/serial.log
+      - name: Print guest serial errors
+        if: failure()
+        run: |
+          test ! -s /tmp/veyra-stage1-shared-auth/serial.log || \
+            tail -n 200 /tmp/veyra-stage1-shared-auth/serial.log
+      - name: Save serial login proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: veyra-stage1-shared-authenticated-multiuser-serial
+          path: /tmp/veyra-stage1-shared-auth/serial.log
+          retention-days: 7
+          if-no-files-found: ignore
