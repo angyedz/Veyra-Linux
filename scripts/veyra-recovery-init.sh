@@ -130,6 +130,27 @@ DHCP
     return 1
 }
 
+# This is an explicit expert-only shell, not a repair wizard. It runs in the
+# independent initramfs (never a chroot into the installed system).
+# No installed root or deployment store is mounted by this menu action.
+recovery_shell() {
+    echo
+    echo 'EXPERT MODE: root shell in the independent Recovery initramfs.'
+    echo 'Commands can overwrite disks and bypass menu confirmations.'
+    echo 'No installed filesystem is mounted automatically.'
+    echo 'Use exit to return to the Recovery menu.'
+    printf 'Type SHELL to continue, or anything else to cancel: '
+    IFS= read -r confirmation || confirmation=
+    if [ "$confirmation" != SHELL ]; then
+        echo 'Recovery shell cancelled.'
+        return 0
+    fi
+    # Do not exec here: PID 1 must keep running to recover the menu.
+    # BusyBox supplies the shell without relying on the installed root.
+    /bin/busybox sh -i </dev/console >/dev/console 2>&1 || :
+    echo 'Returned to Veyra Recovery.'
+}
+
 printf '\033[2J\033[H'
 echo '======================================================'
 echo '              VEYRA RECOVERY ENVIRONMENT'
@@ -148,6 +169,7 @@ while :; do
     fi
     echo "$update_option) Reboot"
     echo "$((update_option + 1))) Power off"
+    echo "$((update_option + 2))) Recovery shell (expert mode)"
     printf 'Choice: '
     IFS= read -r choice || choice=3
     case "$choice" in
@@ -163,6 +185,7 @@ while :; do
             ;;
         "$update_option") /bin/busybox sync; /bin/busybox reboot -f ;;
         "$((update_option + 1))") /bin/busybox sync; /bin/busybox poweroff -f ;;
+        "$((update_option + 2))") recovery_shell ;;
         *) echo 'Unknown choice' ;;
     esac
 done
