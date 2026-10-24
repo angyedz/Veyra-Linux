@@ -45,6 +45,8 @@ jobs:
           sh tests/test-boot-theme.sh
       - name: Validate shell and image overlay
         run: sh tests/static.sh
+      - name: Verify signed OTA publication workflow remains opt-in
+        run: python3 tests/test-ota-channel-workflow.py
       - name: Test ISO artifact integrity verifier on Alpine
         run: sh tests/test-iso-artifact.sh
       - name: Validate Calamares settings and modules
