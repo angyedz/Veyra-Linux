@@ -275,6 +275,20 @@ jobs:
           iso=$(find dist -maxdepth 1 -name 'veyra-linux-*.iso' -print -quit)
           test -n "$iso"
           python3 tests/test-installed-qemu.py "$iso" --desktop plasma --log-dir e2e-logs
+      - name: Print installation serial diagnostics on failure
+        if: failure()
+        shell: bash
+        run: |
+          shopt -s nullglob
+          logs=(e2e-logs/*.log)
+          if (( ${#logs[@]} == 0 )); then
+            echo "::warning::No installation serial logs were produced"
+          fi
+          for log in "${logs[@]}"; do
+            echo "::group::$log (last 220 lines)"
+            tail -n 220 "$log"
+            echo "::endgroup::"
+          done
       - name: Preserve serial console diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -357,6 +371,20 @@ jobs:
           iso=$(find dist -maxdepth 1 -name 'veyra-linux-*.iso' -print -quit)
           python3 -m py_compile tests/test-calamares-gui.py
           xvfb-run -a -s '-screen 0 1600x1000x24' python3 tests/test-calamares-gui.py "$iso" --output-dir calamares-gui-e2e
+      - name: Print Calamares textual diagnostics on failure
+        if: failure()
+        shell: bash
+        run: |
+          shopt -s nullglob
+          logs=(calamares-gui-e2e/*.log calamares-gui-e2e/*.txt)
+          if (( ${#logs[@]} == 0 )); then
+            echo "::warning::No Calamares text diagnostics were produced"
+          fi
+          for log in "${logs[@]}"; do
+            echo "::group::$log (last 220 lines)"
+            tail -n 220 "$log"
+            echo "::endgroup::"
+          done
       - name: Preserve GUI screenshots and QEMU serial logs
         if: always()
         uses: actions/upload-artifact@v4
