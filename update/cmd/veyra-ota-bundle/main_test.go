@@ -10,6 +10,7 @@ import (
     "encoding/json"
     "encoding/pem"
     "os"
+    "strings"
     "path/filepath"
     "testing"
 
@@ -65,6 +66,20 @@ func TestSignedBundleAndNoOverwrite(t *testing.T) {
     if _,err := update.VerifyRelease(doc,sig,pubBytes); err != nil { t.Fatal(err) }
     infoBytes,err := os.ReadFile(filepath.Join(out,"release-info.json"))
     if err != nil { t.Fatal(err) }
+    infoSigBytes,err := os.ReadFile(filepath.Join(out,"release-info.json.sig"))
+    if err != nil { t.Fatal(err) }
+    infoSig,err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(infoSigBytes)))
+    if err != nil { t.Fatal(err) }
+    decodedPub,err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(pubBytes)))
+    if err != nil { t.Fatal(err) }
+    if !ed25519.Verify(decodedPub,infoBytes,infoSig) {
+        t.Fatal("ISO metadata was not signed by the trusted key")
+    }
+    tampered := append([]byte(nil),infoBytes...)
+    tampered[0] ^= 1
+    if ed25519.Verify(decodedPub,tampered,infoSig) {
+        t.Fatal("tampered ISO metadata signature accepted")
+    }
     var info releaseInfo
     if err := json.Unmarshal(infoBytes,&info); err != nil { t.Fatal(err) }
     image,err := os.ReadFile(iso)
