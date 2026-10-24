@@ -1,0 +1,146 @@
+name: Publish verified Veyra OTA channel
+
+# Disabled by default until the Pre-Alpha release gate has passed.
+# This workflow never handles the maintainer's private signing key.
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: veyra-prealpha-ota-channel
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: ${{ github.repository == 'angyedz/Veyra-Linux' && vars.VEYRA_OTA_PUBLISH_ENABLED == 'true' }}
+    runs-on: ubuntu-24.04
+    environment: veyra-prealpha-ota
+    timeout-minutes: 25
+    steps:
+      - name: Check out trusted publishing tooling from main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: true
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: false
+      - name: Check public trust anchor and exact source qualification
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s .github/trust/veyra-ota-ed25519.pub || {
+            echo "::error::No pinned OTA public key; publishing disabled"
+            exit 1
+          }
+          tag_commit=$(git rev-parse --verify "$RELEASE_TAG^{commit}")
+          test "$tag_commit" = "$(git rev-parse origin/main)" || {
+            echo "::error::Release tag must point at exact qualified main HEAD"
+            exit 1
+          }
+          for workflow in ci.yml iso.yml recovery-e2e.yml; do
+            runs=$(gh run list -R "$GITHUB_REPOSITORY" \
+              --workflow "$workflow" --commit "$tag_commit" \
+              --limit 100 --json headSha,conclusion)
+            if ! jq -e --arg sha "$tag_commit" \
+              '[.[] | select(.headSha == $sha and .conclusion == "success")] | length > 0' \
+              <<< "$runs" >/dev/null; then
+              echo "::error::No successful $workflow run for exact release commit"
+              exit 1
+            fi
+          done
+      - name: Download release ISO and signed metadata
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          assets="$RUNNER_TEMP/veyra-ota-assets"
+          mkdir -p "$assets"
+          gh release download "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" \
+            --dir "$assets" \
+            --pattern '*.iso' \
+            --pattern 'manifest.json' --pattern 'manifest.json.sig' \
+            --pattern 'release-info.json' --pattern 'release-info.json.sig' \
+            --pattern 'iso.sha256' --pattern 'iso.sha512'
+          count=$(find "$assets" -maxdepth 1 -name '*.iso' -type f | wc -l)
+          test "$count" -eq 1 || { echo "::error::Exactly one ISO is required"; exit 1; }
+          iso=$(find "$assets" -maxdepth 1 -name '*.iso' -type f -print -quit)
+          for name in manifest.json manifest.json.sig release-info.json release-info.json.sig iso.sha256 iso.sha512; do
+            test -s "$assets/$name" || { echo "::error::Missing release asset: $name"; exit 1; }
+          done
+          cp .github/trust/veyra-ota-ed25519.pub "$RUNNER_TEMP/veyra-pinned-ota.pub"
+          echo "VEYRA_RELEASE_ISO=$iso" >> "$GITHUB_ENV"
+      - name: Validate signed paired release and authenticated installer ISO
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          (
+            cd update
+            go test -count=1 ./...
+            go build -o "$RUNNER_TEMP/ota-verify" ./cmd/veyra-ota-bundle
+            go build -o "$RUNNER_TEMP/pair-verify" ./cmd/veyra-update-verify
+          )
+          "$RUNNER_TEMP/ota-verify" \
+            --verify-bundle "$RUNNER_TEMP/veyra-ota-assets" \
+            --iso "$VEYRA_RELEASE_ISO" \
+            --public-key "$RUNNER_TEMP/veyra-pinned-ota.pub"
+          release=$(jq -er '.release' "$RUNNER_TEMP/veyra-ota-assets/release-info.json")
+          test "$release" = "$RELEASE_TAG" || {
+            echo "::error::Signed release ID and GitHub tag differ"
+            exit 1
+          }
+      - name: Publish channel manifest and signature in ONE Git commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          if git ls-remote --exit-code --heads origin ota-channel >/dev/null; then
+            git fetch origin refs/heads/ota-channel:refs/remotes/origin/ota-channel
+            git switch --create ota-channel --track origin/ota-channel
+          else
+            git switch --orphan ota-channel
+            git rm -rf --quiet . || :
+          fi
+          mkdir -p pre-alpha
+          if [[ -f pre-alpha/manifest.json || -f pre-alpha/manifest.json.sig ]]; then
+            test -s pre-alpha/manifest.json && test -s pre-alpha/manifest.json.sig || {
+              echo "::error::Existing channel pair is incomplete"
+              exit 1
+            }
+            "$RUNNER_TEMP/pair-verify" --manifest pre-alpha/manifest.json \
+              --signature pre-alpha/manifest.json.sig \
+              --public-key "$RUNNER_TEMP/veyra-pinned-ota.pub" \
+              > "$RUNNER_TEMP/ota-old.json"
+            previous=$(jq -er '.sequence' "$RUNNER_TEMP/ota-old.json")
+            next=$(jq -er '.sequence' "$RUNNER_TEMP/veyra-ota-assets/release-info.json")
+            if (( next <= previous )); then
+              echo "::error::Refusing an OTA downgrade or reused sequence"
+              exit 1
+            fi
+          fi
+          for name in manifest.json manifest.json.sig release-info.json release-info.json.sig iso.sha256 iso.sha512; do
+            cp "$RUNNER_TEMP/veyra-ota-assets/$name" "pre-alpha/$name"
+          done
+          git add -- pre-alpha
+          if git diff --cached --quiet; then
+            echo "::error::Nothing to publish"
+            exit 1
+          fi
+          next=$(jq -er '.sequence' pre-alpha/release-info.json)
+          git commit -m "ota: publish verified Pre-Alpha sequence $next"
+          git push origin HEAD:refs/heads/ota-channel
+          echo "Promoted signed OTA sequence $next; installer ISO stays in GitHub Release." >> "$GITHUB_STEP_SUMMARY"
