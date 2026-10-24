@@ -45,6 +45,8 @@ jobs:
           sh tests/test-boot-theme.sh
       - name: Validate shell and image overlay
         run: sh tests/static.sh
+      - name: Verify signed OTA publication workflow remains opt-in
+        run: python3 tests/test-ota-channel-workflow.py
       - name: Test ISO artifact integrity verifier on Alpine
         run: sh tests/test-iso-artifact.sh
       - name: Validate Calamares settings and modules
@@ -445,6 +447,8 @@ jobs:
           go vet ./...
           go build ./cmd/veyra-update-verify
           go build ./cmd/veyra-atomic-update
+          go build ./cmd/veyra-ota-bundle
+          go build ./cmd/veyra-ota-keygen
 
   veyra-initramfs:
     name: Build filesystem-neutral Alpine A/B initramfs selector

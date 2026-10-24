@@ -103,6 +103,16 @@ for package in veyra-meta veyra-appcenter flatpak telegram-desktop linux-firmwar
     }
 done
 
+# The conventional single-root validation image has no initialized A/B store.
+# Never ship the legacy in-place updater through an indirect meta dependency.
+# The signed veyra-meta APK must omit veyra-update from its dependencies.
+# See veyra-pkgrepo PR #10; do not bypass this by forcing broken APK world.
+if chroot "$target" apk info -e veyra-update >/dev/null 2>&1; then
+    echo 'Unsafe legacy veyra-update was reinstalled by a package dependency.' >&2
+    echo 'Publish a corrected signed veyra-meta before using this installer.' >&2
+    exit 1
+fi
+
 # GRUB cannot generate a proper configuration on the RAM-backed live root.
 # Install and configure its BIOS/UEFI packages only AFTER the disk filesystem
 # has been mounted. This avoids a failed live grub.trigger poisoning APK state.

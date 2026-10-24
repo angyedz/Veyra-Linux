@@ -15,6 +15,13 @@ export PATH=/sbin:/bin:/usr/sbin:/usr/bin
 /bin/busybox mkdir -p /run/veyra
 /bin/busybox printf 'VEYRA-RECOVERY-v1\n' > /run/veyra/recovery-environment
 /bin/busybox chmod 0444 /run/veyra/recovery-environment
+# The stock Alpine /init normally installs BusyBox applet symlinks.
+# Our independent PID 1 replaces it; install common commands explicitly so
+# expert Recovery Shell can use cat, ls, mount, blkid etc. without prefixes.
+# Never rely on the damaged installed root's binaries.
+if ! /bin/busybox --install -s /bin; then
+    echo 'Warning: BusyBox applet aliases could not be initialized.' >&2
+fi
 [ -e /dev/console ] || /bin/busybox mknod /dev/console c 5 1
 exec </dev/console >/dev/console 2>&1
 
@@ -25,10 +32,51 @@ update_available() {
         [ -f /etc/veyra/trust/update-ed25519.pub ]
 }
 
+# Search only kernel-identified partitions. Probe read-only; never guess when
+# multiple deployment stores exist, and never mount the installed root rw.
+find_unique_store() {
+    probe=/mnt/veyra-probe
+    /bin/busybox mkdir -p "$probe"
+    count=0
+    selected=
+    for partition in /sys/class/block/*/partition; do
+        [ -f "$partition" ] || continue
+        name=${partition%/partition}
+        name=${name##*/}
+        case "$name" in
+            ''|*[!A-Za-z0-9._-]*) continue ;;
+        esac
+        candidate=/dev/$name
+        [ -b "$candidate" ] || continue
+        if ! /bin/busybox mount -t ext4 -o ro,noload "$candidate" "$probe" 2>/dev/null; then
+            continue
+        fi
+        if [ ! -L "$probe/.veyra-deployment-store" ] &&
+           [ "$(/bin/busybox cat "$probe/.veyra-deployment-store" 2>/dev/null)" = VEYRA-DEPLOYMENT-STORE-v2 ] &&
+           /usr/libexec/veyra/bootctl --store "$probe" status >/dev/null 2>&1; then
+            count=$((count + 1))
+            selected=$candidate
+        fi
+        if ! /bin/busybox umount "$probe"; then
+            echo 'Could not unmount partition probe. No update will be attempted.' >&2
+            return 1
+        fi
+    done
+    if [ "$count" -ne 1 ]; then
+        echo "Automatic detection found $count verified Veyra stores; enter the partition manually." >&2
+        return 1
+    fi
+    printf '%s\n' "$selected"
+}
+
 apply_signed_update() {
     store=/mnt/veyra-store
-    printf 'Offline Veyra store partition (for example /dev/vda1): '
+    printf 'Veyra store partition (Enter = find automatically, or /dev/vda1): '
     IFS= read -r device || return 1
+    if [ -z "$device" ]; then
+        device=$(find_unique_store) || return 1
+        echo "Found verified Veyra deployment store: $device"
+    fi
     case "$device" in
         /dev/*) ;;
         *) echo 'Enter a direct block-device path under /dev.'; return 1 ;;
@@ -130,6 +178,27 @@ DHCP
     return 1
 }
 
+# This is an explicit expert-only shell, not a repair wizard. It runs in the
+# independent initramfs (never a chroot into the installed system).
+# No installed root or deployment store is mounted by this menu action.
+recovery_shell() {
+    echo
+    echo 'EXPERT MODE: root shell in the independent Recovery initramfs.'
+    echo 'Commands can overwrite disks and bypass menu confirmations.'
+    echo 'No installed filesystem is mounted automatically.'
+    echo 'Use exit to return to the Recovery menu.'
+    printf 'Type SHELL to continue, or anything else to cancel: '
+    IFS= read -r confirmation || confirmation=
+    if [ "$confirmation" != SHELL ]; then
+        echo 'Recovery shell cancelled.'
+        return 0
+    fi
+    # Do not exec here: PID 1 must keep running to recover the menu.
+    # BusyBox supplies the shell without relying on the installed root.
+    /bin/busybox sh -i </dev/console >/dev/console 2>&1 || :
+    echo 'Returned to Veyra Recovery.'
+}
+
 printf '\033[2J\033[H'
 echo '======================================================'
 echo '              VEYRA RECOVERY ENVIRONMENT'
@@ -148,6 +217,7 @@ while :; do
     fi
     echo "$update_option) Reboot"
     echo "$((update_option + 1))) Power off"
+    echo "$((update_option + 2))) Recovery shell (expert mode)"
     printf 'Choice: '
     IFS= read -r choice || choice=3
     case "$choice" in
@@ -163,6 +233,7 @@ while :; do
             ;;
         "$update_option") /bin/busybox sync; /bin/busybox reboot -f ;;
         "$((update_option + 1))") /bin/busybox sync; /bin/busybox poweroff -f ;;
+        "$((update_option + 2))") recovery_shell ;;
         *) echo 'Unknown choice' ;;
     esac
 done

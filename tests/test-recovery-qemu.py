@@ -52,12 +52,35 @@ def main():
             guest.expect(b"Choice:", timeout=30)
             if args.expect_update_menu:
                 guest.sendline(b"4")
-                guest.expect(b"Offline Veyra store partition", timeout=30)
+                guest.expect(b"Veyra store partition", timeout=30)
                 guest.sendline(b"/dev/veyra-invalid-test-device")
                 guest.expect(b"not a block device", timeout=30)
                 guest.expect(b"Choice:", timeout=30)
+                guest.sendline(b"4")
+                guest.expect(b"Veyra store partition", timeout=30)
+                guest.sendline(b"")
+                guest.expect(b"Automatic detection found 0 verified Veyra stores", timeout=30)
+                guest.expect(b"Choice:", timeout=30)
                 print("VEYRA_RECOVERY_UPDATE_MENU_QEMU_SUCCESS: updater runtime detected and invalid disk rejected",
                       flush=True)
+            # The expert shell must be explicitly authorized, must remain in
+            # the independent initramfs, and must return to the rescue menu.
+            shell_choice = b"7" if args.expect_update_menu else b"6"
+            guest.sendline(shell_choice)
+            guest.expect_exact(b"Type SHELL to continue", timeout=30)
+            guest.sendline(b"no")
+            guest.expect_exact(b"Recovery shell cancelled.", timeout=30)
+            guest.expect(b"Choice:", timeout=30)
+            guest.sendline(shell_choice)
+            guest.expect_exact(b"Type SHELL to continue", timeout=30)
+            guest.sendline(b"SHELL")
+            guest.expect(b"[#] ", timeout=30)
+            guest.sendline(b"cat /run/veyra/recovery-environment")
+            guest.expect(b"VEYRA-RECOVERY-v1", timeout=30)
+            guest.sendline(b"exit")
+            guest.expect_exact(b"Returned to Veyra Recovery.", timeout=30)
+            guest.expect(b"Choice:", timeout=30)
+            print("VEYRA_RECOVERY_SHELL_QEMU_SUCCESS: explicit consent, independent shell and menu return", flush=True)
             print("VEYRA_RECOVERY_QEMU_SUCCESS: independent diskless serial boot", flush=True)
         finally:
             guest.close(force=True)
